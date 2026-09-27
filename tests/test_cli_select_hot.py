@@ -122,6 +122,53 @@ def test_cli_select_hot_rejects_malformed_reason_and_persists_error(tmp_path: Pa
     )
 
 
+def test_cli_select_hot_deduplicates_reason_across_repeated_invocations(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    args = [
+        "select-hot",
+        "--date",
+        "2026-09-25",
+        "--data-dir",
+        str(data_dir),
+        "--select",
+        "hot:event:tool-a",
+        "--reason",
+        "hot:event:tool-a=一次情報で確認済み",
+    ]
+
+    assert main(args) == 0
+    assert main(args) == 0
+
+    candidates = read_jsonl(data_dir / "runs" / "2026-09-25" / "hot_candidates.jsonl")
+    by_id = {item["hot_id"]: item for item in candidates}
+    assert by_id["hot:event:tool-a"]["reasons"].count("一次情報で確認済み") == 1
+
+
+def test_cli_select_hot_rejects_empty_reason_text_and_persists_error(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+
+    exit_code = main(
+        [
+            "select-hot",
+            "--date",
+            "2026-09-25",
+            "--data-dir",
+            str(data_dir),
+            "--select",
+            "hot:event:tool-a",
+            "--reason",
+            "hot:event:tool-a=",
+        ]
+    )
+
+    assert exit_code == 1
+    state = _read_state(data_dir)
+    assert any(
+        error["source"] == "select-hot" and error["type"] == "invalid_reason"
+        for error in state["errors"]
+    )
+
+
 def test_cli_select_hot_fails_and_persists_error_when_hot_candidates_missing(tmp_path: Path):
     exit_code = main(
         [

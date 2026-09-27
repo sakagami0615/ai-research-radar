@@ -57,7 +57,7 @@ def run(args: argparse.Namespace) -> int:
     reasons_by_id: dict[str, list[str]] = {}
     for entry in args.reason:
         hot_id, separator, text = entry.partition("=")
-        if not separator or hot_id not in known_ids:
+        if not separator or hot_id not in known_ids or not text.strip():
             add_error(
                 state,
                 "select-hot",
@@ -69,14 +69,19 @@ def run(args: argparse.Namespace) -> int:
             return 1
         reasons_by_id.setdefault(hot_id, []).append(text)
 
-    updated_candidates = [
-        replace(
-            candidate,
-            selected=candidate.hot_id in selected_ids,
-            reasons=[*candidate.reasons, *reasons_by_id.get(candidate.hot_id, [])],
+    updated_candidates = []
+    for candidate in candidates:
+        existing = list(candidate.reasons)
+        new_texts = [
+            text for text in reasons_by_id.get(candidate.hot_id, []) if text not in existing
+        ]
+        updated_candidates.append(
+            replace(
+                candidate,
+                selected=candidate.hot_id in selected_ids,
+                reasons=existing + new_texts,
+            )
         )
-        for candidate in candidates
-    ]
 
     try:
         write_jsonl(hot_path, updated_candidates)
