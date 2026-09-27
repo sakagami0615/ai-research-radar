@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ai_research_radar.cli.commands import collect as collect_command
 from ai_research_radar.cli.commands import normalize as normalize_command
+from ai_research_radar.cli.commands import report as report_command
 from ai_research_radar.cli.commands import save_proposals as save_proposals_command
 from ai_research_radar.cli.commands import score as score_command
 from ai_research_radar.cli.commands import select_hot as select_hot_command
@@ -37,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     score_command.add_subparser(subparsers)
     select_hot_command.add_subparser(subparsers)
     save_proposals_command.add_subparser(subparsers)
+    report_command.add_subparser(subparsers)
 
     try:
         args = parser.parse_args(argv)
@@ -82,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         return select_hot_command.run(args)
     if args.command == save_proposals_command.COMMAND_NAME:
         return save_proposals_command.run(args)
+    if args.command == report_command.COMMAND_NAME:
+        return report_command.run(args)
     return 2
 
 

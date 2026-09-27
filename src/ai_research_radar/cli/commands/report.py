@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import argparse
+from dataclasses import replace
+from datetime import datetime, timezone
+from pathlib import Path
+
+from ai_research_radar.cli.commands.run_state import add_error, load_run_state, save_run_state
+from ai_research_radar.reporting.markdown import render_daily_report
+from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
+from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
+
+COMMAND_NAME = "report"
+
+_STAGE_ORDER = ["collect", "normalize", "score", "select-hot", "save-proposals"]
+
+
+def add_subparser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(COMMAND_NAME)
+    parser.add_argument("--date", required=True)
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--reports-dir", default="reports")
+
+
+def run(args: argparse.Namespace) -> int:
+    data_dir = Path(args.data_dir)
+    date = args.date
+
+    state = load_run_state(data_dir, date)
+
+    stages_completed = state.get("stages_completed", [])
+    for stage in _STAGE_ORDER:
+        if stage not in stages_completed:
+            add_error(
+                state,
+                "pipeline",
+                "missing_stage",
+                f"{stage} was not completed before report",
+            )
+
+    hot_path = data_dir / "runs" / date / "hot_candidates.jsonl"
+    hot_candidates = (
+        [HotCandidate(**record) for record in read_jsonl(hot_path)] if hot_path.exists() else []
+    )
+
+    proposals_path = data_dir / "runs" / date / "article_proposals.jsonl"
+    proposals = (
+        [ArticleProposal(**record) for record in read_jsonl(proposals_path)]
+        if proposals_path.exists()
+        else []
+    )
+
+    started_at = datetime.fromisoformat(state["run_id"])
+    report_path = Path(args.reports_dir) / "daily" / f"{date}.md"
+
+    run_without_report = RunMetadata(
+        run_id=state["run_id"],
+        started_at=started_at,
+        finished_at=datetime.now(timezone.utc),
+        mode="agent",
+        since=state.get("since", date),
+        until=state.get("until", date),
+        sources=list(state.get("sources", [])),
+        input_counts=dict(state.get("input_counts", {})),
+        output_counts=dict(state.get("output_counts", {})),
+        errors=list(state.get("errors", [])),
+        report_paths=[],
+    )
+
+    markdown = render_daily_report(date, hot_candidates, proposals, run_without_report)
+
+    try:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(markdown, encoding="utf-8")
+    except OSError as exc:
+        add_error(state, "report", "report_write_error", str(exc))
+        save_run_state(data_dir, date, state)
+        run_with_error = replace(run_without_report, errors=list(state["errors"]))
+        write_jsonl(data_dir / "runs" / date / "run.jsonl", [run_with_error])
+        return 1
+
+    final_run = replace(run_without_report, report_paths=[str(report_path)])
+    save_run_state(data_dir, date, state)
+    write_jsonl(data_dir / "runs" / date / "run.jsonl", [final_run])
+    print(report_path)
+    return 0
