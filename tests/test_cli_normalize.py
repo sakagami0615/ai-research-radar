@@ -52,11 +52,19 @@ def test_cli_normalize_builds_events_and_topics(tmp_path: Path, monkeypatch):
 
 
 def test_cli_normalize_fails_when_collected_signals_missing(tmp_path: Path):
-    exit_code = main(
-        ["normalize", "--date", "2026-09-25", "--data-dir", str(tmp_path / "data")]
-    )
+    import json
+
+    data_dir = tmp_path / "data"
+    exit_code = main(["normalize", "--date", "2026-09-25", "--data-dir", str(data_dir)])
 
     assert exit_code == 1
+    state = json.loads(
+        (data_dir / "runs" / "2026-09-25" / "run_state.json").read_text(encoding="utf-8")
+    )
+    assert any(
+        error["source"] == "normalize" and error["type"] == "missing_input"
+        for error in state["errors"]
+    )
 
 
 def test_cli_normalize_preserves_run_state_when_write_fails(tmp_path: Path, monkeypatch):

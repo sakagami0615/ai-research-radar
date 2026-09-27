@@ -28,11 +28,13 @@ def run(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir)
     date = args.date
     collected_path = data_dir / "collected" / date / "signals.jsonl"
+    state = load_run_state(data_dir, date)
     if not collected_path.exists():
+        add_error(state, "normalize", "missing_input", f"missing collected signals: {collected_path}")
+        save_run_state(data_dir, date, state)
         print(f"missing collected signals: {collected_path}")
         return 1
 
-    state = load_run_state(data_dir, date)
     signals = [canonical_signal_from_dict(record) for record in read_jsonl(collected_path)]
 
     signals = normalize_source_batch(signals)
