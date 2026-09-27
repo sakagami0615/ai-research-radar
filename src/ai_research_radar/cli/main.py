@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ai_research_radar.cli.commands import collect as collect_command
 from ai_research_radar.cli.commands import normalize as normalize_command
+from ai_research_radar.cli.commands import score as score_command
 from ai_research_radar.config.settings import (
     load_runtime_config,
     load_scoring_config,
@@ -31,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
 
     collect_command.add_subparser(subparsers)
     normalize_command.add_subparser(subparsers)
+    score_command.add_subparser(subparsers)
 
     try:
         args = parser.parse_args(argv)
@@ -70,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         return collect_command.run(args)
     if args.command == normalize_command.COMMAND_NAME:
         return normalize_command.run(args)
+    if args.command == score_command.COMMAND_NAME:
+        return score_command.run(args)
     return 2
 
 
