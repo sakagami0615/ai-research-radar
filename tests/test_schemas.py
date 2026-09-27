@@ -3,9 +3,12 @@ from datetime import datetime, timezone
 from ai_research_radar.schemas.models import (
     ArticleProposal,
     CanonicalSignal,
+    Event,
     HotCandidate,
     RawItem,
     RunMetadata,
+    canonical_signal_from_dict,
+    event_from_dict,
     to_json_dict,
 )
 
@@ -101,3 +104,67 @@ def test_run_metadata_tracks_errors_and_outputs():
     )
 
     assert to_json_dict(run)["errors"][0]["source"] == "arxiv"
+
+
+def test_canonical_signal_from_dict_round_trips_through_json():
+    signal = CanonicalSignal(
+        signal_id="github:owner/repo",
+        source="github",
+        source_family="technology",
+        content_type="tool",
+        title="Example Agent Runtime",
+        url="https://github.com/owner/repo",
+        published_at=datetime(2026, 9, 24, 9, 0, tzinfo=timezone.utc),
+        fetched_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        summary="A tool for agent runtimes.",
+        categories=["agent", "runtime"],
+        raw_metrics={"stars": 100},
+        normalized_scores={"popularity": 91, "momentum": 96, "credibility": 70},
+        metadata={"owner": "owner"},
+    )
+
+    restored = canonical_signal_from_dict(to_json_dict(signal))
+
+    assert restored == signal
+
+
+def test_canonical_signal_from_dict_handles_missing_published_at():
+    signal = CanonicalSignal(
+        signal_id="github:owner/repo",
+        source="github",
+        source_family="technology",
+        content_type="tool",
+        title="Example Agent Runtime",
+        url="https://github.com/owner/repo",
+        published_at=None,
+        fetched_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        summary="",
+        categories=[],
+        raw_metrics={},
+        normalized_scores={},
+        metadata={},
+    )
+
+    restored = canonical_signal_from_dict(to_json_dict(signal))
+
+    assert restored.published_at is None
+
+
+def test_event_from_dict_round_trips_through_json():
+    event = Event(
+        event_id="event:agent-runtime",
+        title="Agent Runtime",
+        description="Agent runtime event",
+        event_type="observed_signal",
+        first_seen_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        last_seen_at=datetime(2026, 9, 25, 9, 0, tzinfo=timezone.utc),
+        signals=["github:repo"],
+        sources=["github"],
+        source_families=["technology"],
+        scores={"momentum": 90, "popularity": 80, "credibility": 70},
+        evidence=["https://github.com/owner/repo"],
+    )
+
+    restored = event_from_dict(to_json_dict(event))
+
+    assert restored == event

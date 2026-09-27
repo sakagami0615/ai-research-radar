@@ -1,7 +1,12 @@
 from datetime import datetime, timezone
 
 from ai_research_radar.schemas.models import Event
-from ai_research_radar.scoring.hot import build_hot_candidates_from_events, score_event
+from ai_research_radar.scoring.hot import (
+    build_hot_candidates_from_events,
+    compute_hot_candidates,
+    score_event,
+    select_hot_candidates,
+)
 
 
 def _now():
@@ -141,3 +146,98 @@ def test_score_event_clamps_out_of_range_source_scores():
     )
 
     assert score_event(event) <= 100
+
+
+def test_compute_hot_candidates_marks_all_as_unselected():
+    events = [
+        Event(
+            event_id="event:tool-a",
+            title="Tool A",
+            description="Tool A",
+            event_type="observed_signal",
+            first_seen_at=_now(),
+            last_seen_at=_now(),
+            signals=["github:a"],
+            sources=["github"],
+            source_families=["technology"],
+            scores={"momentum": 90, "popularity": 90, "credibility": 80},
+            evidence=["https://example.com/a"],
+        )
+    ]
+
+    candidates = compute_hot_candidates(events, minimum_score=0)
+
+    assert len(candidates) == 1
+    assert candidates[0].selected is False
+
+
+def test_compute_hot_candidates_drops_events_below_minimum_score():
+    events = [
+        Event(
+            event_id="event:tool-a",
+            title="Tool A",
+            description="Tool A",
+            event_type="observed_signal",
+            first_seen_at=_now(),
+            last_seen_at=_now(),
+            signals=["github:a"],
+            sources=["github"],
+            source_families=["technology"],
+            scores={"momentum": 1, "popularity": 1, "credibility": 1},
+            evidence=["https://example.com/a"],
+        )
+    ]
+
+    candidates = compute_hot_candidates(events, minimum_score=75)
+
+    assert candidates == []
+
+
+def test_select_hot_candidates_marks_top_n_as_selected():
+    events = [
+        Event(
+            event_id=f"event:tool-{idx}",
+            title=f"Tool {idx}",
+            description=f"Tool {idx}",
+            event_type="observed_signal",
+            first_seen_at=_now(),
+            last_seen_at=_now(),
+            signals=[f"github:{idx}"],
+            sources=["github"],
+            source_families=["technology"],
+            scores={"momentum": 100 - idx, "popularity": 90, "credibility": 80},
+            evidence=[f"https://example.com/{idx}"],
+        )
+        for idx in range(4)
+    ]
+    candidates = compute_hot_candidates(events, minimum_score=0)
+
+    selected = select_hot_candidates(candidates, limit=2)
+
+    assert [candidate.selected for candidate in selected] == [True, True, False, False]
+
+
+def test_build_hot_candidates_from_events_matches_compute_then_select():
+    events = [
+        Event(
+            event_id=f"event:tool-{idx}",
+            title=f"Tool {idx}",
+            description=f"Tool {idx}",
+            event_type="observed_signal",
+            first_seen_at=_now(),
+            last_seen_at=_now(),
+            signals=[f"github:{idx}"],
+            sources=["github"],
+            source_families=["technology"],
+            scores={"momentum": 100 - idx, "popularity": 90, "credibility": 80},
+            evidence=[f"https://example.com/{idx}"],
+        )
+        for idx in range(4)
+    ]
+
+    combined = build_hot_candidates_from_events(events, limit=2, minimum_score=0)
+    computed_then_selected = select_hot_candidates(
+        compute_hot_candidates(events, minimum_score=0), limit=2
+    )
+
+    assert combined == computed_then_selected

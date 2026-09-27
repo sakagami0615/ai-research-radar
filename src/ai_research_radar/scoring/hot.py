@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ai_research_radar.schemas.models import Event, HotCandidate
 
 
-def build_hot_candidates_from_events(
+def compute_hot_candidates(
     events: list[Event],
-    limit: int = 5,
     minimum_score: float = 75.0,
     weights: dict[str, float] | None = None,
 ) -> list[HotCandidate]:
@@ -37,20 +38,25 @@ def build_hot_candidates_from_events(
             )
         )
     candidates.sort(key=lambda item: item.score, reverse=True)
+    return candidates
+
+
+def select_hot_candidates(candidates: list[HotCandidate], limit: int) -> list[HotCandidate]:
+    """Marks the first `limit` items as selected. Assumes `candidates` is already sorted (e.g. by compute_hot_candidates)."""
     return [
-        HotCandidate(
-            hot_id=candidate.hot_id,
-            title=candidate.title,
-            topic=candidate.topic,
-            score=candidate.score,
-            reasons=candidate.reasons,
-            evidence_urls=candidate.evidence_urls,
-            source_families=candidate.source_families,
-            signals=candidate.signals,
-            selected=index < limit,
-        )
+        replace(candidate, selected=index < limit)
         for index, candidate in enumerate(candidates)
     ]
+
+
+def build_hot_candidates_from_events(
+    events: list[Event],
+    limit: int = 5,
+    minimum_score: float = 75.0,
+    weights: dict[str, float] | None = None,
+) -> list[HotCandidate]:
+    candidates = compute_hot_candidates(events, minimum_score=minimum_score, weights=weights)
+    return select_hot_candidates(candidates, limit)
 
 
 def score_event(event: Event, weights: dict[str, float] | None = None) -> float:
