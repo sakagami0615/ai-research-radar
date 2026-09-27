@@ -129,3 +129,26 @@ def test_cli_save_proposals_fails_and_persists_error_when_hot_candidates_missing
         error["source"] == "save-proposals" and error["type"] == "missing_input"
         for error in state["errors"]
     )
+
+
+def test_cli_save_proposals_rejects_malformed_json_input(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+    input_path = tmp_path / "proposals.json"
+    input_path.write_text("not valid json {{{", encoding="utf-8")
+
+    exit_code = main(
+        [
+            "save-proposals",
+            "--date",
+            "2026-09-25",
+            "--data-dir",
+            str(data_dir),
+            "--input",
+            str(input_path),
+        ]
+    )
+
+    assert exit_code == 1
+    state = _read_state(data_dir)
+    assert any(error["source"] == "save-proposals" for error in state["errors"])

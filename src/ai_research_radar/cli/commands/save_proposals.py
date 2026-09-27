@@ -61,7 +61,14 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     with input_path.open("r", encoding="utf-8") as handle:
-        records = json.load(handle)
+        try:
+            records = json.load(handle)
+        except json.JSONDecodeError as exc:
+            message = f"input file is not valid JSON: {exc}"
+            add_error(state, COMMAND_NAME, "invalid_input", message)
+            save_run_state(data_dir, date, state)
+            print(message)
+            return 1
 
     if not isinstance(records, list):
         add_error(
