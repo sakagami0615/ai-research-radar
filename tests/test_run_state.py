@@ -1,9 +1,13 @@
 from pathlib import Path
 
+import pytest
+
 from ai_research_radar.cli.commands.run_state import (
+    RunStateError,
     add_error,
     load_run_state,
     mark_stage_completed,
+    run_state_path,
     save_run_state,
 )
 
@@ -44,6 +48,34 @@ def test_mark_stage_completed_is_idempotent():
 
 def test_add_error_appends_error_dict():
     state = {"errors": []}
+
+    add_error(state, "github", "network_error", "timeout")
+
+    assert state["errors"] == [
+        {"source": "github", "type": "network_error", "message": "timeout"}
+    ]
+
+
+def test_load_run_state_raises_run_state_error_on_corrupt_json(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    path = run_state_path(data_dir, "2026-09-27")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not valid json", encoding="utf-8")
+
+    with pytest.raises(RunStateError):
+        load_run_state(data_dir, "2026-09-27")
+
+
+def test_mark_stage_completed_works_on_dict_missing_key():
+    state: dict = {}
+
+    mark_stage_completed(state, "collect")
+
+    assert state["stages_completed"] == ["collect"]
+
+
+def test_add_error_works_on_dict_missing_key():
+    state: dict = {}
 
     add_error(state, "github", "network_error", "timeout")
 

@@ -1,9 +1,19 @@
+# NOTE: this module assumes sequential, single-writer access (no file
+# locking). The pipeline's subcommands run one at a time per date, not
+# concurrently, so concurrent writers to the same run_state.json are out
+# of scope.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+class RunStateError(ValueError):
+    pass
 
 
 def run_state_path(data_dir: Path, date: str) -> Path:
@@ -24,20 +34,31 @@ def load_run_state(data_dir: Path, date: str) -> dict[str, Any]:
             "errors": [],
         }
     with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+        try:
+            return json.load(handle)
+        except json.JSONDecodeError as exc:
+            raise RunStateError(f"{path} is corrupt or truncated: {exc}") from exc
 
 
 def save_run_state(data_dir: Path, date: str, state: dict[str, Any]) -> None:
     path = run_state_path(data_dir, date)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
+    with tempfile.NamedTemporaryFile(
+        mode="w", dir=path.parent, delete=False, encoding="utf-8"
+    ) as handle:
         json.dump(state, handle, ensure_ascii=False, sort_keys=True, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
+        tmp_path = handle.name
+    os.replace(tmp_path, path)
 
 
 def mark_stage_completed(state: dict[str, Any], stage: str) -> None:
-    if stage not in state["stages_completed"]:
-        state["stages_completed"].append(stage)
+    stages = state.setdefault("stages_completed", [])
+    if stage not in stages:
+        stages.append(stage)
 
 
 def add_error(state: dict[str, Any], source: str, error_type: str, message: str) -> None:
-    state["errors"].append({"source": source, "type": error_type, "message": message})
+    errors = state.setdefault("errors", [])
+    errors.append({"source": source, "type": error_type, "message": message})
