@@ -54,7 +54,10 @@ def run(args: argparse.Namespace) -> int:
 
         state["input_counts"][adapter.source_name] = len(collected)
         total_raw_items += len(collected)
-        write_jsonl(data_dir / "raw" / until / f"{adapter.source_name}.jsonl", collected)
+        try:
+            write_jsonl(data_dir / "raw" / until / f"{adapter.source_name}.jsonl", collected)
+        except Exception as exc:  # noqa: BLE001
+            add_error(state, adapter.source_name, "raw_write_error", str(exc))
 
         try:
             normalized_items = [adapter.normalize(item) for item in collected]
@@ -66,8 +69,15 @@ def run(args: argparse.Namespace) -> int:
             continue
         collected_signals.extend(normalized_items)
 
-    write_jsonl(data_dir / "collected" / until / "signals.jsonl", collected_signals)
     state["output_counts"]["raw_items"] = total_raw_items
+    try:
+        write_jsonl(data_dir / "collected" / until / "signals.jsonl", collected_signals)
+    except Exception as exc:  # noqa: BLE001
+        add_error(state, "collect", "signals_write_error", str(exc))
+        save_run_state(data_dir, until, state)
+        print(str(exc))
+        return 1
+
     mark_stage_completed(state, COMMAND_NAME)
     save_run_state(data_dir, until, state)
 
