@@ -7,3 +7,7 @@ __pycache__/
 *.egg-info/
 .venv/
 .worktrees/
+
+data/
+reports/
+logs/

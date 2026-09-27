@@ -35,13 +35,23 @@ CLI引数は設定ファイルより優先される。
 
 ## cron想定
 
-例:
+推奨は `scripts/run-agent-daily.sh` によるAI Agent(Claude Code / Codex)経由の実行である。このスクリプトは `skills/agent-daily-run/SKILL.md` に従ってAgentを起動し、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` を順に実行させる。HOT最終選抜と記事企画はAgentが判断する。
+
+```cron
+15 8 * * * cd /path/to/ai-research-radar && AI_RADAR_AGENT=claude ./scripts/run-agent-daily.sh >> logs/cron.log 2>&1
+```
+
+- `AI_RADAR_AGENT` 環境変数で `claude`(デフォルト)/`codex` を切り替える。
+- 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
+- スクリプトはAgent CLIの終了コードに加え、対象日の `reports/daily/<date>.md` が生成されているかを確認し、生成されていなければ終了コードを非0にする。
+
+決定論的な `ai-radar daily` を直接cronに書く方法も、手動運用・CI向けの代替手段として利用できる。
 
 ```cron
 15 8 * * * cd /path/to/ai-research-radar && ai-radar daily >> logs/ai-radar.log 2>&1
 ```
 
-cronでは、Python環境、PATH、作業ディレクトリ、ログ出力先を明示する。
+いずれの方式でも、Python環境、PATH、作業ディレクトリ、ログ出力先を明示する。
 
 ## 手動実行時の確認順序
 

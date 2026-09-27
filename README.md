@@ -95,13 +95,27 @@ sudo dnf install -y cronie
 sudo systemctl enable --now crond
 ```
 
-例:
+### AI Agent(Claude Code / Codex)による日次実行(推奨)
+
+HOT最終選抜と記事企画をAgent自身の判断で行う場合は、`scripts/run-agent-daily.sh` を使う。このスクリプトは `skills/agent-daily-run/SKILL.md` に従ってAgentを起動し、`ai-radar` の各サブコマンド(`collect`/`normalize`/`score`/`select-hot`/`save-proposals`/`report`)を順に実行させる。
+
+```cron
+15 8 * * * cd /path/to/ai-research-radar && AI_RADAR_AGENT=claude ./scripts/run-agent-daily.sh >> logs/cron.log 2>&1
+```
+
+- `AI_RADAR_AGENT` は `claude`(デフォルト)または `codex` を指定できる。
+- 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
+- 実行完了後に `reports/daily/<date>.md` が生成されているかも確認し、生成されていなければ終了コードを非0にする(cronのメール通知で失敗に気付ける)。
+
+### 決定論的な `ai-radar daily` による日次実行(手動・CI向け)
+
+HOT選抜と記事企画を決定論的なロジックのまま実行したい場合(手動確認やCIでの検証など)は、`ai-radar daily` を直接cronに書くこともできる。
 
 ```cron
 15 8 * * * cd /path/to/ai-research-radar && mkdir -p logs && ai-radar daily >> logs/ai-radar.log 2>&1
 ```
 
-cronで使う場合は、Python環境、PATH、作業ディレクトリ、ログ出力先を明示してください。
+いずれの方式でも、Python環境、PATH、作業ディレクトリ、ログ出力先を明示してください。
 
 ## 詳細資料
 

@@ -1,0 +1,3 @@
+あなたはAI Research Radarの日次調査パイプラインを実行するAgentです。
+skills/agent-daily-run/SKILL.md を読み、その手順に従って {date} を対象日として
+ai-radar CLIのサブコマンドを順に実行し、日次レポートを完成させてください。

@@ -9,6 +9,7 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 ## Skill一覧
 
 - `skills/ai-radar/SKILL.md`
+- `skills/agent-daily-run/SKILL.md`
 - `skills/hot-detection/SKILL.md`
 - `skills/article-ideation/SKILL.md`
 - `skills/trend-analysis/SKILL.md`
@@ -19,6 +20,10 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 ### ai-radar
 
 日次AI Radarを実行し、JSONLとMarkdownレポートを生成する入口。
+
+### agent-daily-run
+
+`ai-radar` の6サブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report`)を順に実行し、HOT最終選抜と記事企画をAgent自身の判断で行う日次ワークフロー。`scripts/run-agent-daily.sh` からcron経由で起動されることを想定する。判断基準は `hot-detection` / `article-ideation` を参照する。
 
 ### hot-detection
 
