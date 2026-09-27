@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
 from ai_research_radar.config.settings import SourceConfig
@@ -22,6 +22,12 @@ from ai_research_radar.sources.fixtures import FixtureAdapter
 
 RawItemMapper = Callable[[dict[str, Any]], RawItem]
 PeriodParams = Callable[[dict[str, str], str, str], dict[str, str]]
+
+USER_AGENT = "ai-research-radar/0.1.0"
+
+
+def _build_request(url: str) -> Request:
+    return Request(url, headers={"User-Agent": USER_AGENT})
 
 
 class PublicSearchAdapter(SourceAdapter):
@@ -48,7 +54,7 @@ class PublicSearchAdapter(SourceAdapter):
     def collect(self, since: str, until: str) -> list[RawItem]:
         params = self.period_params(dict(self.query_params), since, until)
         url = f"{self.endpoint}?{urlencode(params)}" if params else self.endpoint
-        with urlopen(url, timeout=20) as response:
+        with urlopen(_build_request(url), timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
         items = [self.item_mapper(item) for item in self.item_selector(payload)]
         return [item for item in items if _item_is_in_period(item, since, until)]
@@ -61,7 +67,7 @@ class PublicArxivAdapter(PublicSearchAdapter):
     def collect(self, since: str, until: str) -> list[RawItem]:
         params = self.period_params(dict(self.query_params), since, until)
         url = f"{self.endpoint}?{urlencode(params)}" if params else self.endpoint
-        with urlopen(url, timeout=20) as response:
+        with urlopen(_build_request(url), timeout=20) as response:
             root = ElementTree.fromstring(response.read().decode("utf-8"))
         namespace = {"atom": "http://www.w3.org/2005/Atom"}
         items = [
@@ -89,7 +95,7 @@ class PublicFeedAdapter(SourceAdapter):
         self.credibility = credibility
 
     def collect(self, since: str, until: str) -> list[RawItem]:
-        with urlopen(self.endpoint, timeout=20) as response:
+        with urlopen(_build_request(self.endpoint), timeout=20) as response:
             root = ElementTree.fromstring(response.read().decode("utf-8"))
         items = [self.entry_mapper(entry) for entry in _feed_entries(root)]
         return [

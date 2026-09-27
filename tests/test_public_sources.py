@@ -12,6 +12,7 @@ from ai_research_radar.sources.public import (
     build_adapters,
 )
 from ai_research_radar.sources.base import SourceAdapter
+from ai_research_radar.sources.public import USER_AGENT
 
 
 def test_build_adapters_uses_configured_sources():
@@ -85,8 +86,8 @@ def test_github_collect_adds_period_to_query_and_normalize_keeps_raw_and_date(mo
         def __exit__(self, *args):
             return False
 
-    def fake_urlopen(url: str, timeout: int):
-        captured_urls.append(url)
+    def fake_urlopen(request, timeout: int):
+        captured_urls.append(request.full_url)
         return Response()
 
     monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
@@ -167,3 +168,92 @@ def test_official_blog_update_is_not_automatically_a_major_release(monkeypatch):
     item = adapter.collect(since="2026-09-24", until="2026-09-25")[0]
 
     assert adapter.normalize(item).metadata["event_type"] == "observed_signal"
+
+
+def test_search_adapter_collect_sends_user_agent_header(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "github"
+    )
+    captured_requests = []
+
+    class Response:
+        def read(self) -> bytes:
+            return b'{"items":[]}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout: int):
+        captured_requests.append(request)
+        return Response()
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+
+    adapter.collect(since="2026-09-24", until="2026-09-25")
+
+    assert captured_requests[0].get_header("User-agent") == USER_AGENT
+
+
+def test_arxiv_adapter_collect_sends_user_agent_header(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "arxiv"
+    )
+    captured_requests = []
+    xml = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+
+    class Response:
+        def read(self) -> bytes:
+            return xml.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout: int):
+        captured_requests.append(request)
+        return Response()
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+
+    adapter.collect(since="2026-09-24", until="2026-09-25")
+
+    assert captured_requests[0].get_header("User-agent") == USER_AGENT
+
+
+def test_feed_adapter_collect_sends_user_agent_header(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "official_blogs"
+    )
+    captured_requests = []
+    xml = "<?xml version=\"1.0\"?><rss><channel></channel></rss>"
+
+    class Response:
+        def read(self) -> bytes:
+            return xml.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout: int):
+        captured_requests.append(request)
+        return Response()
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+
+    adapter.collect(since="2026-09-24", until="2026-09-25")
+
+    assert captured_requests[0].get_header("User-agent") == USER_AGENT
