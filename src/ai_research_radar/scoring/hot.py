@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ai_research_radar.schemas.models import Event, HotCandidate
 
 
@@ -40,18 +42,9 @@ def compute_hot_candidates(
 
 
 def select_hot_candidates(candidates: list[HotCandidate], limit: int) -> list[HotCandidate]:
+    """Marks the first `limit` items as selected. Assumes `candidates` is already sorted (e.g. by compute_hot_candidates)."""
     return [
-        HotCandidate(
-            hot_id=candidate.hot_id,
-            title=candidate.title,
-            topic=candidate.topic,
-            score=candidate.score,
-            reasons=candidate.reasons,
-            evidence_urls=candidate.evidence_urls,
-            source_families=candidate.source_families,
-            signals=candidate.signals,
-            selected=index < limit,
-        )
+        replace(candidate, selected=index < limit)
         for index, candidate in enumerate(candidates)
     ]
 
