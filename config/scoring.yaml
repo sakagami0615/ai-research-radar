@@ -1,0 +1,9 @@
+hot_score:
+  momentum: 0.40
+  popularity: 0.25
+  cross_source: 0.20
+  credibility: 0.15
+hot_selection:
+  normal_limit: 2
+  max_limit: 5
+  minimum_score: 75

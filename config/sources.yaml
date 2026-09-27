@@ -1,0 +1,58 @@
+sources:
+  github:
+    enabled: true
+    family: technology
+    adapter: github
+    auth_required: false
+  huggingface:
+    enabled: true
+    family: technology
+    adapter: huggingface
+    auth_required: false
+  pypi:
+    enabled: true
+    family: technology
+    adapter: pypi
+    auth_required: false
+    collection_mode: keyword_limited
+    keywords: [llm, rag, agent, mcp]
+    package_limit: 100
+  npm:
+    enabled: true
+    family: technology
+    adapter: npm
+    auth_required: false
+    collection_mode: keyword_limited
+    keywords: [llm, rag, agent, mcp]
+    package_limit: 100
+  hackernews:
+    enabled: true
+    family: community
+    adapter: hackernews
+    auth_required: false
+  qiita:
+    enabled: true
+    family: content
+    adapter: qiita
+    auth_required: false
+  zenn:
+    enabled: true
+    family: content
+    adapter: zenn
+    auth_required: false
+  arxiv:
+    enabled: true
+    family: research
+    adapter: arxiv
+    auth_required: false
+  openalex:
+    enabled: true
+    family: research
+    adapter: openalex
+    auth_required: false
+  official_blogs:
+    enabled: true
+    family: official
+    adapter: official_blogs
+    auth_required: false
+    feed_url: https://openai.com/news/rss.xml

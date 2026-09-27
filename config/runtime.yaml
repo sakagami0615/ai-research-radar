@@ -1,0 +1,6 @@
+output:
+  data_dir: data
+  reports_dir: reports
+runtime:
+  timezone: Asia/Tokyo
+  continue_on_source_error: true

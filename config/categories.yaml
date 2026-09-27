@@ -1,0 +1,11 @@
+seed_categories:
+  - llm
+  - reasoning
+  - multimodal
+  - agent
+  - coding-agent
+  - mcp
+  - rag
+  - evaluation
+  - security
+  - infrastructure
