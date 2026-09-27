@@ -3,9 +3,8 @@ from __future__ import annotations
 from ai_research_radar.schemas.models import Event, HotCandidate
 
 
-def build_hot_candidates_from_events(
+def compute_hot_candidates(
     events: list[Event],
-    limit: int = 5,
     minimum_score: float = 75.0,
     weights: dict[str, float] | None = None,
 ) -> list[HotCandidate]:
@@ -37,6 +36,10 @@ def build_hot_candidates_from_events(
             )
         )
     candidates.sort(key=lambda item: item.score, reverse=True)
+    return candidates
+
+
+def select_hot_candidates(candidates: list[HotCandidate], limit: int) -> list[HotCandidate]:
     return [
         HotCandidate(
             hot_id=candidate.hot_id,
@@ -51,6 +54,16 @@ def build_hot_candidates_from_events(
         )
         for index, candidate in enumerate(candidates)
     ]
+
+
+def build_hot_candidates_from_events(
+    events: list[Event],
+    limit: int = 5,
+    minimum_score: float = 75.0,
+    weights: dict[str, float] | None = None,
+) -> list[HotCandidate]:
+    candidates = compute_hot_candidates(events, minimum_score=minimum_score, weights=weights)
+    return select_hot_candidates(candidates, limit)
 
 
 def score_event(event: Event, weights: dict[str, float] | None = None) -> float:
