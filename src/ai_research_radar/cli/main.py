@@ -4,6 +4,7 @@ import argparse
 from datetime import date, timedelta
 from pathlib import Path
 
+from ai_research_radar.cli.commands import collect as collect_command
 from ai_research_radar.config.settings import (
     load_runtime_config,
     load_scoring_config,
@@ -26,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
     daily.add_argument("--runtime-config", default="config/runtime.yaml")
     daily.add_argument("--minimum-score", type=float)
     daily.add_argument("--hot-limit", type=int)
+
+    collect_command.add_subparser(subparsers)
 
     try:
         args = parser.parse_args(argv)
@@ -61,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(result.report_path)
         return 0
+    if args.command == collect_command.COMMAND_NAME:
+        return collect_command.run(args)
     return 2
 
 
