@@ -119,3 +119,47 @@ def _json_ready(value: Any) -> Any:
     if isinstance(value, list):
         return [_json_ready(item) for item in value]
     return value
+
+
+def canonical_signal_from_dict(data: dict[str, Any]) -> CanonicalSignal:
+    return CanonicalSignal(
+        signal_id=str(data["signal_id"]),
+        source=str(data["source"]),
+        source_family=str(data["source_family"]),
+        content_type=str(data["content_type"]),
+        title=str(data["title"]),
+        url=str(data["url"]),
+        published_at=_parse_datetime_or_none(data.get("published_at")),
+        fetched_at=_parse_datetime(data["fetched_at"]),
+        summary=str(data["summary"]),
+        categories=list(data["categories"]),
+        raw_metrics=dict(data["raw_metrics"]),
+        normalized_scores=dict(data["normalized_scores"]),
+        metadata=dict(data["metadata"]),
+    )
+
+
+def event_from_dict(data: dict[str, Any]) -> Event:
+    return Event(
+        event_id=str(data["event_id"]),
+        title=str(data["title"]),
+        description=str(data["description"]),
+        event_type=str(data["event_type"]),
+        first_seen_at=_parse_datetime(data["first_seen_at"]),
+        last_seen_at=_parse_datetime(data["last_seen_at"]),
+        signals=list(data["signals"]),
+        sources=list(data["sources"]),
+        source_families=list(data["source_families"]),
+        scores=dict(data["scores"]),
+        evidence=list(data["evidence"]),
+    )
+
+
+def _parse_datetime(value: Any) -> datetime:
+    return datetime.fromisoformat(str(value))
+
+
+def _parse_datetime_or_none(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    return _parse_datetime(value)
