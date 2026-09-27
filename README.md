@@ -106,6 +106,7 @@ HOT最終選抜と記事企画をAgent自身の判断で行う場合は、`scrip
 - `AI_RADAR_AGENT` は `claude`(デフォルト)または `codex` を指定できる。
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
 - 実行完了後に `reports/daily/<date>.md` が生成されているかも確認し、生成されていなければ終了コードを非0にする(cronのメール通知で失敗に気付ける)。
+- レポート生成後、別セッションのAgentがHOT選抜・記事企画の質をレビューする(`skills/review-daily-report/SKILL.md`)。問題が見つかれば元Agentに修正を依頼し、最大3回まで再レビューする。3回解消できなければ、レポート冒頭に警告バナーを追加し、`data/runs/<date>/run_state.json` に `needs_review: true` を記録する。
 
 ### 決定論的な `ai-radar daily` による日次実行(手動・CI向け)
 
