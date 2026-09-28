@@ -40,4 +40,4 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 2. 該当する問題があれば、`data/runs/<date>/review_feedback.md` に自然文で具体的に書く。該当箇所・理由・修正方針を含めること。
 3. 表現の好みなどMinor相当の指摘は `review_feedback.md` に書かない。Critical/Importantのみを対象とする(Minorまで指摘すると、修正ループが実質的に終わらなくなるため)。
 
-`review_feedback.md` の存在有無だけが、呼び出し元スクリプトにとっての「承認/要修正」の判定基準になる。この基準を厳密に守ること。
+`review_feedback.md` の存在有無だけが、`agent-daily-run` Skillを実行しているAgentにとっての「承認/要修正」の判定基準になる。この基準を厳密に守ること。
