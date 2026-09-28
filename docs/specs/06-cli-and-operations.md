@@ -49,6 +49,8 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
 - レポート生成後、Agent自身が別プロセスの `claude -p` / `codex exec` を起動して `skills/review-daily-report/SKILL.md` によるレビューを行わせ、指摘があれば自分自身で修正して最大3回まで再試行する(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければレポートに警告バナーを追加し `run_state.json` に `needs_review: true` を記録する。
 
+上記のレビュー起動(Agent自身が別プロセスの `claude -p` / `codex exec` を起動する手順)はcronからの起動を前提とする。対話セッション(IDE拡張のAuto Modeなど)内で `agent-daily-run` を手動実行する場合、Bash経由で `claude -p ... --permission-mode bypassPermissions` を新規起動しようとすると、そのセッション固有の権限分類器に「Create Unsafe Agents」として拒否されることがある。この場合は同一セッション内のsubagent(Agent機能)へレビューを委譲する代替手段で対応してよい。cronによる本番実行はこの制約を受けない独立プロセスであるため、設計自体は変更不要である。
+
 決定論的な `ai-radar daily` を直接cronに書く方法も、手動運用・CI向けの代替手段として利用できる。
 
 ```cron
