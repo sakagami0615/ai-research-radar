@@ -1,5 +1,0 @@
-あなたはAI Research Radarの日次パイプラインを実行したAgentです。
-data/runs/{date}/review_feedback.md に、別Agentによるレビューで指摘された
-問題が書かれています。内容を確認し、skills/agent-daily-run/SKILL.md の
-判断基準に従って必要な修正(HOT選抜のやり直しや記事企画の書き直し)を行った上で、
-ai-radar select-hot / save-proposals / report を再実行してください。
