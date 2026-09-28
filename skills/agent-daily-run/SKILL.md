@@ -74,24 +74,28 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    a. 自分自身が起動されているのと同じCLIで、新しいプロセスとして
       `skills/review-daily-report/entry-prompt.txt` の内容(`{date}` は
       手順1で判定した `<date>` に置換したもの)を渡して起動する。
+      cronの各行はclaude/codexいずれか一方を直接起動するため、実行中のAgentは
+      自分がどちらであるか自明である。
 
       - 自分がClaude Codeの場合: `claude -p "<prompt>" --permission-mode bypassPermissions`
       - 自分がCodexの場合: `codex exec "<prompt>" --sandbox workspace-write`
 
    b. `data/runs/<date>/review_feedback.md` の有無を確認する。
 
-      - 存在しない場合: 承認。手順10へ進む。
-      - 存在する場合: 内容を読み、HOT選抜のやり直しや記事企画の書き直しなど
-        必要な修正を自分自身で行った上で、`ai-radar select-hot` /
+      - 存在しない場合: 承認。品質レビューループを終了し、完了確認へ進む。
+      - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
+        記事企画の書き直しなど必要な修正を自分自身で行った上で、`ai-radar select-hot` /
         `save-proposals` / `report` を再実行し、a に戻る。
-
-   c. a〜bを最大3回試行する。
+      - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
 10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合:
 
-    - `reports/daily/<date>.md` の冒頭に次のバナーを追記する:
-      `> ⚠️ **要確認**: 自動レビューで解消できなかった指摘があります。\`data/runs/<date>/review_feedback.md\` を確認してください。`
-    - `data/runs/<date>/run_state.json` を読み、`needs_review: true` を追加して書き戻す。
+    - `reports/daily/<date>.md` の冒頭に次のバナーを追記する(間に空行を1行挟んで元の内容を続ける):
+
+      ```
+      > ⚠️ **要確認**: 自動レビューで解消できなかった指摘があります。`data/runs/<date>/review_feedback.md` を確認してください。
+      ```
+    - `data/runs/<date>/run_state.json` を読み、`needs_review: true` を追加して書き戻す(既存のキー順・インデント幅など、このパイプラインの他の箇所での `run_state.json` の書式と揃えること)。
 
 ## エラー時の自己修正方針
 
