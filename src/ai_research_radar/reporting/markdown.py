@@ -16,12 +16,9 @@ def render_daily_report(
     for proposal in proposals:
         proposals_by_hot[proposal.source_hot_id].append(proposal)
 
-    lines = [
-        f"# AI Daily Radar {date}",
-        "",
-        "## 選抜HOT",
-        "",
-    ]
+    lines = [f"# AI Daily Radar {date}", ""]
+    lines.extend(_data_gaps_section(run))
+    lines.extend(["## 選抜HOT", ""])
     if not selected_hot:
         lines.extend(["本日の選抜HOTはありません。", ""])
     for candidate in selected_hot:
@@ -63,3 +60,30 @@ def render_daily_report(
             lines.append(f"- {error.get('source')}: {error.get('type')} - {error.get('message')}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _data_gaps_section(run: RunMetadata) -> list[str]:
+    """Call out sources that produced zero items so a reader can't mistake an
+    incomplete run (e.g. every request to a source failed) for a quiet day."""
+    missing_sources = [source for source in run.sources if source not in run.input_counts]
+    if not missing_sources:
+        return []
+
+    errors_by_source: dict[str, str] = {}
+    for error in run.errors:
+        source = error.get("source")
+        if source in missing_sources and source not in errors_by_source:
+            errors_by_source[source] = f"{error.get('type')} - {error.get('message')}"
+
+    lines = [
+        "## データ欠落",
+        "",
+        "以下のSourceは本runで収集に完全に失敗しており、"
+        "これらのSourceにおける発表やHOT候補は本レポートに反映されていません。",
+        "",
+    ]
+    for source in missing_sources:
+        reason = errors_by_source.get(source, "reason unknown")
+        lines.append(f"- {source}: {reason}")
+    lines.append("")
+    return lines

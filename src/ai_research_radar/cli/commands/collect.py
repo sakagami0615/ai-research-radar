@@ -9,6 +9,7 @@ from ai_research_radar.cli.commands.run_state import (
     add_error,
     load_run_state,
     mark_stage_completed,
+    reset_errors_for,
     save_run_state,
 )
 from ai_research_radar.config.settings import load_source_configs
@@ -39,6 +40,7 @@ def run(args: argparse.Namespace) -> int:
     state["since"] = since
     state["until"] = until
     state["sources"] = [adapter.source_name for adapter in adapters]
+    reset_errors_for(state, [adapter.source_name for adapter in adapters] + ["collect"])
 
     collected_signals = []
     total_raw_items = 0

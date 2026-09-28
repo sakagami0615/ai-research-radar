@@ -87,6 +87,53 @@ def test_cli_collect_records_source_error_and_continues(tmp_path: Path, monkeypa
     assert state["errors"][0]["type"] == "network_error"
 
 
+def test_cli_collect_drops_stale_error_when_source_recovers_on_rerun(tmp_path: Path, monkeypatch):
+    from ai_research_radar.sources.base import SourceAdapter, SourceError
+
+    class FailingAdapter(SourceAdapter):
+        source_name = "arxiv"
+        source_family = "research"
+
+        def collect(self, since: str, until: str):
+            raise SourceError("arxiv", "network_error", "timeout")
+
+        def normalize(self, item):
+            raise AssertionError("normalize should not be called")
+
+    monkeypatch.setattr(collect_command, "build_adapters", lambda configs: [FailingAdapter()])
+    data_dir = tmp_path / "data"
+    args = [
+        "collect",
+        "--since",
+        "2026-09-24",
+        "--until",
+        "2026-09-25",
+        "--data-dir",
+        str(data_dir),
+        "--sources-config",
+        "config/sources.yaml",
+    ]
+    assert main(args) == 0
+
+    monkeypatch.setattr(
+        collect_command,
+        "build_adapters",
+        lambda configs: [
+            FixtureAdapter(
+                source_name="arxiv",
+                source_family="research",
+                fixture_path=Path("tests/fixtures/sample_raw_items.jsonl"),
+            )
+        ],
+    )
+    assert main(args) == 0
+
+    state = json.loads(
+        (data_dir / "runs" / "2026-09-25" / "run_state.json").read_text(encoding="utf-8")
+    )
+    assert state["errors"] == []
+
+
 def test_cli_collect_preserves_run_state_when_signals_write_fails(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         collect_command,

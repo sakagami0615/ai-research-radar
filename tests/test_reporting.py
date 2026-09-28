@@ -54,3 +54,49 @@ def test_render_daily_report_contains_selected_hot_and_errors():
     assert "Agent Runtimeを比較する" in markdown
     assert "arxiv" in markdown
     assert "timeout" in markdown
+
+
+def test_render_daily_report_flags_sources_with_zero_items_as_data_gaps():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["github", "arxiv", "official_blogs"],
+        input_counts={"github": 3},
+        output_counts={"signals": 3, "hot": 0},
+        errors=[
+            {"source": "arxiv", "type": "unexpected_error", "message": "HTTP Error 406: Not Acceptable"},
+            {"source": "official_blogs", "type": "unexpected_error", "message": "HTTP Error 403: Forbidden"},
+        ],
+        report_paths=[],
+    )
+
+    markdown = render_daily_report("2026-09-25", [], [], run)
+
+    assert "## データ欠落" in markdown
+    assert "arxiv: unexpected_error - HTTP Error 406: Not Acceptable" in markdown
+    assert "official_blogs: unexpected_error - HTTP Error 403: Forbidden" in markdown
+    assert "github" not in markdown.split("## データ欠落")[1].split("## 選抜HOT")[0]
+
+
+def test_render_daily_report_omits_data_gaps_section_when_all_sources_succeeded():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["github"],
+        input_counts={"github": 3},
+        output_counts={"signals": 3, "hot": 0},
+        errors=[],
+        report_paths=[],
+    )
+
+    markdown = render_daily_report("2026-09-25", [], [], run)
+
+    assert "## データ欠落" not in markdown

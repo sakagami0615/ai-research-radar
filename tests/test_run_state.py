@@ -7,6 +7,7 @@ from ai_research_radar.cli.commands.run_state import (
     add_error,
     load_run_state,
     mark_stage_completed,
+    reset_errors_for,
     run_state_path,
     save_run_state,
 )
@@ -82,3 +83,27 @@ def test_add_error_works_on_dict_missing_key():
     assert state["errors"] == [
         {"source": "github", "type": "network_error", "message": "timeout"}
     ]
+
+
+def test_reset_errors_for_drops_only_matching_sources():
+    state = {
+        "errors": [
+            {"source": "arxiv", "type": "unexpected_error", "message": "HTTP 406"},
+            {"source": "openalex", "type": "unexpected_error", "message": "HTTP 429"},
+            {"source": "select-hot", "type": "invalid_selection", "message": "bad id"},
+        ]
+    }
+
+    reset_errors_for(state, ["arxiv", "openalex"])
+
+    assert state["errors"] == [
+        {"source": "select-hot", "type": "invalid_selection", "message": "bad id"}
+    ]
+
+
+def test_reset_errors_for_works_on_dict_missing_key():
+    state: dict = {}
+
+    reset_errors_for(state, ["arxiv"])
+
+    assert state["errors"] == []

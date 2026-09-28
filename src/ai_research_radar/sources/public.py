@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
@@ -25,9 +28,52 @@ PeriodParams = Callable[[dict[str, str], str, str], dict[str, str]]
 
 USER_AGENT = "ai-research-radar/0.1.0"
 
+# OpenAlex gives requests that identify a contact a higher, less-throttled
+# rate limit ("polite pool"). Read from the environment rather than hardcoding
+# a contact address in source control.
+_OPENALEX_MAILTO_ENV_VAR = "AI_RADAR_OPENALEX_MAILTO"
+
+# Only retry statuses that are typically transient (rate limiting, upstream
+# outages). Permanent errors (403/404/406/...) are not retried: retrying them
+# just burns the request budget without changing the outcome.
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+_MAX_ATTEMPTS = 3
+_BASE_DELAY_SECONDS = 1.0
+_MAX_DELAY_SECONDS = 10.0
+
+# Aliased so tests can monkeypatch away the real delay without touching the
+# stdlib `time` module.
+_sleep = time.sleep
+
 
 def _build_request(url: str) -> Request:
     return Request(url, headers={"User-Agent": USER_AGENT})
+
+
+def _open_with_retry(request: Request, timeout: int = 20):
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            return urlopen(request, timeout=timeout)
+        except HTTPError as exc:
+            if exc.code not in _RETRYABLE_STATUS_CODES or attempt == _MAX_ATTEMPTS:
+                raise
+            _sleep(_retry_delay(attempt, exc))
+        except URLError:
+            if attempt == _MAX_ATTEMPTS:
+                raise
+            _sleep(_retry_delay(attempt, None))
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _retry_delay(attempt: int, exc: HTTPError | None) -> float:
+    if exc is not None and exc.headers is not None:
+        retry_after = exc.headers.get("Retry-After")
+        if retry_after is not None:
+            try:
+                return min(float(retry_after), _MAX_DELAY_SECONDS)
+            except ValueError:
+                pass
+    return min(_BASE_DELAY_SECONDS * (2 ** (attempt - 1)), _MAX_DELAY_SECONDS)
 
 
 class PublicSearchAdapter(SourceAdapter):
@@ -54,7 +100,7 @@ class PublicSearchAdapter(SourceAdapter):
     def collect(self, since: str, until: str) -> list[RawItem]:
         params = self.period_params(dict(self.query_params), since, until)
         url = f"{self.endpoint}?{urlencode(params)}" if params else self.endpoint
-        with urlopen(_build_request(url), timeout=20) as response:
+        with _open_with_retry(_build_request(url)) as response:
             payload = json.loads(response.read().decode("utf-8"))
         items = [self.item_mapper(item) for item in self.item_selector(payload)]
         return [item for item in items if _item_is_in_period(item, since, until)]
@@ -67,7 +113,7 @@ class PublicArxivAdapter(PublicSearchAdapter):
     def collect(self, since: str, until: str) -> list[RawItem]:
         params = self.period_params(dict(self.query_params), since, until)
         url = f"{self.endpoint}?{urlencode(params)}" if params else self.endpoint
-        with urlopen(_build_request(url), timeout=20) as response:
+        with _open_with_retry(_build_request(url)) as response:
             root = ElementTree.fromstring(response.read().decode("utf-8"))
         namespace = {"atom": "http://www.w3.org/2005/Atom"}
         items = [
@@ -95,7 +141,7 @@ class PublicFeedAdapter(SourceAdapter):
         self.credibility = credibility
 
     def collect(self, since: str, until: str) -> list[RawItem]:
-        with urlopen(_build_request(self.endpoint), timeout=20) as response:
+        with _open_with_retry(_build_request(self.endpoint)) as response:
             root = ElementTree.fromstring(response.read().decode("utf-8"))
         items = [self.entry_mapper(entry) for entry in _feed_entries(root)]
         return [
@@ -178,7 +224,11 @@ def _query_params_for(config: SourceConfig) -> dict[str, str]:
     if config.name == "arxiv":
         return {"search_query": f"all:({query})", "start": "0", "max_results": "100"}
     if config.name == "openalex":
-        return {"search": query, "per-page": "100"}
+        params = {"search": query, "per-page": "100"}
+        mailto = os.environ.get(_OPENALEX_MAILTO_ENV_VAR)
+        if mailto:
+            params["mailto"] = mailto
+        return params
     if config.name == "huggingface":
         return {"search": query, "sort": "lastModified", "direction": "-1", "limit": "100"}
     if config.name == "qiita":

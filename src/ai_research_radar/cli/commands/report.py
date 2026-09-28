@@ -5,7 +5,12 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ai_research_radar.cli.commands.run_state import add_error, load_run_state, save_run_state
+from ai_research_radar.cli.commands.run_state import (
+    add_error,
+    load_run_state,
+    reset_errors_for,
+    save_run_state,
+)
 from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
 from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
@@ -27,6 +32,7 @@ def run(args: argparse.Namespace) -> int:
     date = args.date
 
     state = load_run_state(data_dir, date)
+    reset_errors_for(state, ["pipeline", COMMAND_NAME])
 
     stages_completed = state.get("stages_completed", [])
     for stage in _STAGE_ORDER:

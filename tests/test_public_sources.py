@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
 
 from ai_research_radar.config.settings import load_source_configs
@@ -257,3 +258,182 @@ def test_feed_adapter_collect_sends_user_agent_header(monkeypatch):
     adapter.collect(since="2026-09-24", until="2026-09-25")
 
     assert captured_requests[0].get_header("User-agent") == USER_AGENT
+
+
+def test_search_adapter_collect_retries_on_429_then_succeeds(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "github"
+    )
+
+    class Response:
+        def read(self) -> bytes:
+            return b'{"items":[]}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    attempts = {"count": 0}
+
+    def fake_urlopen(request, timeout: int):
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            raise HTTPError(request.full_url, 429, "Too Many Requests", None, None)
+        return Response()
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(public_module, "_sleep", lambda seconds: None)
+
+    items = adapter.collect(since="2026-09-24", until="2026-09-25")
+
+    assert items == []
+    assert attempts["count"] == 2
+
+
+def test_search_adapter_collect_does_not_retry_permanent_errors(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "arxiv"
+    )
+    attempts = {"count": 0}
+    slept = {"called": False}
+
+    def fake_urlopen(request, timeout: int):
+        attempts["count"] += 1
+        raise HTTPError(request.full_url, 406, "Not Acceptable", None, None)
+
+    def fake_sleep(seconds: float) -> None:
+        slept["called"] = True
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(public_module, "_sleep", fake_sleep)
+
+    try:
+        adapter.collect(since="2026-09-24", until="2026-09-25")
+    except HTTPError as exc:
+        assert exc.code == 406
+    else:
+        raise AssertionError("expected HTTPError to propagate")
+
+    assert attempts["count"] == 1
+    assert slept["called"] is False
+
+
+def test_search_adapter_collect_gives_up_after_max_attempts_on_persistent_429(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "openalex"
+    )
+    attempts = {"count": 0}
+
+    def fake_urlopen(request, timeout: int):
+        attempts["count"] += 1
+        raise HTTPError(request.full_url, 429, "Too Many Requests", None, None)
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(public_module, "_sleep", lambda seconds: None)
+
+    try:
+        adapter.collect(since="2026-09-24", until="2026-09-25")
+    except HTTPError as exc:
+        assert exc.code == 429
+    else:
+        raise AssertionError("expected HTTPError to propagate")
+
+    assert attempts["count"] == public_module._MAX_ATTEMPTS
+
+
+def test_feed_adapter_collect_retries_on_503_then_succeeds(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "official_blogs"
+    )
+    xml = "<?xml version=\"1.0\"?><rss><channel></channel></rss>"
+
+    class Response:
+        def read(self) -> bytes:
+            return xml.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    attempts = {"count": 0}
+
+    def fake_urlopen(request, timeout: int):
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            raise HTTPError(request.full_url, 503, "Service Unavailable", None, None)
+        return Response()
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(public_module, "_sleep", lambda seconds: None)
+
+    adapter.collect(since="2026-09-24", until="2026-09-25")
+
+    assert attempts["count"] == 2
+
+
+def test_arxiv_adapter_collect_retries_on_network_error(monkeypatch):
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "arxiv"
+    )
+    xml = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+
+    class Response:
+        def read(self) -> bytes:
+            return xml.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    attempts = {"count": 0}
+
+    def fake_urlopen(request, timeout: int):
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            raise URLError("connection reset")
+        return Response()
+
+    monkeypatch.setattr(public_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(public_module, "_sleep", lambda seconds: None)
+
+    adapter.collect(since="2026-09-24", until="2026-09-25")
+
+    assert attempts["count"] == 2
+
+
+def test_openalex_query_includes_mailto_when_env_var_set(monkeypatch):
+    monkeypatch.setenv("AI_RADAR_OPENALEX_MAILTO", "radar@example.com")
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "openalex"
+    )
+
+    assert adapter.query_params["mailto"] == "radar@example.com"
+
+
+def test_openalex_query_omits_mailto_when_env_var_unset(monkeypatch):
+    monkeypatch.delenv("AI_RADAR_OPENALEX_MAILTO", raising=False)
+    adapter = next(
+        adapter
+        for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
+        if adapter.source_name == "openalex"
+    )
+
+    assert "mailto" not in adapter.query_params

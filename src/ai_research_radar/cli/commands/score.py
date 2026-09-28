@@ -7,6 +7,7 @@ from ai_research_radar.cli.commands.run_state import (
     add_error,
     load_run_state,
     mark_stage_completed,
+    reset_errors_for,
     save_run_state,
 )
 from ai_research_radar.config.settings import load_scoring_config
@@ -30,6 +31,7 @@ def run(args: argparse.Namespace) -> int:
     events_path = data_dir / "events" / date / "events.jsonl"
 
     state = load_run_state(data_dir, date)
+    reset_errors_for(state, [COMMAND_NAME])
 
     if not events_path.exists():
         add_error(state, "score", "missing_input", f"missing events: {events_path}")

@@ -7,6 +7,7 @@ from ai_research_radar.cli.commands.run_state import (
     add_error,
     load_run_state,
     mark_stage_completed,
+    reset_errors_for,
     save_run_state,
 )
 from ai_research_radar.normalization.dedup import deduplicate_signals
@@ -29,6 +30,7 @@ def run(args: argparse.Namespace) -> int:
     date = args.date
     collected_path = data_dir / "collected" / date / "signals.jsonl"
     state = load_run_state(data_dir, date)
+    reset_errors_for(state, [COMMAND_NAME])
     if not collected_path.exists():
         add_error(state, "normalize", "missing_input", f"missing collected signals: {collected_path}")
         save_run_state(data_dir, date, state)

@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -62,3 +63,16 @@ def mark_stage_completed(state: dict[str, Any], stage: str) -> None:
 def add_error(state: dict[str, Any], source: str, error_type: str, message: str) -> None:
     errors = state.setdefault("errors", [])
     errors.append({"source": source, "type": error_type, "message": message})
+
+
+def reset_errors_for(state: dict[str, Any], sources: Iterable[str]) -> None:
+    """Drop stale errors for the given sources before a stage re-records its own.
+
+    Without this, rerunning a stage (or the whole pipeline) for the same date
+    keeps appending to `errors` forever, so a source that has since recovered
+    still shows its old failure alongside the current, unrelated ones.
+    """
+    excluded = set(sources)
+    state["errors"] = [
+        error for error in state.get("errors", []) if error.get("source") not in excluded
+    ]

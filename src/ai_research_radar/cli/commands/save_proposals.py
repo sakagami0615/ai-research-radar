@@ -8,6 +8,7 @@ from ai_research_radar.cli.commands.run_state import (
     add_error,
     load_run_state,
     mark_stage_completed,
+    reset_errors_for,
     save_run_state,
 )
 from ai_research_radar.schemas.models import ArticleProposal
@@ -47,6 +48,7 @@ def run(args: argparse.Namespace) -> int:
     input_path = Path(args.input)
 
     state = load_run_state(data_dir, date)
+    reset_errors_for(state, [COMMAND_NAME])
 
     if not hot_path.exists():
         add_error(state, COMMAND_NAME, "missing_input", f"missing hot candidates: {hot_path}")
