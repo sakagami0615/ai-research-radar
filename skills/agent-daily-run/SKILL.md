@@ -69,6 +69,30 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar report --date <date> --reports-dir reports
    ```
 
+9. `report` 完了後、成果物の質を別セッションのAgentにレビューさせる。
+
+   a. 自分自身が起動されているのと同じCLIで、新しいプロセスとして
+      `skills/review-daily-report/entry-prompt.txt` の内容(`{date}` は
+      手順1で判定した `<date>` に置換したもの)を渡して起動する。
+
+      - 自分がClaude Codeの場合: `claude -p "<prompt>" --permission-mode bypassPermissions`
+      - 自分がCodexの場合: `codex exec "<prompt>" --sandbox workspace-write`
+
+   b. `data/runs/<date>/review_feedback.md` の有無を確認する。
+
+      - 存在しない場合: 承認。手順10へ進む。
+      - 存在する場合: 内容を読み、HOT選抜のやり直しや記事企画の書き直しなど
+        必要な修正を自分自身で行った上で、`ai-radar select-hot` /
+        `save-proposals` / `report` を再実行し、a に戻る。
+
+   c. a〜bを最大3回試行する。
+
+10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合:
+
+    - `reports/daily/<date>.md` の冒頭に次のバナーを追記する:
+      `> ⚠️ **要確認**: 自動レビューで解消できなかった指摘があります。\`data/runs/<date>/review_feedback.md\` を確認してください。`
+    - `data/runs/<date>/run_state.json` を読み、`needs_review: true` を追加して書き戻す。
+
 ## エラー時の自己修正方針
 
 `select-hot` または `save-proposals` がバリデーションエラー(終了コード1)を返した場合:
@@ -81,7 +105,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 `collect` はSource単位の失敗を継続処理する設計であり、`run_state.json` の `errors` にSource単位のエラー(例: 特定Sourceの HTTP エラー)が記録されていても、`collect` コマンド自体は正常に終了コード0を返す。この場合は**再実行しない**。個別Sourceのエラーは正常な運用結果であり、他のSourceの収集結果はそのまま後続手順(`normalize`以降)に使ってよい。`collect` を再実行してよいのは、コマンド自体が終了コード1を返した場合(`invalid`な引数など、通常は発生しない)のみである。
 
-このSkillが扱うのは構文・スキーマレベルの自己修正のみである。選抜内容や記事企画の「質」の妥当性を判断する別Agentによるレビューは、別のSkill/Workflowで扱う。
+「エラー時の自己修正方針」が扱うのは構文・スキーマレベルの自己修正のみである。選抜内容や記事企画の「質」の妥当性を判断する別Agentによるレビュー・修正は、手順9〜10(品質レビューループ)で扱う。
 
 ## 完了確認
 
