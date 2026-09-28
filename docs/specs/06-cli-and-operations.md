@@ -35,15 +35,19 @@ CLI引数は設定ファイルより優先される。
 
 ## cron想定
 
-推奨は `scripts/run-agent-daily.sh` によるAI Agent(Claude Code / Codex)経由の実行である。このスクリプトは `skills/agent-daily-run/SKILL.md` に従ってAgentを起動し、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` を順に実行させる。HOT最終選抜と記事企画はAgentが判断する。
+推奨はcronから `claude -p` / `codex exec` を直接起動するAI Agent(Claude Code / Codex)経由の実行である(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` の実行、対象日の判定、レビュー・修正ループまでAgent自身が判断して行う。
+
+`ai-radar`/`claude`/`codex` はいずれもPATH依存のコマンドであり、cronの実行環境には通常PATHが通っていないため、crontabファイル先頭に `PATH=` 行が必要になる。同日の多重実行(ログが混ざる)を防ぐため `flock -n` で排他制御し、レポート未生成時にcronの失敗通知が機能するよう末尾で `test -f` による確認を行う。
 
 ```cron
-15 8 * * * cd /path/to/ai-research-radar && AI_RADAR_AGENT=claude ./scripts/run-agent-daily.sh >> logs/cron.log 2>&1
+PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<version>/bin:/usr/local/bin:/usr/bin:/bin
+
+15 8 * * * cd /path/to/ai-research-radar && mkdir -p logs && D="$(date +\%F)" && flock -n logs/.daily.lock -c 'claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions >> logs/agent-daily-run-'"$D"'.log 2>&1 && test -f reports/daily/'"$D"'.md'
 ```
 
-- `AI_RADAR_AGENT` 環境変数で `claude`(デフォルト)/`codex` を切り替える。
+- `codex` で実行する場合は `claude -p "..." --permission-mode bypassPermissions` を `codex exec "..." --sandbox workspace-write` に置き換えた別のcron行を使う(両方を同時に有効化しない)。
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
-- スクリプトはAgent CLIの終了コードに加え、対象日の `reports/daily/<date>.md` が生成されているかを確認し、生成されていなければ終了コードを非0にする。
+- レポート生成後、Agent自身が別プロセスの `claude -p` / `codex exec` を起動して `skills/review-daily-report/SKILL.md` によるレビューを行わせ、指摘があれば自分自身で修正して最大3回まで再試行する(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければレポートに警告バナーを追加し `run_state.json` に `needs_review: true` を記録する。
 
 決定論的な `ai-radar daily` を直接cronに書く方法も、手動運用・CI向けの代替手段として利用できる。
 
