@@ -97,16 +97,23 @@ sudo systemctl enable --now crond
 
 ### AI Agent(Claude Code / Codex)による日次実行(推奨)
 
-HOT最終選抜と記事企画をAgent自身の判断で行う場合は、`scripts/run-agent-daily.sh` を使う。このスクリプトは `skills/agent-daily-run/SKILL.md` に従ってAgentを起動し、`ai-radar` の各サブコマンド(`collect`/`normalize`/`score`/`select-hot`/`save-proposals`/`report`)を順に実行させる。
+HOT最終選抜と記事企画をAgent自身の判断で行う場合は、cronから `claude -p` / `codex exec` を直接起動する(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、Agentはこれに従って `ai-radar` の各サブコマンド(`collect`/`normalize`/`score`/`select-hot`/`save-proposals`/`report`)の実行、対象日の判定、レビュー・修正ループまで自分の判断で行う。
+
+`ai-radar` はpyenv shims経由のコマンドであり、`claude`/`codex`もPATH依存のため、crontabファイル先頭に `PATH=` 行が必要。同日の多重実行(ログが混ざる原因になる)を防ぐため `flock -n` で排他制御し、レポート未生成時にcronの失敗通知が機能するよう末尾で `test -f` による確認を行う。
 
 ```cron
-15 8 * * * cd /path/to/ai-research-radar && AI_RADAR_AGENT=claude ./scripts/run-agent-daily.sh >> logs/cron.log 2>&1
+PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<version>/bin:/usr/local/bin:/usr/bin:/bin
+
+# Claude Codeで実行する場合
+15 8 * * * cd /path/to/ai-research-radar && D="$(date +\%F)" && flock -n logs/.daily.lock -c 'claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions >> logs/agent-daily-run-'"$D"'.log 2>&1 && test -f reports/daily/'"$D"'.md'
+
+# Codexで実行する場合(上記の代わりに使う。両方を同時に有効化しない)
+15 8 * * * cd /path/to/ai-research-radar && D="$(date +\%F)" && flock -n logs/.daily.lock -c 'codex exec "$(cat skills/agent-daily-run/entry-prompt.txt)" --sandbox workspace-write >> logs/agent-daily-run-'"$D"'.log 2>&1 && test -f reports/daily/'"$D"'.md'
 ```
 
-- `AI_RADAR_AGENT` は `claude`(デフォルト)または `codex` を指定できる。
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
-- 実行完了後に `reports/daily/<date>.md` が生成されているかも確認し、生成されていなければ終了コードを非0にする(cronのメール通知で失敗に気付ける)。
-- レポート生成後、別セッションのAgentがHOT選抜・記事企画の質をレビューする(`skills/review-daily-report/SKILL.md`)。問題が見つかれば元Agentに修正を依頼し、最大3回まで再レビューする。3回解消できなければ、レポート冒頭に警告バナーを追加し、`data/runs/<date>/run_state.json` に `needs_review: true` を記録する。
+- ローカルで動作確認したい場合は、`flock ...` と `>> ... 2>&1`、`&& test -f ...` を外し、`cd /path/to/ai-research-radar && claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions` をそのまま端末で実行すればよい。cron行と同じコマンドなので、動作確認用に別の手順を覚える必要がない。
+- レポート生成後、Agent自身が別プロセスとして `skills/review-daily-report/SKILL.md` に従うAgentを起動し、HOT選抜・記事企画の質をレビューさせる。問題が見つかれば自分自身で修正し、最大3回まで再レビューする(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければ、レポート冒頭に警告バナーを追加し、`data/runs/<date>/run_state.json` に `needs_review: true` を記録する。
 
 ### 決定論的な `ai-radar daily` による日次実行(手動・CI向け)
 
