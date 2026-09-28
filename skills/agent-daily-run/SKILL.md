@@ -20,7 +20,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 実行手順
 
-1. 収集する。対象日は、あなたに与えられた入り口プロンプトで指定された日付(`{date}`が置換された値、`YYYY-MM-DD`)を使う。以降の手順ではこの日付を `<date>` として使う。
+1. 対象日を判定する。`date +%F` を実行し、今日の日付(`YYYY-MM-DD`)を取得する。以降の手順ではこの日付を `<date>` として使う。
 
    ```bash
    ai-radar collect --until <date> --data-dir data --sources-config config/sources.yaml
