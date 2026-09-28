@@ -105,10 +105,10 @@ HOT最終選抜と記事企画をAgent自身の判断で行う場合は、cron�
 PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<version>/bin:/usr/local/bin:/usr/bin:/bin
 
 # Claude Codeで実行する場合
-15 8 * * * cd /path/to/ai-research-radar && D="$(date +\%F)" && flock -n logs/.daily.lock -c 'claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions >> logs/agent-daily-run-'"$D"'.log 2>&1 && test -f reports/daily/'"$D"'.md'
+15 8 * * * cd /path/to/ai-research-radar && mkdir -p logs && D="$(date +\%F)" && flock -n logs/.daily.lock -c 'claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions >> logs/agent-daily-run-'"$D"'.log 2>&1 && test -f reports/daily/'"$D"'.md'
 
 # Codexで実行する場合(上記の代わりに使う。両方を同時に有効化しない)
-15 8 * * * cd /path/to/ai-research-radar && D="$(date +\%F)" && flock -n logs/.daily.lock -c 'codex exec "$(cat skills/agent-daily-run/entry-prompt.txt)" --sandbox workspace-write >> logs/agent-daily-run-'"$D"'.log 2>&1 && test -f reports/daily/'"$D"'.md'
+15 8 * * * cd /path/to/ai-research-radar && mkdir -p logs && D="$(date +\%F)" && flock -n logs/.daily.lock -c 'codex exec "$(cat skills/agent-daily-run/entry-prompt.txt)" --sandbox workspace-write >> logs/agent-daily-run-'"$D"'.log 2>&1 && test -f reports/daily/'"$D"'.md'
 ```
 
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
