@@ -24,11 +24,11 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 
 ### agent-daily-run
 
-`ai-radar` の6サブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report`)を順に実行し、HOT最終選抜と記事企画をAgent自身の判断で行う日次ワークフロー。`scripts/run-agent-daily.sh` からcron経由で起動されることを想定する。判断基準は `hot-detection` / `article-ideation` を参照する。
+`ai-radar` の6サブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report`)を順に実行し、HOT最終選抜と記事企画をAgent自身の判断で行う日次ワークフロー。cronから `claude -p` / `codex exec` で直接起動されることを想定する(ラッパースクリプトなし)。対象日の判定、および`review-daily-report`を使ったレビュー・修正ループ(最大3回)もこのSkillの手順内でAgent自身が行う。判断基準は `hot-detection` / `article-ideation` を参照する。
 
 ### review-daily-report
 
-`agent-daily-run` Skillを実行したAgentとは別セッションのAgentとして、その日のHOT選抜・記事企画・レポートの「質」を検証する。問題があれば `data/runs/<date>/review_feedback.md` に指摘を書き、`scripts/run-agent-daily.sh` が元Agentへの修正依頼と再レビューを最大3回まで繰り返す。判断基準は `hot-detection` / `article-ideation` を参照する。
+`agent-daily-run` Skillを実行したAgentとは別セッション・別プロセスのAgentとして、その日のHOT選抜・記事企画・レポートの「質」を検証する。問題があれば `data/runs/<date>/review_feedback.md` に指摘を書く。`agent-daily-run` を実行したAgent自身が、この指摘を読んで修正し、最大3回まで再レビューを依頼する。判断基準は `hot-detection` / `article-ideation` を参照する。
 
 ### hot-detection
 
