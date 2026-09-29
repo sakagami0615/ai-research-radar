@@ -144,3 +144,63 @@ def test_render_daily_report_shows_placeholder_when_no_sources_at_all():
 
     assert "## 収集Source一覧" in markdown
     assert "本日は収集Signalがありません。" in markdown
+
+
+def test_render_daily_report_lists_collected_signals_per_source_as_a_table():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["github"],
+        input_counts={"github": 1},
+        output_counts={"signals": 1},
+        errors=[],
+        report_paths=[],
+    )
+    signals = [
+        {
+            "source": "github",
+            "title": "Agent Runtime",
+            "url": "https://github.com/owner/agent-runtime",
+            "summary": "Agent runtime toolkit",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], run, signals)
+
+    assert "### github (1件)" in markdown
+    assert "| タイトル | 概要 |" in markdown
+    assert "| --- | --- |" in markdown
+    assert "[Agent Runtime](<https://github.com/owner/agent-runtime>)" in markdown
+    assert "Agent runtime toolkit" in markdown
+
+
+def test_render_daily_report_wraps_url_containing_parenthesis_in_angle_brackets():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["github"],
+        input_counts={"github": 1},
+        output_counts={"signals": 1},
+        errors=[],
+        report_paths=[],
+    )
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/wiki/Foo_(bar)",
+            "summary": "desc",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], run, signals)
+
+    assert "[Repo](<https://example.com/wiki/Foo_(bar)>)" in markdown

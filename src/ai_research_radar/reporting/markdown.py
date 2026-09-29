@@ -105,14 +105,33 @@ def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) ->
         lines.append("")
         return lines
 
+    by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for signal in signals:
+        by_source[signal.get("source", "")].append(signal)
+
     for source in run.sources:
-        lines.append(f"### {source} (0件)")
-        lines.append("")
-        lines.append("<details>")
-        lines.append("<summary>一覧を表示</summary>")
-        lines.append("")
+        items = by_source.get(source, [])
+        lines.extend(_source_subsection(source, items))
+    return lines
+
+
+def _source_subsection(source: str, items: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        f"### {source} ({len(items)}件)",
+        "",
+        "<details>",
+        "<summary>一覧を表示</summary>",
+        "",
+    ]
+    if not items:
         lines.append("該当Signalなし")
-        lines.append("")
-        lines.append("</details>")
-        lines.append("")
+    else:
+        lines.append("| タイトル | 概要 |")
+        lines.append("| --- | --- |")
+        for item in items:
+            title = str(item.get("title", ""))
+            url = str(item.get("url", ""))
+            summary = str(item.get("summary") or "")
+            lines.append(f"| [{title}](<{url}>) | {summary} |")
+    lines.extend(["", "</details>", ""])
     return lines
