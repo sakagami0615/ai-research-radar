@@ -170,4 +170,4 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
 - `## Run Summary`: RunMetadataのサマリ(Run ID、期間、Sources、Input/Output Counts)
 - `## Errors`: RunMetadataのerrors
-- `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のため改行除去・`|`エスケープ・120文字切り詰めを行う。
+- `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない)。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。
