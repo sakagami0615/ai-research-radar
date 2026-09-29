@@ -126,15 +126,19 @@ def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) ->
         return lines
 
     known_sources = set(run.sources)
+    other_key = "other"
+    while other_key in known_sources:
+        other_key = f"_{other_key}"
+
     by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for signal in signals:
         source = signal.get("source", "")
-        key = source if source in known_sources else "other"
+        key = source if source in known_sources else other_key
         by_source[key].append(signal)
 
     ordered_sources = list(run.sources)
-    if "other" in by_source:
-        ordered_sources.append("other")
+    if other_key in by_source:
+        ordered_sources.append(other_key)
 
     for source in ordered_sources:
         items = by_source.get(source, [])

@@ -350,3 +350,39 @@ def test_render_daily_report_escapes_preexisting_backslash_before_pipe_in_summar
     markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
 
     assert "| a\\\\\\|b |" in markdown
+
+
+def test_render_daily_report_does_not_merge_real_other_source_with_unknown_fallback():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["other"],
+        input_counts={"other": 1},
+        output_counts={"signals": 2},
+        errors=[],
+        report_paths=[],
+    )
+    signals = [
+        {
+            "source": "other",
+            "title": "Genuine Other Source Item",
+            "url": "https://example.com/genuine",
+            "summary": "desc",
+        },
+        {
+            "source": "hackernews",
+            "title": "Unknown Source Item",
+            "url": "https://news.ycombinator.com/item?id=1",
+            "summary": "desc",
+        },
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], run, signals)
+
+    assert "### other (1件)" in markdown
+    assert "### _other (1件)" in markdown
+    assert "### other (2件)" not in markdown
