@@ -46,7 +46,7 @@ def test_render_daily_report_contains_selected_hot_and_errors():
         report_paths=[],
     )
 
-    markdown = render_daily_report("2026-09-25", [hot], [proposal], run)
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], run, [])
 
     assert "# AI Daily Radar 2026-09-25" in markdown
     assert "## 選抜HOT" in markdown
@@ -74,7 +74,7 @@ def test_render_daily_report_flags_sources_with_zero_items_as_data_gaps():
         report_paths=[],
     )
 
-    markdown = render_daily_report("2026-09-25", [], [], run)
+    markdown = render_daily_report("2026-09-25", [], [], run, [])
 
     assert "## データ欠落" in markdown
     assert "arxiv: unexpected_error - HTTP Error 406: Not Acceptable" in markdown
@@ -97,6 +97,50 @@ def test_render_daily_report_omits_data_gaps_section_when_all_sources_succeeded(
         report_paths=[],
     )
 
-    markdown = render_daily_report("2026-09-25", [], [], run)
+    markdown = render_daily_report("2026-09-25", [], [], run, [])
 
     assert "## データ欠落" not in markdown
+
+
+def test_render_daily_report_lists_zero_count_sources_in_appendix():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["github", "arxiv"],
+        input_counts={"github": 0, "arxiv": 0},
+        output_counts={"signals": 0, "hot": 0},
+        errors=[],
+        report_paths=[],
+    )
+
+    markdown = render_daily_report("2026-09-25", [], [], run, [])
+
+    assert "## 収集Source一覧" in markdown
+    assert "### github (0件)" in markdown
+    assert "### arxiv (0件)" in markdown
+    assert "該当Signalなし" in markdown
+
+
+def test_render_daily_report_shows_placeholder_when_no_sources_at_all():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=[],
+        input_counts={},
+        output_counts={},
+        errors=[],
+        report_paths=[],
+    )
+
+    markdown = render_daily_report("2026-09-25", [], [], run, [])
+
+    assert "## 収集Source一覧" in markdown
+    assert "本日は収集Signalがありません。" in markdown

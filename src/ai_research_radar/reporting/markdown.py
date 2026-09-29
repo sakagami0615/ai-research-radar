@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
 
@@ -10,6 +11,7 @@ def render_daily_report(
     hot_candidates: list[HotCandidate],
     proposals: list[ArticleProposal],
     run: RunMetadata,
+    signals: list[dict[str, Any]],
 ) -> str:
     selected_hot = [candidate for candidate in hot_candidates if candidate.selected]
     proposals_by_hot: dict[str, list[ArticleProposal]] = defaultdict(list)
@@ -59,6 +61,7 @@ def render_daily_report(
         for error in run.errors:
             lines.append(f"- {error.get('source')}: {error.get('type')} - {error.get('message')}")
     lines.append("")
+    lines.extend(_source_appendix_section(run, signals))
     return "\n".join(lines)
 
 
@@ -86,4 +89,30 @@ def _data_gaps_section(run: RunMetadata) -> list[str]:
         reason = errors_by_source.get(source, "reason unknown")
         lines.append(f"- {source}: {reason}")
     lines.append("")
+    return lines
+
+
+def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "## 収集Source一覧",
+        "",
+        "本日収集し正規化・重複排除まで完了したSignal(Event/Topic集約より前の粒度)を"
+        "Sourceごとに一覧化したものです。",
+        "",
+    ]
+    if not run.sources:
+        lines.append("本日は収集Signalがありません。")
+        lines.append("")
+        return lines
+
+    for source in run.sources:
+        lines.append(f"### {source} (0件)")
+        lines.append("")
+        lines.append("<details>")
+        lines.append("<summary>一覧を表示</summary>")
+        lines.append("")
+        lines.append("該当Signalなし")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
     return lines
