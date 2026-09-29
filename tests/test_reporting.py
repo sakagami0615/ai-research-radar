@@ -300,6 +300,43 @@ def test_render_daily_report_escapes_preexisting_backslash_before_pipe_in_title(
     assert "[a\\\\\\|b](<https://example.com/repo>)" in markdown
 
 
+def test_render_daily_report_groups_unknown_source_signals_under_other():
+    run = RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["github"],
+        input_counts={"github": 1},
+        output_counts={"signals": 2},
+        errors=[],
+        report_paths=[],
+    )
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/repo",
+            "summary": "desc",
+        },
+        {
+            "source": "hackernews",
+            "title": "Discussion",
+            "url": "https://news.ycombinator.com/item?id=1",
+            "summary": "desc",
+        },
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], run, signals)
+
+    assert "### github (1件)" in markdown
+    assert "### other (1件)" in markdown
+    assert markdown.index("### github") < markdown.index("### other")
+    assert "Discussion" in markdown
+
+
 def test_render_daily_report_escapes_preexisting_backslash_before_pipe_in_summary():
     signals = [
         {
