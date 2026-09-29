@@ -204,3 +204,67 @@ def test_render_daily_report_wraps_url_containing_parenthesis_in_angle_brackets(
     markdown = render_daily_report("2026-09-25", [], [], run, signals)
 
     assert "[Repo](<https://example.com/wiki/Foo_(bar)>)" in markdown
+
+
+def _run_with_single_github_source() -> RunMetadata:
+    return RunMetadata(
+        run_id="run-1",
+        started_at=datetime(2026, 9, 25, 8, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 25, 8, 1, tzinfo=timezone.utc),
+        mode="daily",
+        since="2026-09-24",
+        until="2026-09-25",
+        sources=["github"],
+        input_counts={"github": 1},
+        output_counts={"signals": 1},
+        errors=[],
+        report_paths=[],
+    )
+
+
+def test_render_daily_report_sanitizes_newlines_and_pipes_in_summary():
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/repo",
+            "summary": "line1\nline2 | line3",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "line1 line2 \\| line3" in markdown
+    assert "line1\nline2" not in markdown
+
+
+def test_render_daily_report_truncates_long_summary_at_120_chars():
+    long_summary = "あ" * 200
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/repo",
+            "summary": long_summary,
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert ("あ" * 120 + "…") in markdown
+    assert ("あ" * 121) not in markdown
+
+
+def test_render_daily_report_shows_placeholder_for_empty_summary():
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/repo",
+            "summary": "",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "| [Repo](<https://example.com/repo>) | (概要なし) |" in markdown

@@ -92,6 +92,19 @@ def _data_gaps_section(run: RunMetadata) -> list[str]:
     return lines
 
 
+_SUMMARY_MAX_LENGTH = 120
+
+
+def _sanitize_summary(summary: str) -> str:
+    sanitized = summary.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    sanitized = sanitized.replace("|", "\\|")
+    if len(sanitized) > _SUMMARY_MAX_LENGTH:
+        sanitized = sanitized[:_SUMMARY_MAX_LENGTH] + "…"
+    if not sanitized:
+        return "(概要なし)"
+    return sanitized
+
+
 def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) -> list[str]:
     lines = [
         "## 収集Source一覧",
@@ -131,7 +144,7 @@ def _source_subsection(source: str, items: list[dict[str, Any]]) -> list[str]:
         for item in items:
             title = str(item.get("title", ""))
             url = str(item.get("url", ""))
-            summary = str(item.get("summary") or "")
+            summary = _sanitize_summary(str(item.get("summary") or ""))
             lines.append(f"| [{title}](<{url}>) | {summary} |")
     lines.extend(["", "</details>", ""])
     return lines
