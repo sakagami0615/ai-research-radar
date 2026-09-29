@@ -160,3 +160,14 @@ MVPでは外部LLMを使わず、決定論的なRole生成、Critique、Debate�
 - `report_paths`
 
 Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。
+
+## Daily Markdown Report
+
+`reports/daily/<date>.md` は `render_daily_report()`(`src/ai_research_radar/reporting/markdown.py`)が生成する。構成は次の通り。
+
+- `# AI Daily Radar <date>`
+- `## データ欠落`(収集に完全失敗したSourceがある場合のみ出力)
+- `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
+- `## Run Summary`: RunMetadataのサマリ(Run ID、期間、Sources、Input/Output Counts)
+- `## Errors`: RunMetadataのerrors
+- `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のため改行除去・`|`エスケープ・120文字切り詰めを行う。

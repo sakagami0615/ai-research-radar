@@ -64,7 +64,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 1. CLIが終了コード0で終わるか確認する。
 2. `data/runs/<date>/run.jsonl` を確認する。
 3. `errors` にSource失敗がないか確認する。
-4. `reports/daily/<date>.md` を確認する。
+4. `reports/daily/<date>.md` を確認する。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
 5. HOT候補のEvidence URLを確認する。
 
 ## 外部ネットワーク制約
