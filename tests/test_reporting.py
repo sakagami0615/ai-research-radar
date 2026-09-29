@@ -300,6 +300,54 @@ def test_render_daily_report_escapes_preexisting_backslash_before_pipe_in_title(
     assert "[a\\\\\\|b](<https://example.com/repo>)" in markdown
 
 
+def test_render_daily_report_escapes_script_tag_in_title():
+    signals = [
+        {
+            "source": "github",
+            "title": "<script>alert(1)</script>",
+            "url": "https://example.com/repo",
+            "summary": "desc",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in markdown
+    assert "<script>" not in markdown
+
+
+def test_render_daily_report_escapes_img_onerror_in_summary():
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/repo",
+            "summary": "<img src=x onerror=alert(1)>",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "&lt;img src=x onerror=alert(1)&gt;" in markdown
+    assert "<img src=x onerror=alert(1)>" not in markdown
+
+
+def test_render_daily_report_percent_encodes_angle_bracket_in_url():
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/x>evil",
+            "summary": "desc",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "[Repo](<https://example.com/x%3Eevil>)" in markdown
+    assert ">evil" not in markdown
+
+
 def test_render_daily_report_groups_unknown_source_signals_under_other():
     run = RunMetadata(
         run_id="run-1",

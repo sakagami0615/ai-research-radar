@@ -98,6 +98,7 @@ _SUMMARY_MAX_LENGTH = 120
 def _sanitize_summary(summary: str) -> str:
     sanitized = summary.replace("\\", "\\\\")
     sanitized = sanitized.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    sanitized = sanitized.replace("<", "&lt;").replace(">", "&gt;")
     sanitized = sanitized.replace("|", "\\|")
     if len(sanitized) > _SUMMARY_MAX_LENGTH:
         sanitized = sanitized[:_SUMMARY_MAX_LENGTH] + "…"
@@ -108,8 +109,18 @@ def _sanitize_summary(summary: str) -> str:
 
 def _sanitize_title(title: str) -> str:
     sanitized = title.replace("\\", "\\\\")
+    sanitized = sanitized.replace("<", "&lt;").replace(">", "&gt;")
     sanitized = sanitized.replace("|", "\\|")
     return sanitized.replace("[", "\\[").replace("]", "\\]")
+
+
+def _sanitize_url(url: str) -> str:
+    """Percent-encode angle brackets so a raw '>' cannot terminate the
+    surrounding <...> link-destination syntax early. HTML-entity escaping
+    (&lt;/&gt;) is deliberately not used here because the URL is a link
+    destination, not visible text, and entities would render literally in
+    some viewers instead of being resolved as part of the URL."""
+    return url.replace("<", "%3C").replace(">", "%3E")
 
 
 def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) -> list[str]:
@@ -161,7 +172,7 @@ def _source_subsection(source: str, items: list[dict[str, Any]]) -> list[str]:
         lines.append("| --- | --- |")
         for item in items:
             title = _sanitize_title(str(item.get("title", "")))
-            url = str(item.get("url", ""))
+            url = _sanitize_url(str(item.get("url", "")))
             summary = _sanitize_summary(str(item.get("summary") or ""))
             lines.append(f"| [{title}](<{url}>) | {summary} |")
     lines.extend(["", "</details>", ""])
