@@ -196,3 +196,26 @@ def test_cli_report_persists_run_state_when_markdown_write_fails(tmp_path: Path,
     run = read_jsonl(data_dir / "runs" / "2026-09-25" / "run.jsonl")[0]
     assert run["report_paths"] == []
     assert any(error["type"] == "report_write_error" for error in run["errors"])
+
+
+def test_cli_report_includes_source_appendix_from_normalized_signals(tmp_path: Path, monkeypatch):
+    reports_dir = _run_full_pipeline(tmp_path, monkeypatch)
+    data_dir = tmp_path / "data"
+
+    exit_code = main(
+        [
+            "report",
+            "--date",
+            "2026-09-25",
+            "--data-dir",
+            str(data_dir),
+            "--reports-dir",
+            str(reports_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    report_text = (reports_dir / "daily" / "2026-09-25.md").read_text(encoding="utf-8")
+    assert "## 収集Source一覧" in report_text
+    assert "### github (1件)" in report_text
+    assert "### other (1件)" in report_text

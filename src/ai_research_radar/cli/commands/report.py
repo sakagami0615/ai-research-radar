@@ -56,6 +56,9 @@ def run(args: argparse.Namespace) -> int:
         else []
     )
 
+    signals_path = data_dir / "normalized" / date / "signals.jsonl"
+    signals = read_jsonl(signals_path) if signals_path.exists() else []
+
     started_at = datetime.fromisoformat(state["run_id"])
     report_path = Path(args.reports_dir) / "daily" / f"{date}.md"
 
@@ -73,7 +76,7 @@ def run(args: argparse.Namespace) -> int:
         report_paths=[],
     )
 
-    markdown = render_daily_report(date, hot_candidates, proposals, run_without_report)
+    markdown = render_daily_report(date, hot_candidates, proposals, run_without_report, signals)
 
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
