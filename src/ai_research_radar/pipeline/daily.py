@@ -17,6 +17,7 @@ from ai_research_radar.schemas.models import (
     RawItem,
     RunMetadata,
     Topic,
+    to_json_dict,
 )
 from ai_research_radar.scoring.hot import build_hot_candidates_from_events
 from ai_research_radar.sources.base import SourceAdapter, SourceError
@@ -138,7 +139,14 @@ def run_daily(
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
-            render_daily_report(date, hot_candidates, proposals, run), encoding="utf-8"
+            render_daily_report(
+                date,
+                hot_candidates,
+                proposals,
+                run,
+                [to_json_dict(signal) for signal in deduped_signals],
+            ),
+            encoding="utf-8",
         )
     except Exception as exc:
         errors.append({"source": "report", "type": "report_write_error", "message": str(exc)})

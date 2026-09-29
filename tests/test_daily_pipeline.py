@@ -69,6 +69,10 @@ def test_run_daily_writes_jsonl_and_markdown(tmp_path: Path):
     assert hot[0]["hot_id"].startswith("hot:event:")
     assert raw[0]["payload"]["raw"]["raw_id"] == "owner/agent-runtime"
     assert "AI Daily Radar 2026-09-25" in result.report_path.read_text(encoding="utf-8")
+    report_text = result.report_path.read_text(encoding="utf-8")
+    assert "## 収集Source一覧" in report_text
+    assert "### github (1件)" in report_text
+    assert "### other (1件)" in report_text
 
 
 def test_run_daily_continues_when_source_fails(tmp_path: Path):
