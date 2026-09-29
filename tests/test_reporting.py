@@ -283,3 +283,33 @@ def test_render_daily_report_escapes_pipe_and_brackets_in_title():
     markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
 
     assert "[\\[urgent\\] fix \\| rename](<https://example.com/repo>)" in markdown
+
+
+def test_render_daily_report_escapes_preexisting_backslash_before_pipe_in_title():
+    signals = [
+        {
+            "source": "github",
+            "title": "a\\|b",
+            "url": "https://example.com/repo",
+            "summary": "desc",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "[a\\\\\\|b](<https://example.com/repo>)" in markdown
+
+
+def test_render_daily_report_escapes_preexisting_backslash_before_pipe_in_summary():
+    signals = [
+        {
+            "source": "github",
+            "title": "Repo",
+            "url": "https://example.com/repo",
+            "summary": "a\\|b",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "| a\\\\\\|b |" in markdown

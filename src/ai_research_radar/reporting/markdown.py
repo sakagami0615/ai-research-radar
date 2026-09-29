@@ -96,7 +96,8 @@ _SUMMARY_MAX_LENGTH = 120
 
 
 def _sanitize_summary(summary: str) -> str:
-    sanitized = summary.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    sanitized = summary.replace("\\", "\\\\")
+    sanitized = sanitized.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
     sanitized = sanitized.replace("|", "\\|")
     if len(sanitized) > _SUMMARY_MAX_LENGTH:
         sanitized = sanitized[:_SUMMARY_MAX_LENGTH] + "…"
@@ -106,7 +107,8 @@ def _sanitize_summary(summary: str) -> str:
 
 
 def _sanitize_title(title: str) -> str:
-    sanitized = title.replace("|", "\\|")
+    sanitized = title.replace("\\", "\\\\")
+    sanitized = sanitized.replace("|", "\\|")
     return sanitized.replace("[", "\\[").replace("]", "\\]")
 
 
