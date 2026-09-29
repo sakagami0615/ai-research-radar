@@ -105,6 +105,11 @@ def _sanitize_summary(summary: str) -> str:
     return sanitized
 
 
+def _sanitize_title(title: str) -> str:
+    sanitized = title.replace("|", "\\|")
+    return sanitized.replace("[", "\\[").replace("]", "\\]")
+
+
 def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) -> list[str]:
     lines = [
         "## 収集Source一覧",
@@ -142,7 +147,7 @@ def _source_subsection(source: str, items: list[dict[str, Any]]) -> list[str]:
         lines.append("| タイトル | 概要 |")
         lines.append("| --- | --- |")
         for item in items:
-            title = str(item.get("title", ""))
+            title = _sanitize_title(str(item.get("title", "")))
             url = str(item.get("url", ""))
             summary = _sanitize_summary(str(item.get("summary") or ""))
             lines.append(f"| [{title}](<{url}>) | {summary} |")

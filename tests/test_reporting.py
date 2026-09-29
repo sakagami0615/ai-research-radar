@@ -268,3 +268,18 @@ def test_render_daily_report_shows_placeholder_for_empty_summary():
     markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
 
     assert "| [Repo](<https://example.com/repo>) | (概要なし) |" in markdown
+
+
+def test_render_daily_report_escapes_pipe_and_brackets_in_title():
+    signals = [
+        {
+            "source": "github",
+            "title": "[urgent] fix | rename",
+            "url": "https://example.com/repo",
+            "summary": "desc",
+        }
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "[\\[urgent\\] fix \\| rename](<https://example.com/repo>)" in markdown
