@@ -15,6 +15,7 @@ class SourceError(RuntimeError):
 class SourceAdapter(ABC):
     source_name: str
     source_family: str
+    collection_diagnostics: dict[str, object]
 
     @abstractmethod
     def collect(self, since: str, until: str) -> list[RawItem]:

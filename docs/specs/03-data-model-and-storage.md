@@ -1,5 +1,11 @@
 # 03. データモデル・保存設計
 
+## v2移行契約
+
+既存レコードは`schema_version=1`として旧スコアと表示互換を保つ。旧読込時に欠損した`quality`を推測で補完しない。新規v2入力は共通decoderと`QualityValidationError`で型・状態・必須文字列を検証し、未知のschema versionは明示的に拒否する。日時はタイムゾーン付きISO 8601、JSONの`null`は未取得として保持する。各v2 dataclassの`quality`は末尾の既定値付きフィールドで後方互換を保つ。
+
+成果物のidentityは`work_id`（同一成果）と`event_key`（版・観測の統合単位）を分ける。DOIがある場合は同一DOIを同一Eventへ統合し、arXivはv番号をEventに残しつつwork_idを共有する。Packageは名前と版をEventキーに含める。自動統合できない同名項目はSourceとsignal_idで分離する。
+
 ## 保存方針
 
 MVPでは、人間が確認しやすく、再処理もしやすい形式を優先する。

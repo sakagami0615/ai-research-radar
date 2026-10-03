@@ -12,6 +12,9 @@
 - [06-cli-and-operations.md](06-cli-and-operations.md): CLI、cron想定、設定ファイル、運用上の注意
 - [07-skills-and-agent-workflow.md](07-skills-and-agent-workflow.md): Claude Code / Codex共通Skills、レビュー運用、改善ループ
 - [08-testing-and-extension.md](08-testing-and-extension.md): テスト方針、既知制約、拡張方針
+- [09-audit-remediation-design.md](09-audit-remediation-design.md): 日次監査に基づく品質改善設計（実装計画作成承認済み・未実装）
+
+対応する[実装計画](../superpowers/plans/2026-10-01-audit-remediation.md)は、ユーザーによるモデル切り替え後に実行する。`docs/superpowers/` はGit管理対象外のため、別worktreeへの引き継ぎ時は計画ファイルもコピーする。
 
 ## 設計原則
 

@@ -20,6 +20,8 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 実行手順
 
+実行時は`SelectionInput`と`ProposalQuality`を03の共通契約として使う。空の選抜`[]`・空の企画`[]`は未実施または保留の結果として保存し、成功したことに置き換えない。レビュー対象は`review_target.json`で固定し、レビュー担当は原成果物を編集せず`review_result.json`だけを返す。初回をattempt 1として最大3回まで修正し、起動失敗・記録なし・3回後の重要指摘は承認しない。
+
 1. 対象日を判定する。`date +%F` を実行し、今日の日付(`YYYY-MM-DD`)を取得する。以降の手順ではこの日付を `<date>` として使う。
 
    ```bash
@@ -103,7 +105,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別(`invalid_selection` / `invalid_reason` / `invalid_input` / `invalid_proposal` など)とメッセージを確認する。
 2. 原因に応じて選抜IDまたは `draft_proposals.json` を修正し、再実行する。
-3. 再実行は最大3回までとする。3回失敗しても諦めて手順8(`report`)に進む。`report` は未完了ステージを `missing_stage` として記録した上で必ず成功する設計になっているため、パイプライン全体が失敗することはない。
+3. 再実行は最大3回までとする。3回後も重要指摘が残る場合は`needs_review`として停止し、起動失敗・結果欠損は`failed`として承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
 
 `normalize` / `score` が終了コード1を返した場合も、内容を確認し可能なら1回だけ修正・再実行を試みる。それでも解決しない場合は諦めて手順8に進む。
 

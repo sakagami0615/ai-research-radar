@@ -62,7 +62,7 @@ Source追加はAdapterとconfigの追加で行う。Pipeline、Scoring、Ideatio
 
 ### Ideation改善
 
-MVPでは決定論的なRole / Critique / Debate代替を使う。将来は以下を検討する。
+MVPでは決定論的なRole / Critique / Debate代替を使う。これは内容審査や独立Agentレビューを実施した証拠ではない。v2では定型企画を自動採用せず、Agent入力のProposalQualityを検証する。将来は以下を検討する。
 
 - LLM Judge
 - 複数Role生成の本格化

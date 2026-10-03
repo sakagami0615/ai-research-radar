@@ -20,6 +20,8 @@ from ai_research_radar.normalization.scores import (
     parse_optional_datetime,
 )
 from ai_research_radar.schemas.models import CanonicalSignal, RawItem
+from ai_research_radar.normalization.relevance import classify_relevance, restore_abstract
+from ai_research_radar.sources.remap import remap_raw_item
 from ai_research_radar.sources.base import SourceAdapter
 from ai_research_radar.sources.fixtures import FixtureAdapter
 
@@ -106,7 +108,7 @@ class PublicSearchAdapter(SourceAdapter):
         return [item for item in items if _item_is_in_period(item, since, until)]
 
     def normalize(self, item: RawItem) -> CanonicalSignal:
-        return _normalize_raw_item(item, self.source_family, self.credibility)
+        return _normalize_raw_item(remap_raw_item(item, self.source_name), self.source_family, self.credibility)
 
 
 class PublicArxivAdapter(PublicSearchAdapter):
@@ -151,7 +153,7 @@ class PublicFeedAdapter(SourceAdapter):
         ]
 
     def normalize(self, item: RawItem) -> CanonicalSignal:
-        return _normalize_raw_item(item, self.source_family, self.credibility)
+        return _normalize_raw_item(remap_raw_item(item, self.source_name), self.source_family, self.credibility)
 
 
 def build_adapters(configs: list[SourceConfig]) -> list[SourceAdapter]:
@@ -428,8 +430,8 @@ def _item_is_in_period(item: RawItem, since: str, until: str) -> bool:
 def _matches_keywords(item: RawItem, keywords: list[str]) -> bool:
     if not keywords:
         return True
-    text = f"{item.payload.get('title', '')} {item.payload.get('summary', '')}".lower()
-    return any(keyword in text for keyword in keywords)
+    result = classify_relevance(str(item.payload.get("title", "")), str(item.payload.get("summary", "")), keywords)
+    return bool(result["matched_terms"])
 
 
 def _ai_keyword_strength(entry: dict[str, Any]) -> float:
@@ -474,7 +476,10 @@ def _date_text(value: object) -> str | None:
 
 
 def _summary_text(value: object) -> str:
-    return " ".join(str(key) for key in value) if isinstance(value, dict) else str(value or "")
+    if isinstance(value, dict):
+        restored, _ = restore_abstract(value)
+        return restored
+    return str(value or "")
 
 
 def _stable_id(value: dict[str, Any]) -> str:

@@ -1,5 +1,9 @@
 # 05. Pipeline・Scoring・Ideation設計
 
+## v2指標とidentity
+
+v2では`freshness_score`（公開日時から取得までの168時間線形値）、Sourceごとの代表的な実測指標の順位、過去観測との差分を別々に保持する。取得できない指標、NaN、Infinity、bool、文字列は人気順位に変換せず`missing`または`invalid`として扱う。キーワード一致、固定信用点、npm検索複合scoreは人気の実測値ではない。Eventが複数Signalを持つ場合、Signalごとの合成値(確認優先度)の最大を取り、採用したSignalと算出内訳を記録する(09章参照、旧仕様の「maxで合成しない」は撤回)。Task 10の切り替えまで旧HOT計算経路は維持する。
+
 ## 日次Pipeline
 
 `run_daily` は、日次の収集からレポート生成までを実行する。

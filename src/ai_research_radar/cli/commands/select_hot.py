@@ -11,7 +11,7 @@ from ai_research_radar.cli.commands.run_state import (
     reset_errors_for,
     save_run_state,
 )
-from ai_research_radar.schemas.models import HotCandidate
+from ai_research_radar.schemas.decoders import decode_hot
 from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
 
 COMMAND_NAME = "select-hot"
@@ -39,7 +39,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"missing hot candidates: {hot_path}")
         return 1
 
-    candidates = [HotCandidate(**record) for record in read_jsonl(hot_path)]
+    candidates = [decode_hot(record) for record in read_jsonl(hot_path)]
     known_ids = {candidate.hot_id for candidate in candidates}
 
     selected_ids = {item for item in args.select.split(",") if item}

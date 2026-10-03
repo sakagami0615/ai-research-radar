@@ -12,7 +12,8 @@ from ai_research_radar.cli.commands.run_state import (
     save_run_state,
 )
 from ai_research_radar.reporting.markdown import render_daily_report
-from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
+from ai_research_radar.schemas.decoders import decode_hot, decode_proposal
+from ai_research_radar.schemas.models import RunMetadata
 from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
 
 COMMAND_NAME = "report"
@@ -46,12 +47,12 @@ def run(args: argparse.Namespace) -> int:
 
     hot_path = data_dir / "runs" / date / "hot_candidates.jsonl"
     hot_candidates = (
-        [HotCandidate(**record) for record in read_jsonl(hot_path)] if hot_path.exists() else []
+        [decode_hot(record) for record in read_jsonl(hot_path)] if hot_path.exists() else []
     )
 
     proposals_path = data_dir / "runs" / date / "article_proposals.jsonl"
     proposals = (
-        [ArticleProposal(**record) for record in read_jsonl(proposals_path)]
+        [decode_proposal(record) for record in read_jsonl(proposals_path)]
         if proposals_path.exists()
         else []
     )

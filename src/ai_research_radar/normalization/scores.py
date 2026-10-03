@@ -120,6 +120,86 @@ def normalize_source_batch(signals: list[CanonicalSignal]) -> list[CanonicalSign
     return normalized
 
 
+def normalize_quality_batch(
+    signals: list[CanonicalSignal], *, metric_by_source: dict[str, str | None] | None = None,
+    history: list[CanonicalSignal] | None = None,
+) -> list[CanonicalSignal]:
+    """Create v2 quality observations without converting unknown values to zero."""
+    metric_by_source = metric_by_source or {}
+    history = history or []
+    observed: dict[str, float | None] = {}
+    records: dict[str, dict[str, object]] = {}
+    for signal in signals:
+        name = metric_by_source.get(signal.source, _default_metric(signal.source))
+        value = signal.raw_metrics.get(name) if name else None
+        status = "observed"
+        numeric: float | None
+        if value is None:
+            status, numeric = "missing", None
+        elif isinstance(value, bool):
+            status, numeric = "invalid", None
+        else:
+            try:
+                numeric = float(value)
+                if not math.isfinite(numeric):
+                    numeric = None
+                    status = "invalid"
+            except (TypeError, ValueError):
+                numeric = None
+                status = "invalid"
+        observed[signal.signal_id] = numeric
+        records[signal.signal_id] = {"name": name or "", "value": numeric, "unit": "count", "observed_at": signal.fetched_at.isoformat(), "status": status}
+    valid = {key: value for key, value in observed.items() if value is not None}
+    ranks = _quality_ranks(valid)
+    result: list[CanonicalSignal] = []
+    for signal in signals:
+        reference = signal.published_at
+        age = None if reference is None else (signal.fetched_at - reference).total_seconds() / 3600
+        freshness = None if age is None or age < 0 else round(max(0.0, 100.0 - age / 168.0 * 100.0), 2)
+        metric = records[signal.signal_id]
+        previous = _previous_metric(signal, history, metric["name"])
+        if previous is not None and metric["value"] is not None:
+            metric["delta"] = round(float(metric["value"]) - previous[1], 6)
+            metric["interval_hours"] = round((signal.fetched_at - previous[0]).total_seconds() / 3600.0, 6)
+            metric["previous_observed_at"] = previous[0].isoformat()
+        quality = {"relevance": signal.quality.get("relevance", {"status": "uncertain", "matched_terms": [], "reason": "未評価", "method": "legacy"}), "updated_at": signal.fetched_at.isoformat(), "period_basis": "published_at", "metrics": [metric], "freshness_score": freshness, "popularity_rank": ranks.get(signal.signal_id), "rank_population": len(valid), "rank_all_zero": bool(valid) and all(value == 0 for value in valid.values()), "priority": round(((freshness or 0) * 0.5 + (ranks.get(signal.signal_id) or 0) * 0.5), 2), "diagnostics": [], "identity": {}, "source_kind": signal.source}
+        result.append(replace(signal, quality=quality, schema_version=2, normalized_scores=dict(signal.normalized_scores)))
+    return result
+
+
+def _default_metric(source: str) -> str | None:
+    return {"github": "stars", "huggingface": "downloads", "hackernews": "points", "qiita": "likes", "zenn": "likes", "openalex": "citations"}.get(source)
+
+
+def _quality_ranks(values: dict[str, float]) -> dict[str, float | None]:
+    if len(values) <= 1 or all(value == 0 for value in values.values()):
+        return {key: None for key in values}
+    ordered = sorted(values.items(), key=lambda item: (item[1], item[0]))
+    denominator = len(ordered) - 1
+    result: dict[str, float] = {}
+    for index, (key, value) in enumerate(ordered):
+        same = [i for i, (_, other) in enumerate(ordered) if other == value]
+        result[key] = round(100 * (sum(same) / len(same)) / denominator, 2)
+    return result
+
+
+def _previous_metric(signal: CanonicalSignal, history: list[CanonicalSignal], name: object) -> tuple[datetime, float] | None:
+    candidates = []
+    for old in history:
+        if old.signal_id != signal.signal_id or old.fetched_at >= signal.fetched_at:
+            continue
+        value = old.raw_metrics.get(name)
+        if isinstance(value, bool):
+            continue
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(numeric):
+            candidates.append((old.fetched_at, numeric))
+    return max(candidates, default=None, key=lambda item: item[0])
+
+
 def _largest_metric(metrics: dict[str, Any], *names: str) -> float:
     values: list[float] = []
     for name in names:

@@ -64,6 +64,8 @@ API側で完全に期間指定できないSourceでも、取得後に `published
 
 rawを保持する理由は、後から正規化ルールやスコア計算を改善して再処理できるようにするためである。
 
+関連性は取得条件（キーワードによる候補化）と内容評価を分離する。ASCIIの短い語は英数字境界で判定し、曖昧語・概要欠損・一致なしを自動的に`unrelated`とはしない。OpenAlexの`abstract_inverted_index`は位置を復元して概要化し、復元不能時は既存概要を保持したうえで診断を残す。再マップは`raw_id`、Source、取得日時、元rawを変更しない。
+
 ## Fixture Adapter
 
 Fixture Adapterはテストとローカル検証用である。外部ネットワークに依存しないテストではFixtureを使う。

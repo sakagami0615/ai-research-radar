@@ -34,3 +34,4 @@ ai-radar daily --since YYYY-MM-DD --until YYYY-MM-DD
 - 選抜HOTが多すぎないか
 - HOT判定理由に根拠URLがあるか
 - Source失敗がRun Summaryに出ているか
+- Popularityは取得できた代表実測値の順位だけを示し、キーワード・固定信用点・新着度を人気として扱わない。HOT0件と選抜未実施を区別する。

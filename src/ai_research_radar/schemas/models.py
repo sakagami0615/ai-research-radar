@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime
 from typing import Any
 
@@ -29,6 +29,8 @@ class CanonicalSignal:
     raw_metrics: dict[str, Any]
     normalized_scores: dict[str, float]
     metadata: dict[str, Any]
+    schema_version: int = 1
+    quality: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,8 @@ class Event:
     source_families: list[str]
     scores: dict[str, float]
     evidence: list[str]
+    schema_version: int = 1
+    quality: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,9 @@ class HotCandidate:
     source_families: list[str]
     signals: list[str]
     selected: bool
+    schema_version: int = 1
+    quality: dict[str, Any] = field(default_factory=dict)
+    assessment: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +95,8 @@ class ArticleProposal:
     unique_angle: str
     evidence_links: list[str]
     risks: list[str]
+    schema_version: int = 1
+    quality: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -103,6 +112,8 @@ class RunMetadata:
     output_counts: dict[str, int]
     errors: list[dict[str, str]]
     report_paths: list[str]
+    schema_version: int = 1
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def to_json_dict(value: Any) -> dict[str, Any]:
@@ -122,37 +133,13 @@ def _json_ready(value: Any) -> Any:
 
 
 def canonical_signal_from_dict(data: dict[str, Any]) -> CanonicalSignal:
-    return CanonicalSignal(
-        signal_id=str(data["signal_id"]),
-        source=str(data["source"]),
-        source_family=str(data["source_family"]),
-        content_type=str(data["content_type"]),
-        title=str(data["title"]),
-        url=str(data["url"]),
-        published_at=_parse_datetime_or_none(data.get("published_at")),
-        fetched_at=_parse_datetime(data["fetched_at"]),
-        summary=str(data["summary"]),
-        categories=list(data["categories"]),
-        raw_metrics=dict(data["raw_metrics"]),
-        normalized_scores=dict(data["normalized_scores"]),
-        metadata=dict(data["metadata"]),
-    )
+    from ai_research_radar.schemas.decoders import decode_signal
+    return decode_signal(data)
 
 
 def event_from_dict(data: dict[str, Any]) -> Event:
-    return Event(
-        event_id=str(data["event_id"]),
-        title=str(data["title"]),
-        description=str(data["description"]),
-        event_type=str(data["event_type"]),
-        first_seen_at=_parse_datetime(data["first_seen_at"]),
-        last_seen_at=_parse_datetime(data["last_seen_at"]),
-        signals=list(data["signals"]),
-        sources=list(data["sources"]),
-        source_families=list(data["source_families"]),
-        scores=dict(data["scores"]),
-        evidence=list(data["evidence"]),
-    )
+    from ai_research_radar.schemas.decoders import decode_event
+    return decode_event(data)
 
 
 def _parse_datetime(value: Any) -> datetime:

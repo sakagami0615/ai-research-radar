@@ -7,3 +7,18 @@ hot_selection:
   normal_limit: 2
   max_limit: 5
   minimum_score: 75
+reference_priority:
+  freshness_weight: 0.5
+  popularity_weight: 0.5
+  window_hours: 168
+metric_by_source:
+  github: stars
+  huggingface: downloads
+  hackernews: points
+  qiita: likes
+  zenn: likes
+  openalex: citations
+  pypi: null
+  arxiv: null
+  official_blogs: null
+  npm: null
