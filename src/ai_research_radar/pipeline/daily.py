@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ai_research_radar.ideation.proposals import generate_article_proposals
+from ai_research_radar.periods import period_date
 from ai_research_radar.normalization.dedup import deduplicate_signals
 from ai_research_radar.normalization.scores import normalize_source_batch
 from ai_research_radar.pipeline.events import build_events, cluster_topics
@@ -47,7 +48,7 @@ def run_daily(
     hot_score_weights: dict[str, float] | None = None,
 ) -> DailyPipelineResult:
     started_at = datetime.now(timezone.utc)
-    date = until
+    date = period_date(until)
     raw_items: list[RawItem] = []
     signals: list[CanonicalSignal] = []
     errors: list[dict[str, str]] = []

@@ -8,6 +8,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 from ai_research_radar.schemas.models import CanonicalSignal
+from ai_research_radar.periods import period_end, period_start
 
 
 _POPULARITY_METRICS = (
@@ -49,9 +50,8 @@ def parse_optional_datetime(value: object) -> datetime | None:
 def is_within_period(value: datetime | None, since: str, until: str) -> bool:
     if value is None:
         return False
-    start = parse_optional_datetime(f"{since}T00:00:00+00:00")
-    end = parse_optional_datetime(f"{until}T23:59:59.999999+00:00")
-    return start is not None and end is not None and start <= value <= end
+    normalized = parse_optional_datetime(value)
+    return normalized is not None and period_start(since) <= normalized <= period_end(until)
 
 
 def normalized_scores(
