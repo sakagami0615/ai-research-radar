@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from ai_research_radar.cli.commands import collect as collect_command
@@ -16,6 +16,7 @@ from ai_research_radar.config.settings import (
     load_source_configs,
 )
 from ai_research_radar.pipeline.daily import run_daily
+from ai_research_radar.periods import default_period, previous_day_period
 from ai_research_radar.sources.public import build_adapters
 
 
@@ -46,8 +47,11 @@ def main(argv: list[str] | None = None) -> int:
         return int(exc.code)
 
     if args.command == "daily":
-        until = args.until or date.today().isoformat()
-        since = args.since or (date.fromisoformat(until) - timedelta(days=1)).isoformat()
+        if args.since is None and args.until is None:
+            since, until = default_period()
+        else:
+            until = args.until or date.today().isoformat()
+            since = args.since or previous_day_period(until)
         configs = load_source_configs(Path(args.sources_config))
         scoring = load_scoring_config(Path(args.scoring_config))
         runtime = load_runtime_config(Path(args.runtime_config))

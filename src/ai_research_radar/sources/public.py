@@ -19,6 +19,7 @@ from ai_research_radar.normalization.scores import (
     normalized_scores,
     parse_optional_datetime,
 )
+from ai_research_radar.periods import period_date, period_end, period_start
 from ai_research_radar.schemas.models import CanonicalSignal, RawItem
 from ai_research_radar.normalization.relevance import classify_relevance, restore_abstract
 from ai_research_radar.sources.remap import remap_raw_item
@@ -244,14 +245,14 @@ def _period_params_for(source_name: str) -> PeriodParams:
     if source_name == "github":
         return lambda params, since, until: {
             **params,
-            "q": f"{params['q']} pushed:{since}..{until}",
+            "q": f"{params['q']} pushed:{period_date(since)}..{period_date(until)}",
         }
     if source_name == "arxiv":
         return lambda params, since, until: {
             **params,
             "search_query": (
-                f"{params['search_query']} AND submittedDate:[{since.replace('-', '')}0000"
-                f" TO {until.replace('-', '')}2359]"
+                f"{params['search_query']} AND submittedDate:[{period_date(since).replace('-', '')}0000"
+                f" TO {period_date(until).replace('-', '')}2359]"
             ),
         }
     if source_name == "hackernews":
@@ -262,12 +263,12 @@ def _period_params_for(source_name: str) -> PeriodParams:
     if source_name == "openalex":
         return lambda params, since, until: {
             **params,
-            "filter": f"from_publication_date:{since},to_publication_date:{until}",
+            "filter": f"from_publication_date:{period_date(since)},to_publication_date:{period_date(until)}",
         }
     if source_name == "qiita":
         return lambda params, since, until: {
             **params,
-            "query": f"{params['query']} created:>={since} created:<={until}",
+            "query": f"{params['query']} created:>={period_date(since)} created:<={period_date(until)}",
         }
     return _without_period_params
 
@@ -277,11 +278,11 @@ def _without_period_params(params: dict[str, str], since: str, until: str) -> di
 
 
 def _epoch_start(value: str) -> int:
-    return int(datetime.fromisoformat(f"{value}T00:00:00+00:00").timestamp())
+    return int(period_start(value).timestamp())
 
 
 def _epoch_end(value: str) -> int:
-    return int(datetime.fromisoformat(f"{value}T23:59:59+00:00").timestamp())
+    return int(period_end(value).timestamp())
 
 
 def _item_selector_for(source_name: str) -> Callable[[Any], list[dict[str, Any]]]:

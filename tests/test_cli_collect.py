@@ -50,6 +50,39 @@ def test_cli_collect_writes_raw_and_collected_signals(tmp_path: Path, monkeypatc
     assert captured.out.strip() == "2026-09-25"
 
 
+def test_cli_collect_defaults_to_the_previous_24_hours(tmp_path: Path, monkeypatch):
+    observed: dict[str, str] = {}
+
+    class CapturingAdapter(FixtureAdapter):
+        def collect(self, since: str, until: str):
+            observed.update(since=since, until=until)
+            return []
+
+    monkeypatch.setattr(
+        collect_command,
+        "default_period",
+        lambda: ("2026-10-03T00:00:00+00:00", "2026-10-04T00:00:00+00:00"),
+    )
+    monkeypatch.setattr(
+        collect_command,
+        "build_adapters",
+        lambda configs: [
+            CapturingAdapter(
+                source_name="github",
+                source_family="technology",
+                fixture_path=Path("tests/fixtures/sample_raw_items.jsonl"),
+            )
+        ],
+    )
+
+    assert main(["collect", "--data-dir", str(tmp_path / "data")]) == 0
+    assert observed == {
+        "since": "2026-10-03T00:00:00+00:00",
+        "until": "2026-10-04T00:00:00+00:00",
+    }
+    assert (tmp_path / "data" / "runs" / "2026-10-04" / "run_state.json").exists()
+
+
 def test_cli_collect_records_source_error_and_continues(tmp_path: Path, monkeypatch):
     from ai_research_radar.sources.base import SourceAdapter, SourceError
 

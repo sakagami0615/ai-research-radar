@@ -165,6 +165,8 @@ MVPでは外部LLMを使わず、決定論的なRole生成、Critique、Debate�
 - `errors`
 - `report_paths`
 
+`since` / `until` は日付またはタイムゾーン付きISO 8601日時を保持する。通常の日次実行では、実行時刻から直近24時間の実際の取得範囲を記録する。
+
 Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。
 
 ## Daily Markdown Report
