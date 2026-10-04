@@ -434,3 +434,186 @@ def test_render_daily_report_does_not_merge_real_other_source_with_unknown_fallb
     assert "### other (1件)" in markdown
     assert "### _other (1件)" in markdown
     assert "### other (2件)" not in markdown
+
+
+def _selected_hot() -> HotCandidate:
+    return HotCandidate(
+        hot_id="hot:event:agent-runtime",
+        title="Agent Runtime",
+        topic="agent-runtime",
+        score=88,
+        reasons=["Momentum 96", "Popularity 90"],
+        evidence_urls=["https://example.com/agent-runtime", "https://example.com/a|b"],
+        source_families=["technology"],
+        signals=["github:agent-runtime"],
+        selected=True,
+    )
+
+
+def _free_text_proposal(**overrides) -> ArticleProposal:
+    fields = dict(
+        proposal_id="p1",
+        source_hot_id="hot:event:agent-runtime",
+        title_idea="Agent Runtimeのガードレールを読み解く",
+        article_type="Critical Review",
+        target_reader="AI Engineer",
+        why_now="Show HNで話題になり、既存手法の2つの課題を同時に解決すると主張している",
+        technical_angle="設計要素を既存方式と対比する",
+        experiment_plan=["論文を読む", "組み込んで挙動を確認する"],
+        competition="日本語記事は未確認",
+        traffic_opportunity="検索需要は仮説",
+        technical_opportunity="決定論的制御の検証",
+        unique_angle="自前検証で裏付ける",
+        evidence_links=["https://example.com/agent-runtime"],
+        risks=["著者ベンチマークは第三者検証ではない"],
+    )
+    fields.update(overrides)
+    return ArticleProposal(**fields)
+
+
+def _table_rows(markdown: str) -> list[list[str]]:
+    """Group consecutive table lines into tables (header first)."""
+    tables: list[list[str]] = []
+    current: list[str] = []
+    for line in markdown.splitlines():
+        if line.startswith("|"):
+            current.append(line)
+        elif current:
+            tables.append(current)
+            current = []
+    if current:
+        tables.append(current)
+    return tables
+
+
+def _unescaped_pipe_count(line: str) -> int:
+    count = 0
+    index = 0
+    while index < len(line):
+        if line[index] == "\\":
+            index += 2
+            continue
+        if line[index] == "|":
+            count += 1
+        index += 1
+    return count
+
+
+def _assert_tables_well_formed(markdown: str) -> None:
+    for table in _table_rows(markdown):
+        expected = _unescaped_pipe_count(table[0])
+        assert len(table) >= 2
+        assert set(table[1].replace("|", "").split()) == {"---"}
+        for row in table:
+            assert _unescaped_pipe_count(row) == expected, row
+
+
+def test_article_proposals_split_deterministic_why_now_into_labeled_rows():
+    from ai_research_radar.ideation.proposals import generate_article_proposals
+
+    hot = _selected_hot()
+    proposals = generate_article_proposals(hot, max_proposals=3)
+
+    markdown = render_daily_report("2026-09-25", [hot], proposals, _run_with_single_github_source(), [])
+    section = markdown.split("#### Article Proposals")[1].split("## Run Summary")[0]
+
+    assert "| # | 企画タイトル | Type | Role | Critique |" in section
+    assert f"| 1 | {proposals[0].title_idea} | Technical Explainer | Explainer | " in section
+    assert f"##### 1. {proposals[0].title_idea}" in section
+    assert "| Role | Explainer |" in section
+    assert "| Critique Score | " in section
+    assert "| Critique Notes | ・根拠URLは公開情報に限定されており" in section
+    assert "<br>・Source Familyが単一のため" in section
+    assert "| Debate | AdvocateはExplainerが技術的な検証価値を示せると主張する<br>Critic" in section
+    assert "| Why Now |" not in section
+    assert "HOT score 88 with reasons" not in section
+    assert "| Experiment Plan | 1. 公式情報を確認<br>2. 主要機能を図解<br>3. 既存技術との差分を表にする |" in section
+    _assert_tables_well_formed(markdown)
+
+
+def test_article_proposals_drop_risks_that_duplicate_critique_and_debate_rows():
+    from ai_research_radar.ideation.proposals import generate_article_proposals
+
+    hot = _selected_hot()
+    proposal = generate_article_proposals(hot, max_proposals=1)[0]
+    extra = ArticleProposal(**{**proposal.__dict__, "risks": [*proposal.risks, "独自リスク"]})
+
+    markdown = render_daily_report("2026-09-25", [hot], [extra], _run_with_single_github_source(), [])
+
+    assert "| Risks | ・独自リスク |" in markdown
+    assert "軽量Critique:" not in markdown
+
+
+def test_article_proposals_show_free_text_why_now_as_is():
+    hot = _selected_hot()
+    proposal = _free_text_proposal()
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert f"| 1 | {proposal.title_idea} | Critical Review | - | - |" in markdown
+    assert f"| Why Now | {proposal.why_now} |" in markdown
+    assert "\n| Role |" not in markdown
+    assert "| Target Reader | AI Engineer |" in markdown
+    assert "| Technical Angle | 設計要素を既存方式と対比する |" in markdown
+    assert "| Unique Angle | 自前検証で裏付ける |" in markdown
+    assert "| Competition | 日本語記事は未確認 |" in markdown
+    assert "| Traffic Opportunity | 検索需要は仮説 |" in markdown
+    assert "| Technical Opportunity | 決定論的制御の検証 |" in markdown
+    assert "| Risks | ・著者ベンチマークは第三者検証ではない |" in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def test_article_proposals_keep_every_evidence_url_as_link():
+    hot = _selected_hot()
+    proposal = _free_text_proposal(evidence_links=["https://example.com/one", "https://example.com/a|b"])
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert (
+        "| Evidence | [https://example.com/one](<https://example.com/one>)"
+        "<br>[https://example.com/a\\|b](<https://example.com/a%7Cb>) |"
+    ) in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def test_article_proposals_escape_pipes_newlines_and_html_in_cells_and_headings():
+    hot = _selected_hot()
+    proposal = _free_text_proposal(
+        title_idea="A | B\n<script>x</script>",
+        why_now="line1\nline2 | <b>",
+        risks=["r1 | r2"],
+    )
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert "##### 1. A | B &lt;script&gt;x&lt;/script&gt;" in markdown
+    assert "| 1 | A \\| B<br>&lt;script&gt;x&lt;/script&gt; |" in markdown
+    assert "| Why Now | line1<br>line2 \\| &lt;b&gt; |" in markdown
+    assert "| Risks | ・r1 \\| r2 |" in markdown
+    assert "<script>" not in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def test_article_proposals_show_placeholder_for_empty_fields_and_no_proposals():
+    hot = _selected_hot()
+    proposal = _free_text_proposal(risks=[], experiment_plan=[], competition="")
+
+    with_proposal = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+    without = render_daily_report("2026-09-25", [hot], [], _run_with_single_github_source(), [])
+
+    assert "| Risks | - |" in with_proposal
+    assert "| Experiment Plan | - |" in with_proposal
+    assert "| Competition | - |" in with_proposal
+    assert "記事企画なし" in without
+    assert "| # | 企画タイトル |" not in without
+
+
+def test_article_proposals_point_to_critique_rows_when_all_risks_are_duplicates():
+    from ai_research_radar.ideation.proposals import generate_article_proposals
+
+    hot = _selected_hot()
+    proposal = generate_article_proposals(hot, max_proposals=1)[0]
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert "| Risks | Critique Notes / Debateと同じ内容 |" in markdown

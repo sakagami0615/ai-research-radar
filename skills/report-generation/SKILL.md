@@ -25,4 +25,5 @@ JSONLの判断済みデータを人間が確認しやすいレポートへ変換
 - 根拠Sourceへのリンクが残っているか
 - 人間が短時間で確認できる量に絞られているか
 - 収集Source一覧のSource見出し順序・0件表示・リンクが崩れていないか
+- Article Proposalの概要表・詳細表に表崩れがなく、Role / Critique / Debateが別行に分かれ、Evidence URLとRisksが欠落していないか
 - 未確認、保留、legacy、部分失敗、取得範囲とUTC/JSTを表示し、処理エラーなしを品質承認と解釈できる文面にしない。
