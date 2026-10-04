@@ -75,6 +75,10 @@ def _merge_signals(first: CanonicalSignal, second: CanonicalSignal) -> Canonical
         | set(second.metadata.get("source_families", []))
         | {second.source_family}
     )
+    # Keep the new-model marker even when the first-seen copy of the URL came
+    # from a source that does not set it (e.g. keyword HF search vs HF org).
+    if "model_release" not in merged_metadata and "model_release" in second.metadata:
+        merged_metadata["model_release"] = second.metadata["model_release"]
     merged_metadata["event_type"] = _strongest_event_type(
         str(merged_metadata.get("event_type", "")),
         str(second.metadata.get("event_type", "")),

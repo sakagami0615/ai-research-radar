@@ -55,4 +55,46 @@ sources:
     family: official
     adapter: official_blogs
     auth_required: false
-    feed_url: https://openai.com/news/rss.xml
+    # 提供元ごとの公式RSS/Atom。model_keywordsのいずれかをタイトルに含む記事を新モデルリリースとみなす。
+    # 提供元名そのもの(例: mistral)は提携記事などを誤検知するためkeywordにしない。
+    # Meta / Anthropic / xAI は公式RSSなし(2026-10確認)。
+    feeds:
+      - provider: OpenAI
+        url: https://openai.com/news/rss.xml
+        model_keywords: [gpt-, gpt‑, sora, whisper]
+      - provider: Google
+        url: https://deepmind.google/blog/rss.xml
+        model_keywords: [gemini, gemma, veo, imagen, genie]
+      - provider: Mistral AI
+        url: https://mistral.ai/rss.xml
+        model_keywords: [magistral, codestral, devstral, ministral, pixtral, voxtral, mistral small, mistral medium, mistral large]
+      - provider: Qwen
+        url: https://qwenlm.github.io/blog/index.xml
+        model_keywords: [qwen]
+  huggingface_orgs:
+    enabled: true
+    family: technology
+    adapter: huggingface_orgs
+    auth_required: false
+    per_org_limit: 50
+    # HF org名: 提供元表示名(公式feedと同じ表示名にすると同じグループに並ぶ)
+    orgs:
+      meta-llama: Meta
+      mistralai: Mistral AI
+      google: Google
+      Qwen: Qwen
+      deepseek-ai: DeepSeek
+      microsoft: Microsoft
+      nvidia: NVIDIA
+      SakanaAI: Sakana AI
+      elyza: ELYZA
+      pfnet: Preferred Networks
+      llm-jp: LLM-jp
+      lmstudio-community: LM Studio Community
+      unsloth: Unsloth
+  # Ollamaブログ(RSS)。記事本文のlibraryリンク/`ollama run`のうち、タイトル・URLに名前が出るモデル(またはタイトルに"models"を含む記事のlibraryリンク先)を新モデル紹介とみなす(詳細は04章)。
+  ollama:
+    enabled: true
+    family: technology
+    adapter: ollama
+    auth_required: false

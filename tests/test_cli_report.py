@@ -144,7 +144,11 @@ def test_cli_report_renders_markdown_after_full_pipeline(tmp_path: Path, monkeyp
     assert exit_code == 0
     report_path = reports_dir / "daily" / "2026-09-25.md"
     assert report_path.exists()
-    assert "AI Daily Radar 2026-09-25" in report_path.read_text(encoding="utf-8")
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "AI Daily Radar 2026-09-25" in report_text
+    assert "## 注目候補(選抜外)" in report_text
+    assert "## 新モデルリリース" in report_text
+    assert (data_dir / "runs" / "2026-09-25" / "report_digest.json").exists()
 
     run = read_jsonl(data_dir / "runs" / "2026-09-25" / "run.jsonl")[0]
     assert run["mode"] == "agent"

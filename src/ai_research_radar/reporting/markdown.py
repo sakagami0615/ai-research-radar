@@ -5,6 +5,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from ai_research_radar.reporting.digest import (
+    LOOKBACK_DAYS,
+    DailyDigest,
+    group_model_releases,
+)
 from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
 
 
@@ -14,7 +19,9 @@ def render_daily_report(
     proposals: list[ArticleProposal],
     run: RunMetadata,
     signals: list[dict[str, Any]],
+    digest: DailyDigest | None = None,
 ) -> str:
+    digest = digest or DailyDigest()
     selected_hot = [candidate for candidate in hot_candidates if candidate.selected]
     proposals_by_hot: dict[str, list[ArticleProposal]] = defaultdict(list)
     for proposal in proposals:
@@ -41,6 +48,9 @@ def render_daily_report(
         lines.extend(["", "#### Article Proposals", ""])
         lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, [])))
 
+    lines.extend(_digest_warnings(digest))
+    lines.extend(_notable_section(digest))
+    lines.extend(_model_release_section(digest))
     lines.extend(["## Run Summary", ""])
     lines.append(f"- Run ID: {run.run_id}")
     lines.append(f"- Period: {run.since} to {run.until}")
@@ -56,6 +66,76 @@ def render_daily_report(
     lines.append("")
     lines.extend(_source_appendix_section(run, signals))
     return "\n".join(lines)
+
+
+_CHANNEL_LABELS = {"official": "公式発表", "huggingface": "Hugging Face", "ollama": "Ollama"}
+
+
+def _digest_warnings(digest: DailyDigest) -> list[str]:
+    if not digest.warnings:
+        return []
+    lines = ["> ⚠️ 次のファイルを読めなかったため、注目候補・新モデルリリースの集約から除外しました。", ">"]
+    lines.extend(f"> - {_sanitize_summary(warning)}" for warning in digest.warnings)
+    lines.append("")
+    return lines
+
+
+def _notable_section(digest: DailyDigest) -> list[str]:
+    lines = [
+        "## 注目候補(選抜外)",
+        "",
+        f"直近{LOOKBACK_DAYS}日分のHOT候補のうち、スコアは閾値以上だが選抜されなかったもの(過去のレポートに掲載済みのものを除く)。",
+        "",
+    ]
+    if not digest.notable:
+        lines.extend(["該当なし", ""])
+        return lines
+    for item in digest.notable:
+        candidate = item.candidate
+        title = _sanitize_title(candidate.title)
+        if candidate.evidence_urls:
+            lines.append(f"### [{title}](<{_sanitize_url(candidate.evidence_urls[0])}>)")
+        else:
+            lines.append(f"### {title}")
+        lines.extend(
+            [
+                "",
+                f"- HOT Score: {candidate.score}",
+                f"- Source: {', '.join(item.sources) or '不明'}",
+                f"- 初出日: {item.first_seen}",
+                f"- Reasons: {', '.join(candidate.reasons)}",
+                "",
+            ]
+        )
+    if digest.notable_overflow:
+        lines.extend([f"ほか{digest.notable_overflow}件(表示上限超過)", ""])
+    return lines
+
+
+def _model_release_section(digest: DailyDigest) -> list[str]:
+    lines = [
+        "## 新モデルリリース",
+        "",
+        f"直近{LOOKBACK_DAYS}日分に公式ブログ・Hugging Face・Ollamaブログで検知した新モデル(過去のレポートに掲載済みのものを除く)。",
+        "",
+    ]
+    groups = group_model_releases(digest.model_releases)
+    if not groups:
+        lines.extend(["該当なし", ""])
+        return lines
+    for provider, releases, overflow in groups:
+        lines.extend([f"### {_sanitize_title(provider)}", ""])
+        for release in releases:
+            title = _sanitize_title(release.title)
+            name = f"[{title}](<{_sanitize_url(release.url)}>)" if release.url else title
+            channel = _CHANNEL_LABELS.get(release.channel, release.channel or "不明")
+            published = (release.published_at or "")[:10] or "不明"
+            models = f" — 紹介モデル: {', '.join(_sanitize_title(model) for model in release.models)}" if release.models else ""
+            lines.append(f"- {name} ({channel} / 公開日 {published}){models}")
+        if overflow:
+            lines.append(f"- ほか{overflow}件(表示上限超過)")
+        lines.append("")
+    return lines
 
 
 def _data_gaps_section(run: RunMetadata) -> list[str]:

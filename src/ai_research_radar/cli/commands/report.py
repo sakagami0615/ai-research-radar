@@ -11,6 +11,7 @@ from ai_research_radar.cli.commands.run_state import (
     reset_errors_for,
     save_run_state,
 )
+from ai_research_radar.reporting.digest import build_daily_digest, save_digest_record
 from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.schemas.decoders import decode_hot, decode_proposal
 from ai_research_radar.schemas.models import RunMetadata
@@ -77,11 +78,13 @@ def run(args: argparse.Namespace) -> int:
         report_paths=[],
     )
 
-    markdown = render_daily_report(date, hot_candidates, proposals, run_without_report, signals)
+    digest = build_daily_digest(data_dir, date)
+    markdown = render_daily_report(date, hot_candidates, proposals, run_without_report, signals, digest)
 
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(markdown, encoding="utf-8")
+        save_digest_record(data_dir, date, digest)
     except OSError as exc:
         add_error(state, "report", "report_write_error", str(exc))
         save_run_state(data_dir, date, state)

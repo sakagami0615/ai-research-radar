@@ -44,6 +44,13 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 4. `data/runs/<date>/hot_candidates.jsonl` を読み、hot-detection Skillの判断方針に従って選抜するHOT候補の `hot_id` を決める。
 
+   判断の記録(`selection_input.json` の評価レコード)に書く日時は、推定や切りのよい値ではなく実測値にする。
+
+   - 根拠の `checked_at`: そのURLを実際に取得した直後に `date -u +%Y-%m-%dT%H:%M:%S+00:00` を実行し、その出力を書く。複数URLをまとめて取得した場合は、それぞれの取得直後の値を使う。
+   - 評価の `assessed_at`: その評価の根拠をすべて確認し終えた後、レコードを書く直前に同じコマンドで取得した値を書く(`checked_at` 以降、かつファイル保存前)。
+   - 取得時刻を記録し忘れた根拠は、時刻を推定せずに取得し直してから記録する。
+   - 取得時のコマンド出力(URL・HTTPステータス・時刻)を `data/runs/<date>/` 配下に残し、記録した時刻をレビュー担当が裏付けられるようにする。
+
 5. 選抜結果を確定する。
 
    ```bash

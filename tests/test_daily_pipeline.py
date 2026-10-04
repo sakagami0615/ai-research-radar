@@ -73,6 +73,9 @@ def test_run_daily_writes_jsonl_and_markdown(tmp_path: Path):
     assert "## 収集Source一覧" in report_text
     assert "### github (1件)" in report_text
     assert "### other (1件)" in report_text
+    assert "## 注目候補(選抜外)" in report_text
+    assert "## 新モデルリリース" in report_text
+    assert (tmp_path / "data" / "runs" / "2026-09-25" / "report_digest.json").exists()
 
 
 def test_run_daily_continues_when_source_fails(tmp_path: Path):
