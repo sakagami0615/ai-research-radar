@@ -27,6 +27,7 @@ data/
   runs/<date>/hot_candidates.jsonl
   runs/<date>/article_proposals.jsonl
   runs/<date>/run.jsonl
+  runs/<date>/report_digest.json
 
 reports/
   daily/<date>.md
@@ -67,6 +68,8 @@ Source横断で扱うSignalの共通形式。
 - `metadata`
 
 `normalized_scores` には0から100の正規化済みスコアを入れる。Source内順位補正はPipelineで収集バッチ単位に実施する。
+
+新モデルリリースとして扱うSignalは `metadata.model_release` を持つ。値は `{"provider": <提供元表示名>, "channel": "official" | "huggingface" | "ollama"}` で、記事から紹介モデル名がわかる場合(Ollamaブログ)は `models`(モデル名のリスト)も持つ。Adapterが付与し、Dedupで別Sourceと統合された場合も保持する(04章参照)。
 
 ## Event
 
@@ -174,6 +177,21 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `# AI Daily Radar <date>`
 - `## データ欠落`(収集に完全失敗したSourceがある場合のみ出力)
 - `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
+- `## 注目候補(選抜外)`: 直近3日分のrunで `minimum_score` 以上だが選抜されなかったHotCandidate(05章「日次ダイジェスト」参照)
+- `## 新モデルリリース`: 直近3日分のrunで `metadata.model_release` を持つSignalを提供元ごとに列挙したもの(05章「日次ダイジェスト」参照)
 - `## Run Summary`: RunMetadataのサマリ(Run ID、期間、Sources、Input/Output Counts)
 - `## Errors`: RunMetadataのerrors
 - `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない)。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。
+
+## Report Digest記録
+
+`data/runs/<date>/report_digest.json` は、その日のレポートの「注目候補(選抜外)」「新モデルリリース」に掲載した項目のキーを記録する。翌日以降のレポートで既掲載の項目を除外するために使う。
+
+```json
+{"notable": ["hot:event:..."], "model_releases": ["https://huggingface.co/org/model"]}
+```
+
+- `notable`: 掲載したHotCandidateの `hot_id`
+- `model_releases`: 掲載したSignalの正規化済みURL(URLが空の場合は `signal_id`)
+
+同じ日のレポートを再生成した場合は上書きする。除外判定には対象日より前の日付の記録だけを使う。

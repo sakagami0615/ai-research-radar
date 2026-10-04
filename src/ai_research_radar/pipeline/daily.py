@@ -8,6 +8,7 @@ from ai_research_radar.ideation.proposals import generate_article_proposals
 from ai_research_radar.normalization.dedup import deduplicate_signals
 from ai_research_radar.normalization.scores import normalize_source_batch
 from ai_research_radar.pipeline.events import build_events, cluster_topics
+from ai_research_radar.reporting.digest import build_daily_digest, save_digest_record
 from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.schemas.models import (
     ArticleProposal,
@@ -68,6 +69,7 @@ def run_daily(
                 }
             )
             continue
+        errors.extend(dict(error) for error in getattr(adapter, "partial_errors", []))
 
         input_counts[adapter.source_name] = len(collected)
         raw_items.extend(collected)
@@ -137,6 +139,7 @@ def run_daily(
         events, topics, hot_candidates, selected_hot, proposals, errors, [],
     )
     try:
+        digest = build_daily_digest(output_dir, date)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             render_daily_report(
@@ -145,9 +148,11 @@ def run_daily(
                 proposals,
                 run,
                 [to_json_dict(signal) for signal in deduped_signals],
+                digest,
             ),
             encoding="utf-8",
         )
+        save_digest_record(output_dir, date, digest)
     except Exception as exc:
         errors.append({"source": "report", "type": "report_write_error", "message": str(exc)})
         failed_run = _run_metadata(

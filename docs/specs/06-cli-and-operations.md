@@ -26,7 +26,7 @@ ai-radar daily \
 
 設定は `config/` 配下に置く。
 
-- `sources.yaml`: Source一覧、family、adapter、keyword、RSS URLなど
+- `sources.yaml`: Source一覧、family、adapter、keyword、RSS URL、新モデル検知の監視対象(公式feed、HF org、Ollama)など
 - `scoring.yaml`: HOT判定の重み、閾値、選抜数
 - `runtime.yaml`: 出力先などの実行時設定
 - `categories.yaml`: category定義の予約設定。現行MVPのPipelineはまだ読み込まず、公開SourceのカテゴリはAdapter側で付与する。
@@ -64,7 +64,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 1. CLIが終了コード0で終わるか確認する。
 2. `data/runs/<date>/run.jsonl` を確認する。
 3. `errors` にSource失敗がないか確認する。
-4. `reports/daily/<date>.md` を確認する。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
+4. `reports/daily/<date>.md` を確認する。選抜HOTの下に「注目候補(選抜外)」「新モデルリリース」が直近3日分の未掲載項目として出る。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
 5. HOT候補のEvidence URLを確認する。
 
 ## 外部ネットワーク制約

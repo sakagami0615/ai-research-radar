@@ -53,6 +53,8 @@ def run(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001
             add_error(state, adapter.source_name, "unexpected_error", str(exc))
             continue
+        for error in getattr(adapter, "partial_errors", []):
+            add_error(state, error["source"], error["type"], error["message"])
 
         state["input_counts"][adapter.source_name] = len(collected)
         total_raw_items += len(collected)

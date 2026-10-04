@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -67,6 +69,15 @@ def _open_with_retry(request: Request, timeout: int = 20):
     raise AssertionError("unreachable")  # pragma: no cover
 
 
+def _read_body(response) -> bytes:
+    # Some feeds (e.g. Google DeepMind) answer gzip-compressed even without an
+    # Accept-Encoding request header, and urllib does not decode it for us.
+    body = response.read()
+    if body[:2] == b"\x1f\x8b":
+        return gzip.decompress(body)
+    return body
+
+
 def _retry_delay(attempt: int, exc: HTTPError | None) -> float:
     if exc is not None and exc.headers is not None:
         retry_after = exc.headers.get("Retry-After")
@@ -103,7 +114,7 @@ class PublicSearchAdapter(SourceAdapter):
         params = self.period_params(dict(self.query_params), since, until)
         url = f"{self.endpoint}?{urlencode(params)}" if params else self.endpoint
         with _open_with_retry(_build_request(url)) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            payload = json.loads(_read_body(response).decode("utf-8"))
         items = [self.item_mapper(item) for item in self.item_selector(payload)]
         return [item for item in items if _item_is_in_period(item, since, until)]
 
@@ -116,7 +127,7 @@ class PublicArxivAdapter(PublicSearchAdapter):
         params = self.period_params(dict(self.query_params), since, until)
         url = f"{self.endpoint}?{urlencode(params)}" if params else self.endpoint
         with _open_with_retry(_build_request(url)) as response:
-            root = ElementTree.fromstring(response.read().decode("utf-8"))
+            root = ElementTree.fromstring(_read_body(response).decode("utf-8"))
         namespace = {"atom": "http://www.w3.org/2005/Atom"}
         items = [
             _map_arxiv_entry(_element_to_dict(entry))
@@ -144,7 +155,7 @@ class PublicFeedAdapter(SourceAdapter):
 
     def collect(self, since: str, until: str) -> list[RawItem]:
         with _open_with_retry(_build_request(self.endpoint)) as response:
-            root = ElementTree.fromstring(response.read().decode("utf-8"))
+            root = ElementTree.fromstring(_read_body(response).decode("utf-8"))
         items = [self.entry_mapper(entry) for entry in _feed_entries(root)]
         return [
             item
@@ -155,6 +166,160 @@ class PublicFeedAdapter(SourceAdapter):
     def normalize(self, item: RawItem) -> CanonicalSignal:
         return _normalize_raw_item(remap_raw_item(item, self.source_name), self.source_family, self.credibility)
 
+
+class OfficialFeedsAdapter(SourceAdapter):
+    """Reads several vendor RSS/Atom feeds as one `official_blogs` source.
+
+    A failing feed is recorded in `partial_errors` and the remaining feeds are
+    still collected; only when every feed fails does `collect` raise.
+    """
+
+    def __init__(
+        self,
+        source_name: str,
+        source_family: str,
+        feeds: list[dict[str, Any]],
+        credibility: float = 95.0,
+    ) -> None:
+        self.source_name = source_name
+        self.source_family = source_family
+        self.feeds = feeds
+        self.credibility = credibility
+        self.partial_errors: list[dict[str, str]] = []
+
+    def collect(self, since: str, until: str) -> list[RawItem]:
+        self.partial_errors = []
+        items: list[RawItem] = []
+        failures: list[Exception] = []
+        for feed in self.feeds:
+            url = str(feed.get("url") or "")
+            if not url:
+                failures.append(ValueError(f"feed entry without url: {feed}"))
+                self.partial_errors.append(
+                    {"source": self.source_name, "type": "config_error", "message": f"feed entry without url: {feed}"}
+                )
+                continue
+            try:
+                with _open_with_retry(_build_request(url)) as response:
+                    root = ElementTree.fromstring(_read_body(response).decode("utf-8"))
+            except Exception as exc:  # noqa: BLE001 - one bad feed must not drop the others
+                failures.append(exc)
+                self.partial_errors.append(
+                    {"source": self.source_name, "type": "partial_feed_error", "message": f"{url}: {exc}"}
+                )
+                continue
+            provider = str(feed.get("provider", "OpenAI"))
+            keywords = [str(value).lower() for value in feed.get("model_keywords", [])]
+            for entry in _feed_entries(root):
+                item = _map_official_feed(entry, provider=provider, model_keywords=keywords)
+                if _item_is_in_period(item, since, until):
+                    items.append(item)
+        if self.feeds and len(failures) == len(self.feeds):
+            raise failures[-1]
+        return items
+
+    def normalize(self, item: RawItem) -> CanonicalSignal:
+        return _normalize_raw_item(item, self.source_family, self.credibility)
+
+
+class HuggingFaceOrgAdapter(SourceAdapter):
+    """Detects newly created models of watched Hugging Face organizations."""
+
+    endpoint = "https://huggingface.co/api/models"
+
+    def __init__(
+        self,
+        source_name: str,
+        source_family: str,
+        orgs: dict[str, str],
+        per_org_limit: int = 50,
+        credibility: float = 80.0,
+    ) -> None:
+        self.source_name = source_name
+        self.source_family = source_family
+        self.orgs = orgs
+        self.per_org_limit = per_org_limit
+        self.credibility = credibility
+        self.partial_errors: list[dict[str, str]] = []
+
+    def collect(self, since: str, until: str) -> list[RawItem]:
+        self.partial_errors = []
+        items: list[RawItem] = []
+        failures: list[Exception] = []
+        for org, provider in self.orgs.items():
+            params = {"author": org, "sort": "createdAt", "direction": "-1", "limit": str(self.per_org_limit)}
+            url = f"{self.endpoint}?{urlencode(params)}"
+            try:
+                with _open_with_retry(_build_request(url)) as response:
+                    payload = json.loads(_read_body(response).decode("utf-8"))
+            except Exception as exc:  # noqa: BLE001 - one bad org must not drop the others
+                failures.append(exc)
+                self.partial_errors.append(
+                    {"source": self.source_name, "type": "partial_feed_error", "message": f"{org}: {exc}"}
+                )
+                continue
+            for model in _default_items(payload):
+                item = _map_huggingface_org(model, self.source_name, str(provider))
+                # A new release is a repository *created* in the period, not one
+                # that was merely modified.
+                if is_within_period(parse_optional_datetime(item.payload.get("published_at")), since, until):
+                    items.append(item)
+        if self.orgs and len(failures) == len(self.orgs):
+            raise failures[-1]
+        return items
+
+    def normalize(self, item: RawItem) -> CanonicalSignal:
+        return _normalize_raw_item(item, self.source_family, self.credibility)
+
+
+class OllamaBlogAdapter(SourceAdapter):
+    """Reads the Ollama blog RSS and marks posts that introduce models.
+
+    The RSS only carries a short description, so each in-period post page is
+    fetched and classified by `_ollama_models_in_post` (a mere library link or
+    `ollama run` example is not enough). A post page that cannot be fetched is
+    kept as a plain signal and recorded in partial_errors.
+    """
+
+    def __init__(
+        self,
+        source_name: str,
+        source_family: str,
+        endpoint: str = "https://ollama.com/blog/rss.xml",
+        credibility: float = 80.0,
+    ) -> None:
+        self.source_name = source_name
+        self.source_family = source_family
+        self.endpoint = endpoint
+        self.credibility = credibility
+        self.partial_errors: list[dict[str, str]] = []
+
+    def collect(self, since: str, until: str) -> list[RawItem]:
+        self.partial_errors = []
+        with _open_with_retry(_build_request(self.endpoint)) as response:
+            root = ElementTree.fromstring(_read_body(response).decode("utf-8"))
+        items: list[RawItem] = []
+        for entry in _feed_entries(root):
+            item = _make_raw_item(self.source_name, entry, entry.get("title"), entry.get("link"), entry.get("description"), entry.get("pubDate"), entry.get("pubDate"), {}, "announcement", raw_id=entry.get("guid") or entry.get("link"))
+            if not _item_is_in_period(item, since, until):
+                continue
+            try:
+                with _open_with_retry(_build_request(item.raw_url)) as response:
+                    models = _ollama_models_in_post(
+                        _read_body(response).decode("utf-8"), str(item.payload["title"]), item.raw_url
+                    )
+            except Exception as exc:  # noqa: BLE001 - keep the post, just without the model check
+                self.partial_errors.append(
+                    {"source": self.source_name, "type": "partial_feed_error", "message": f"{item.raw_url}: {exc}"}
+                )
+                models = []
+            if models:
+                item.payload["metadata"]["model_release"] = {"provider": "Ollama", "channel": "ollama", "models": models}
+            items.append(item)
+        return items
+
+    def normalize(self, item: RawItem) -> CanonicalSignal:
+        return _normalize_raw_item(item, self.source_family, self.credibility)
 
 def build_adapters(configs: list[SourceConfig]) -> list[SourceAdapter]:
     adapters: list[SourceAdapter] = []
@@ -185,13 +350,16 @@ def _public_adapter_for(config: SourceConfig) -> SourceAdapter:
             credibility=70.0,
         )
     if config.name == "official_blogs":
-        return PublicFeedAdapter(
+        return OfficialFeedsAdapter(config.name, config.family, _official_feeds(config), credibility=95.0)
+    if config.name == "huggingface_orgs":
+        return HuggingFaceOrgAdapter(
             config.name,
             config.family,
-            str(config.options.get("feed_url", "https://openai.com/news/rss.xml")),
-            _map_official_feed,
-            credibility=95.0,
+            {str(org): str(provider) for org, provider in dict(config.options.get("orgs", {})).items()},
+            per_org_limit=int(config.options.get("per_org_limit", 50)),
         )
+    if config.name == "ollama":
+        return OllamaBlogAdapter(config.name, config.family)
     endpoint_by_name = {
         "github": "https://api.github.com/search/repositories",
         "npm": "https://registry.npmjs.org/-/v1/search",
@@ -213,6 +381,16 @@ def _public_adapter_for(config: SourceConfig) -> SourceAdapter:
         period_params=_period_params_for(config.name),
         credibility=85.0 if config.name in {"arxiv", "openalex"} else 70.0,
     )
+
+
+def _official_feeds(config: SourceConfig) -> list[dict[str, Any]]:
+    feeds = config.options.get("feeds")
+    if isinstance(feeds, list) and feeds:
+        # Entries without a url are kept so that collect() reports them as a
+        # config error instead of silently shrinking the feed list.
+        return [dict(feed) if isinstance(feed, dict) else {} for feed in feeds]
+    # Legacy single-feed form.
+    return [{"provider": "OpenAI", "url": str(config.options.get("feed_url", "https://openai.com/news/rss.xml"))}]
 
 
 def _query_params_for(config: SourceConfig) -> dict[str, str]:
@@ -378,9 +556,33 @@ def _map_pypi_feed(entry: dict[str, Any]) -> RawItem:
     )
 
 
-def _map_official_feed(entry: dict[str, Any]) -> RawItem:
-    title = entry.get("title")
-    return _make_raw_item("official_blogs", entry, title, entry.get("link"), entry.get("description") or entry.get("summary"), entry.get("published") or entry.get("pubDate"), entry.get("updated") or entry.get("pubDate"), {}, "announcement", raw_id=entry.get("id") or entry.get("guid"), event_type=_official_event_type(str(title or "")))
+def _map_official_feed(
+    entry: dict[str, Any], provider: str = "OpenAI", model_keywords: list[str] | None = None
+) -> RawItem:
+    title = str(entry.get("title") or "")
+    event_type = _official_event_type(title)
+    item = _make_raw_item("official_blogs", entry, title, entry.get("link"), entry.get("description") or entry.get("summary"), entry.get("published") or entry.get("pubDate"), entry.get("updated") or entry.get("pubDate"), {}, "announcement", raw_id=entry.get("id") or entry.get("guid"), event_type=event_type)
+    item.payload["metadata"]["provider"] = provider
+    # model_keywords only mark the entry for the 新モデルリリース section. They do
+    # not change event_type, so the Official override for HOT keeps using the
+    # stricter title rule below.
+    if event_type == "major_model_release" or _mentions_any(title, model_keywords or []):
+        item.payload["metadata"]["model_release"] = {"provider": provider, "channel": "official"}
+    return item
+
+
+def _mentions_any(text: str, keywords: list[str]) -> bool:
+    lowered = text.lower()
+    for keyword in keywords:
+        keyword = keyword.lower()
+        if not keyword:
+            continue
+        # Word-start boundary always; word-end boundary only when the keyword
+        # ends with an alphanumeric (so "gpt-" still matches "gpt-6").
+        tail = r"(?![a-z0-9])" if keyword[-1].isalnum() else ""
+        if re.search(rf"(?<![a-z0-9]){re.escape(keyword)}{tail}", lowered):
+            return True
+    return False
 
 
 def _official_event_type(title: str) -> str:
@@ -393,6 +595,46 @@ def _official_event_type(title: str) -> str:
     if "model" in normalized_title:
         return "major_model_release"
     return "observed_signal"
+
+
+def _map_huggingface_org(item: dict[str, Any], source: str, provider: str) -> RawItem:
+    model_id = item.get("modelId") or item.get("id")
+    raw_item = _make_raw_item(source, item, model_id, f"https://huggingface.co/{model_id}" if model_id else "", item.get("pipeline_tag"), item.get("createdAt"), item.get("createdAt"), {"downloads": item.get("downloads"), "likes": item.get("likes")}, "model", raw_id=model_id)
+    raw_item.payload["metadata"]["model_release"] = {"provider": provider, "channel": "huggingface"}
+    return raw_item
+
+
+_OLLAMA_LIBRARY_LINK = re.compile(r'(?:ollama\.com|href=")/library/([A-Za-z0-9._\-]+)')
+_OLLAMA_RUN = re.compile(r"ollama run ([A-Za-z0-9._\-/]+)")
+
+
+def _ollama_models_in_post(page: str, title: str, url: str) -> list[str]:
+    """Model names (without tags) a blog post introduces; empty for other posts.
+
+    Feature/tutorial posts also link to library pages or show `ollama run`
+    examples, so a mention alone is not enough:
+    - models whose name appears in the post title or URL are adopted;
+    - otherwise, when the title talks about "models" (e.g. "New coding models"),
+      the models it links to in the library are adopted;
+    - anything else is treated as a non-model post.
+    """
+    linked = {_ollama_model_name(name) for name in _OLLAMA_LIBRARY_LINK.findall(page)}
+    run = {_ollama_model_name(name) for name in _OLLAMA_RUN.findall(page)}
+    context = _alnum(f"{title} {url}")
+    named = {name for name in linked | run if _alnum(name) and _alnum(name) in context}
+    if named:
+        return sorted(named)
+    if re.search(r"\bmodels\b", title.lower()):
+        return sorted(name for name in linked if name)
+    return []
+
+
+def _ollama_model_name(name: str) -> str:
+    return name.split(":", 1)[0].rstrip(".")
+
+
+def _alnum(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
 def _make_raw_item(source: str, raw: dict[str, Any], title: object, url: object, summary: object, published_at: object, updated_at: object, metrics: dict[str, Any], content_type: str, raw_id: object | None = None, event_type: str = "observed_signal") -> RawItem:

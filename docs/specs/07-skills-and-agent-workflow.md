@@ -30,6 +30,8 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 
 `agent-daily-run` Skillを実行したAgentとは別セッション・別プロセスのAgentとして、その日のHOT選抜・記事企画・レポートの「質」を検証する。対象hashを固定し、問題があれば`ReviewResult`と人間向けfeedbackを別保存する。最大3回まで再レビューし、起動失敗・記録欠落・hash不一致を承認扱いしない。判断基準は`hot-detection` / `article-ideation`を参照する。
 
+レポートの「注目候補(選抜外)」「新モデルリリース」はCLIが決定論的に生成し実行Agentが修正できないため、内容そのものは指摘対象にしない(HOT選抜の見落とし判断の材料としては参照してよい)。
+
 ### hot-detection
 
 選抜HOTを判定する観点を共有する。全Candidateを通知せず、少数の確認対象へ絞る。

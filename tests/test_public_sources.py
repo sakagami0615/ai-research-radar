@@ -7,6 +7,9 @@ from ai_research_radar.config.settings import load_source_configs
 import ai_research_radar.sources.public as public_module
 from ai_research_radar.schemas.models import RawItem
 from ai_research_radar.sources.public import (
+    HuggingFaceOrgAdapter,
+    OfficialFeedsAdapter,
+    OllamaBlogAdapter,
     PublicArxivAdapter,
     PublicFeedAdapter,
     PublicSearchAdapter,
@@ -63,8 +66,11 @@ def test_default_sources_use_source_appropriate_public_adapters_and_endpoints():
     adapters = build_adapters(load_source_configs(Path("config/sources.yaml")))
     adapters_by_name = {adapter.source_name: adapter for adapter in adapters}
 
-    assert isinstance(adapters_by_name["official_blogs"], PublicFeedAdapter)
-    assert "github.com" not in adapters_by_name["official_blogs"].endpoint
+    assert isinstance(adapters_by_name["official_blogs"], OfficialFeedsAdapter)
+    assert adapters_by_name["official_blogs"].feeds
+    assert all("github.com" not in feed["url"] for feed in adapters_by_name["official_blogs"].feeds)
+    assert isinstance(adapters_by_name["huggingface_orgs"], HuggingFaceOrgAdapter)
+    assert isinstance(adapters_by_name["ollama"], OllamaBlogAdapter)
     assert isinstance(adapters_by_name["pypi"], PublicFeedAdapter)
     assert adapters_by_name["pypi"].endpoint == "https://pypi.org/rss/updates.xml"
 
@@ -353,7 +359,7 @@ def test_feed_adapter_collect_retries_on_503_then_succeeds(monkeypatch):
     adapter = next(
         adapter
         for adapter in build_adapters(load_source_configs(Path("config/sources.yaml")))
-        if adapter.source_name == "official_blogs"
+        if adapter.source_name == "pypi"
     )
     xml = "<?xml version=\"1.0\"?><rss><channel></channel></rss>"
 

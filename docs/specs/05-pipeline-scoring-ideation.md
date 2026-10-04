@@ -37,7 +37,7 @@ v2では`freshness_score`（公開日時から取得までの168時間線形値�
 8. EventからHOT候補を生成する。
 9. 選抜HOTから記事企画候補を生成する。
 10. JSONL成果物を保存する。
-11. Markdownレポートを生成する。
+11. 日次ダイジェスト(注目候補・新モデルリリース)を集約し、Markdownレポートを生成する。
 12. RunMetadataを保存する。
 
 ## Source単位スコア正規化
@@ -86,6 +86,36 @@ HOT scoreは以下を使う。
 標準では、スコアが `minimum_score` 以上のEventを候補にする。公式重大イベントは低スコアでも候補化できる。
 
 `hot_limit` は選抜数を制限する。候補自体は保持し、`selected` でレポート対象かどうかを表す。
+
+## 日次ダイジェスト
+
+日次レポートの「注目候補(選抜外)」「新モデルリリース」は、CLIが決定論的に生成する。Agentは選抜・編集に関与しない。`ai-radar report`(Agent経路)と `ai-radar daily`(決定論経路)の両方で、同じ集約処理(`reporting/digest.py`)を使う。記事企画は生成しない。
+
+### 集約期間と既掲載除外
+
+- 対象日を含む直近3日分(対象日、前日、前々日)のrunを集約する。存在しない日は読み飛ばす。
+- 対象日より前の日の `data/runs/<date>/report_digest.json` に記録された項目は既掲載として除外する。
+- 集約結果に掲載した項目は、対象日の `report_digest.json` に記録する。
+- 過去日の `hot_candidates.jsonl` / `signals.jsonl` が読めない(JSON破損、必須キー欠落など)場合は、その日のそのファイルだけを集約から外し、レポートの注目候補セクションの直前に警告を表示する。ダイジェストは補助情報であり、当日の選抜HOTレポートの生成を失敗させない。
+- レポートの再生成は当日分のみを想定する。過去日を再生成するとその日の `report_digest.json` が上書きされ、翌日以降の除外判定の前提とずれることがある。
+
+### 注目候補(選抜外)
+
+- 入力: 各日の `data/runs/<date>/hot_candidates.jsonl`
+- 対象: `selected=False` の候補(`minimum_score` 以上、またはOfficial Overrideで候補化されたもの)。`event_type` による除外はしない。
+- 集約期間内のどの日かで `selected=True` になった `hot_id` は除外する。
+- 同じ `hot_id` が複数日に出た場合は最新日の候補(スコア)を採用し、初出日は最も古い日とする。
+- スコア降順で最大10件を表示し、超過分は件数のみ表示する。
+- 表示項目: タイトル(先頭Evidence URLへのリンク)、HOT Score、Source(`signals` の `source:` 接頭辞から復元)、Reasons、初出日
+
+### 新モデルリリース
+
+- 入力: 各日の `data/normalized/<date>/signals.jsonl`
+- 対象: `metadata.model_release` を持つSignal
+- 正規化済みURL(空なら `signal_id`)で重複を除き、初出日は最も古い日とする。
+- 提供元(`provider`)ごとにグループ化し、提供元は名前順、各提供元内は公開日の新しい順に並べる。各提供元は最大10件を表示し、超過分は件数のみ表示する。
+- 初版では、同じモデルが公式ブログ・HF・Ollamaに別々に出てもSource別の項目として表示する(名前揺れの統合はしない)。
+- 表示項目: モデル名または記事タイトル(リンク)、チャネル(公式発表 / Hugging Face / Ollama)、公開日。`models` がある場合は「紹介モデル: ...」を併記する。
 
 ## Article Ideation
 
