@@ -88,7 +88,7 @@ Ollamaブログの公式RSS `https://ollama.com/blog/rss.xml` を取得し、期
 
 ## 期間反映
 
-可能なSourceでは、API queryに `since` / `until` を反映する。
+可能なSourceでは、API queryに `since` / `until` を反映する。値は日付またはタイムゾーン付きISO 8601日時を取り得る。日付粒度しか指定できないAPIは、範囲を包含する日付で検索した後、取得済み日時を使って厳密にフィルタする。
 
 API側で完全に期間指定できないSourceでも、取得後に `published_at` または `updated_at` を使って期間フィルタを行う。
 

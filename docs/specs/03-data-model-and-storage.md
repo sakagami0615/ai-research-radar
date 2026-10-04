@@ -168,6 +168,8 @@ MVPでは外部LLMを使わず、決定論的なRole生成、Critique、Debate�
 - `errors`
 - `report_paths`
 
+`since` / `until` は日付またはタイムゾーン付きISO 8601日時を保持する。通常の日次実行では、実行時刻から直近24時間の実際の取得範囲を記録する。
+
 Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。
 
 ## Daily Markdown Report
@@ -177,11 +179,15 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `# AI Daily Radar <date>`
 - `## データ欠落`(収集に完全失敗したSourceがある場合のみ出力)
 - `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
+  - 各HOTの `#### Article Proposals` には、まず概要表(`# | 企画タイトル | Type | Role | Critique`)を出し、続けて企画ごとに `##### <番号>. <title_idea>` 見出しと2列の詳細表(`項目 | 内容`)を出す。詳細表の行は Type / Target Reader / Role / Critique Score / Critique Notes / Debate / Why Now / Technical Angle / Experiment Plan / Unique Angle / Competition / Traffic Opportunity / Technical Opportunity / Risks / Evidence。企画が0件の場合は `記事企画なし` と出す。
+  - `why_now` が決定論的Ideation(`ideation/proposals.py`)の定型文に全体一致する場合だけ、レンダラーが Role / Critique Score / Critique Notes / Debate に分解して表示し、Why Now行は出さない(先頭のHOT score / reasonsは同じHOTセクションに表示済みのため再表示しない)。一致しない自由記述(Agent作成の企画など)は分解せず、Why Now行に全文を出し、概要表のRole / Critiqueは `-` にする。スキーマと保存データは変更しない。
+  - 分解した場合、`risks` のうち表示済みのCritique Notes / Debateと完全一致する要素(`軽量Critique: <note>` / `Debate: <debate>`)は重複として除外する。すべて除外された場合は `Critique Notes / Debateと同じ内容` と出す。
+  - 表崩れと意図しないリンクを防ぐため、セルの値はバックスラッシュ・`[]`・`|`・`<>`をエスケープしたうえで改行を `<br>` に置換し、リストは `<br>` 区切り(Experiment Planは番号付き、Critique Notes / Risksは `・` 付き)にする。`save-proposals` はリスト型を検証しないため、リスト項目に文字列が入っていた場合は1要素として扱う。空の値は `-` にする。見出しはバックスラッシュ・`[]`・`<>`をエスケープし、改行を空白にし、末尾の `#` はATX見出しの閉じ記号にならないようエスケープする。Debateは最大3要素(Advocate / Critic / Editor)に分割し、却下候補のタイトルに `; ` が含まれても分割しない。Evidenceは全URLを `[URL](<URL>)` 形式のリンクで出し、リンク先の `\`・`<>`・`|`・改行はパーセントエンコードする(リンク先のエンコードは収集Source一覧と共通の `_sanitize_url`)。本文中の素のURLは、GFMの自動リンクとして表示されることを許容する。
 - `## 注目候補(選抜外)`: 直近3日分のrunで `minimum_score` 以上だが選抜されなかったHotCandidate(05章「日次ダイジェスト」参照)
 - `## 新モデルリリース`: 直近3日分のrunで `metadata.model_release` を持つSignalを提供元ごとに列挙したもの(05章「日次ダイジェスト」参照)
 - `## Run Summary`: RunMetadataのサマリ(Run ID、期間、Sources、Input/Output Counts)
 - `## Errors`: RunMetadataのerrors
-- `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない)。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。
+- `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない)。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。リンク先URLは `\`・`<>`・`|`・改行をパーセントエンコードする。
 
 ## Report Digest記録
 

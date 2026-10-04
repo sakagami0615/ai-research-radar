@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any
 
 from ai_research_radar.reporting.digest import (
@@ -44,16 +46,7 @@ def render_daily_report(
         )
         lines.extend([f"  - {reason}" for reason in candidate.reasons])
         lines.extend(["", "#### Article Proposals", ""])
-        for proposal in proposals_by_hot.get(candidate.hot_id, []):
-            lines.extend(
-                [
-                    f"- {proposal.title_idea}",
-                    f"  - Type: {proposal.article_type}",
-                    f"  - Why Now: {proposal.why_now}",
-                    f"  - Evidence: {', '.join(proposal.evidence_links)}",
-                ]
-            )
-        lines.append("")
+        lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, [])))
 
     lines.extend(_digest_warnings(digest))
     lines.extend(_notable_section(digest))
@@ -196,11 +189,13 @@ def _sanitize_title(title: str) -> str:
 
 def _sanitize_url(url: str) -> str:
     """Percent-encode angle brackets so a raw '>' cannot terminate the
-    surrounding <...> link-destination syntax early. HTML-entity escaping
-    (&lt;/&gt;) is deliberately not used here because the URL is a link
+    surrounding <...> link-destination syntax early, and backslash, '|' and
+    newlines so they cannot escape the bracket or break the table row.
+    HTML-entity escaping (&lt;/&gt;) is deliberately not used here because the URL is a link
     destination, not visible text, and entities would render literally in
     some viewers instead of being resolved as part of the URL."""
-    return url.replace("<", "%3C").replace(">", "%3E")
+    encoded = url.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E").replace("|", "%7C")
+    return encoded.replace("\r", "%0D").replace("\n", "%0A")
 
 
 def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) -> list[str]:
@@ -257,3 +252,132 @@ def _source_subsection(source: str, items: list[dict[str, Any]]) -> list[str]:
             lines.append(f"| [{title}](<{url}>) | {summary} |")
     lines.extend(["", "</details>", ""])
     return lines
+
+
+_DETERMINISTIC_WHY_NOW = re.compile(
+    r"HOT score (?P<score>\S+) with reasons: (?P<reasons>.*?)\. "
+    r"Role: (?P<role>.+?)\. "
+    r"軽量Critique score: (?P<critique_score>[0-9.]+)/100; (?P<notes>.*)\. "
+    r"Debate: (?P<debate>.*)",
+    re.DOTALL,
+)
+
+
+@dataclass(frozen=True)
+class _IdeationTrace:
+    role: str
+    critique_score: str
+    critique_notes: list[str]
+    debate: str
+
+
+def _parse_why_now(why_now: str) -> _IdeationTrace | None:
+    """Split the why_now text produced by ideation/proposals.py into its
+    labeled parts. Free-text why_now (e.g. written by the agent) does not
+    match and is shown as-is instead."""
+    match = _DETERMINISTIC_WHY_NOW.fullmatch(why_now)
+    if match is None:
+        return None
+    return _IdeationTrace(
+        role=match["role"],
+        critique_score=match["critique_score"],
+        critique_notes=match["notes"].split(" ; "),
+        debate=match["debate"],
+    )
+
+
+def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
+    if not proposals:
+        return ["記事企画なし", ""]
+
+    traces = [_parse_why_now(proposal.why_now) for proposal in proposals]
+    lines = ["| # | 企画タイトル | Type | Role | Critique |", "| --- | --- | --- | --- | --- |"]
+    for index, (proposal, trace) in enumerate(zip(proposals, traces), start=1):
+        role = _cell(trace.role) if trace else "-"
+        critique = f"{trace.critique_score}/100" if trace else "-"
+        lines.append(
+            f"| {index} | {_cell(proposal.title_idea)} | {_cell(proposal.article_type)} | {role} | {critique} |"
+        )
+    lines.append("")
+
+    for index, (proposal, trace) in enumerate(zip(proposals, traces), start=1):
+        lines.extend([f"##### {index}. {_heading(proposal.title_idea)}", ""])
+        lines.extend(["| 項目 | 内容 |", "| --- | --- |"])
+        rows = [("Type", _cell(proposal.article_type)), ("Target Reader", _cell(proposal.target_reader))]
+        risks_value = _bullets(proposal.risks)
+        if trace:
+            rows.extend(
+                [
+                    ("Role", _cell(trace.role)),
+                    ("Critique Score", f"{trace.critique_score}/100"),
+                    ("Critique Notes", _bullets(trace.critique_notes)),
+                    ("Debate", "<br>".join(_cell(part) for part in trace.debate.split("; ", 2))),
+                ]
+            )
+            duplicated = {f"軽量Critique: {note}" for note in trace.critique_notes} | {f"Debate: {trace.debate}"}
+            risks = [risk for risk in _as_list(proposal.risks) if risk not in duplicated]
+            if proposal.risks and not risks:
+                risks_value = "Critique Notes / Debateと同じ内容"
+            else:
+                risks_value = _bullets(risks)
+        else:
+            rows.append(("Why Now", _cell(proposal.why_now)))
+        rows.extend(
+            [
+                ("Technical Angle", _cell(proposal.technical_angle)),
+                ("Experiment Plan", _numbered(proposal.experiment_plan)),
+                ("Unique Angle", _cell(proposal.unique_angle)),
+                ("Competition", _cell(proposal.competition)),
+                ("Traffic Opportunity", _cell(proposal.traffic_opportunity)),
+                ("Technical Opportunity", _cell(proposal.technical_opportunity)),
+                ("Risks", risks_value),
+                ("Evidence", "<br>".join(_evidence_link(url) for url in _as_list(proposal.evidence_links)) or "-"),
+            ]
+        )
+        lines.extend(f"| {label} | {value} |" for label, value in rows)
+        lines.append("")
+    return lines
+
+
+def _escape_text(text: str) -> str:
+    escaped = text.replace("\\", "\\\\")
+    escaped = escaped.replace("[", "\\[").replace("]", "\\]")
+    return escaped.replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _cell(text: str) -> str:
+    """Escape a value for a single table cell. Newlines become <br> after
+    escaping so they cannot terminate the table row."""
+    escaped = _escape_text(str(text)).replace("|", "\\|")
+    escaped = escaped.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
+    return escaped or "-"
+
+
+def _heading(text: str) -> str:
+    escaped = _escape_text(str(text))
+    escaped = escaped.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    if escaped.endswith("#"):
+        # A trailing "#" would be consumed as the ATX heading's closing sequence.
+        escaped = escaped[:-1] + "\\#"
+    return escaped
+
+
+def _as_list(items: list[str] | str) -> list[str]:
+    """save-proposals does not type-check list fields, so an agent may pass a
+    plain string; treat it as one item instead of iterating characters."""
+    return [items] if isinstance(items, str) else list(items)
+
+
+def _bullets(items: list[str] | str) -> str:
+    items = _as_list(items)
+    return "<br>".join(f"・{_cell(item)}" for item in items) or "-"
+
+
+def _numbered(items: list[str] | str) -> str:
+    items = _as_list(items)
+    return "<br>".join(f"{index}. {_cell(item)}" for index, item in enumerate(items, start=1)) or "-"
+
+
+def _evidence_link(url: str) -> str:
+    text = _cell(url)
+    return f"[{text}](<{_sanitize_url(url)}>)"

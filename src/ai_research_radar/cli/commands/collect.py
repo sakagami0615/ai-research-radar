@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import date as date_cls
-from datetime import timedelta
 from pathlib import Path
 
 from ai_research_radar.cli.commands.run_state import (
@@ -13,6 +12,7 @@ from ai_research_radar.cli.commands.run_state import (
     save_run_state,
 )
 from ai_research_radar.config.settings import load_source_configs
+from ai_research_radar.periods import default_period, period_date, previous_day_period
 from ai_research_radar.sources.base import SourceError
 from ai_research_radar.sources.public import build_adapters
 from ai_research_radar.storage.jsonl import write_jsonl
@@ -29,14 +29,18 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    until = args.until or date_cls.today().isoformat()
-    since = args.since or (date_cls.fromisoformat(until) - timedelta(days=1)).isoformat()
+    if args.since is None and args.until is None:
+        since, until = default_period()
+    else:
+        until = args.until or date_cls.today().isoformat()
+        since = args.since or previous_day_period(until)
+    run_date = period_date(until)
     data_dir = Path(args.data_dir)
 
     configs = load_source_configs(Path(args.sources_config))
     adapters = build_adapters(configs)
 
-    state = load_run_state(data_dir, until)
+    state = load_run_state(data_dir, run_date)
     state["since"] = since
     state["until"] = until
     state["sources"] = [adapter.source_name for adapter in adapters]
@@ -59,7 +63,7 @@ def run(args: argparse.Namespace) -> int:
         state["input_counts"][adapter.source_name] = len(collected)
         total_raw_items += len(collected)
         try:
-            write_jsonl(data_dir / "raw" / until / f"{adapter.source_name}.jsonl", collected)
+            write_jsonl(data_dir / "raw" / run_date / f"{adapter.source_name}.jsonl", collected)
         except Exception as exc:  # noqa: BLE001
             add_error(state, adapter.source_name, "raw_write_error", str(exc))
 
@@ -75,15 +79,15 @@ def run(args: argparse.Namespace) -> int:
 
     state["output_counts"]["raw_items"] = total_raw_items
     try:
-        write_jsonl(data_dir / "collected" / until / "signals.jsonl", collected_signals)
+        write_jsonl(data_dir / "collected" / run_date / "signals.jsonl", collected_signals)
     except Exception as exc:  # noqa: BLE001
         add_error(state, "collect", "signals_write_error", str(exc))
-        save_run_state(data_dir, until, state)
+        save_run_state(data_dir, run_date, state)
         print(str(exc))
         return 1
 
     mark_stage_completed(state, COMMAND_NAME)
-    save_run_state(data_dir, until, state)
+    save_run_state(data_dir, run_date, state)
 
-    print(until)
+    print(run_date)
     return 0

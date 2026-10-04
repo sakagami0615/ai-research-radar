@@ -136,6 +136,8 @@ ArticleProposalのスキーマは変えず、以下に判断結果を残す。
 - `unique_angle`
 - `risks`
 
+`why_now` の定型文(`HOT score ... with reasons: .... Role: .... 軽量Critique score: N/100; <notes>. Debate: <debate>`)は、日次レポートのレンダラーがRole / Critique / Debateの表示行に分解するために使う。文言を変える場合は `reporting/markdown.py` の分解パターンと、生成結果を分解するテスト(`tests/test_reporting.py`)を合わせて更新する。
+
 Evidence URLがないHOT候補からは記事企画を生成しない。
 
 ## エラー処理

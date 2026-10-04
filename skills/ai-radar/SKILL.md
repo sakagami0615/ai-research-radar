@@ -11,8 +11,8 @@ AI関連SourceからSignalを収集し、日次HOT検知と記事企画候補生
 
 ## 入力
 
-- `--since`: 収集開始日
-- `--until`: 収集終了日
+- `--since`: 収集開始日またはタイムゾーン付きISO 8601日時。省略時は`--until`または実行時刻から決まる。
+- `--until`: 収集終了日またはタイムゾーン付きISO 8601日時。`--since` / `--until` の両方を省略した場合は、実行時刻から直近24時間。
 - `--data-dir`: JSONL保存先
 - `--reports-dir`: Markdownレポート保存先
 
