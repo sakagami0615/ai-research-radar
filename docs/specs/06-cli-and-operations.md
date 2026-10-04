@@ -22,6 +22,16 @@ ai-radar daily \
   --hot-limit 5
 ```
 
+### Agent経路のサブコマンド
+
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。概要(05章「注目候補の概要補完」)に関わる引数は次の通り。
+
+- `select-hot --summary <hot_id>=<概要>`: 候補の `summary` を保存する。繰り返し指定できる。指定しなかった候補は既存の `summary` を保持し、同じ候補を再指定した場合は置き換える。未知の `hot_id` や空の概要は `invalid_summary` として終了コード1にする。
+  - 選抜した候補に概要がない(今回の指定にも既存データにもない)場合は `missing_summary` として終了コード1にし、`hot_candidates.jsonl` を書き換えない。
+  - 選抜外の候補に概要がない場合は、終了コード0のまま `run_state.json` の `errors` に `missing_summary_warning` として件数と `hot_id` を記録する。
+- `add-summary --date <date> --summary <hot_id>=<概要>`: 当日の注目候補に表示する過去日の候補などの概要を `data/runs/<date>/digest_summaries.json` に保存する。繰り返し指定できる。`hot_id` は当日のレポートに表示される注目候補のうち、候補自身が `summary` を持たないもの(`report --list-missing-summaries` の対象と、すでに `add-summary` で補完済みの項目)に限る。候補自身の `summary` が優先されるため、それ以外への保存は表示に反映されない。対象外の `hot_id`、空の概要、`--summary` の指定なしは `invalid_summary` として終了コード1にする(このときファイルは書き換えない)。パイプラインのステージ(`stages_completed`)としては扱わない。
+- `report --list-missing-summaries`: 概要がない注目候補(表示分のみ)をJSON Linesで出力する。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
+
 ## 設定ファイル
 
 設定は `config/` 配下に置く。
@@ -37,7 +47,7 @@ CLI引数は設定ファイルより優先される。
 
 ## cron想定
 
-推奨はcronから `claude -p` / `codex exec` を直接起動するAI Agent(Claude Code / Codex)経由の実行である(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` の実行、対象日の判定、レビュー・修正ループまでAgent自身が判断して行う。
+推奨はcronから `claude -p` / `codex exec` を直接起動するAI Agent(Claude Code / Codex)経由の実行である(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` の実行、概要の作成・補完、対象日の判定、レビュー・修正ループまでAgent自身が判断して行う。
 
 `ai-radar`/`claude`/`codex` はいずれもPATH依存のコマンドであり、cronの実行環境には通常PATHが通っていないため、crontabファイル先頭に `PATH=` 行が必要になる。同日の多重実行(ログが混ざる)を防ぐため `flock -n` で排他制御し、レポート未生成時にcronの失敗通知が機能するよう末尾で `test -f` による確認を行う。
 
@@ -66,7 +76,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 1. CLIが終了コード0で終わるか確認する。
 2. `data/runs/<date>/run.jsonl` を確認する。
 3. `errors` にSource失敗がないか確認する。
-4. `reports/daily/<date>.md` を確認する。選抜HOTの下に「注目候補(選抜外)」「新モデルリリース」が直近3日分の未掲載項目として出る。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
+4. `reports/daily/<date>.md` を確認する。選抜HOTの下に「注目候補(選抜外)」「新モデルリリース」が直近3日分の未掲載項目として出る。選抜HOTと注目候補には各項目の見出し直後に日本語の概要が出る(Agent経路のみ。決定論経路では「概要未作成」)。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
 5. HOT候補のEvidence URLを確認する。
 
 ## 外部ネットワーク制約

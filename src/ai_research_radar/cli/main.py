@@ -4,6 +4,7 @@ import argparse
 from datetime import date
 from pathlib import Path
 
+from ai_research_radar.cli.commands import add_summary as add_summary_command
 from ai_research_radar.cli.commands import collect as collect_command
 from ai_research_radar.cli.commands import normalize as normalize_command
 from ai_research_radar.cli.commands import report as report_command
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     score_command.add_subparser(subparsers)
     select_hot_command.add_subparser(subparsers)
     save_proposals_command.add_subparser(subparsers)
+    add_summary_command.add_subparser(subparsers)
     report_command.add_subparser(subparsers)
 
     try:
@@ -90,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
         return select_hot_command.run(args)
     if args.command == save_proposals_command.COMMAND_NAME:
         return save_proposals_command.run(args)
+    if args.command == add_summary_command.COMMAND_NAME:
+        return add_summary_command.run(args)
     if args.command == report_command.COMMAND_NAME:
         return report_command.run(args)
     return 2

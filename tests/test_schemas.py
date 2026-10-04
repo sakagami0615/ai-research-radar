@@ -168,3 +168,16 @@ def test_event_from_dict_round_trips_through_json():
     restored = event_from_dict(to_json_dict(event))
 
     assert restored == event
+
+
+def test_decode_hot_reads_summary_and_defaults_to_empty_for_legacy_records():
+    from dataclasses import asdict
+
+    from ai_research_radar.schemas.decoders import decode_hot
+
+    candidate = HotCandidate("hot:a", "A", "a", 80.0, [], [], [], [], False, summary="概要")
+    legacy = asdict(candidate)
+    del legacy["summary"]
+
+    assert decode_hot(asdict(candidate)).summary == "概要"
+    assert decode_hot(legacy).summary == ""

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from dataclasses import replace
 from datetime import datetime, timezone, tzinfo
 from pathlib import Path
@@ -14,7 +16,11 @@ from ai_research_radar.cli.commands.run_state import (
     save_run_state,
 )
 from ai_research_radar.config.settings import load_runtime_config, resolve_display_timezone
-from ai_research_radar.reporting.digest import build_daily_digest, save_digest_record
+from ai_research_radar.reporting.digest import (
+    build_daily_digest,
+    missing_summaries,
+    save_digest_record,
+)
 from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.schemas.decoders import decode_hot, decode_proposal
 from ai_research_radar.schemas.models import RunMetadata
@@ -31,11 +37,19 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--reports-dir", default="reports")
     parser.add_argument("--runtime-config", default="config/runtime.yaml")
+    parser.add_argument(
+        "--list-missing-summaries",
+        action="store_true",
+        help="print displayed notable items without a summary as JSON Lines, writing nothing",
+    )
 
 
 def run(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir)
     date = args.date
+
+    if args.list_missing_summaries:
+        return _list_missing_summaries(data_dir, date)
 
     state = load_run_state(data_dir, date)
     reset_errors_for(state, ["pipeline", COMMAND_NAME])
@@ -119,3 +133,18 @@ def _display_timezone(runtime_config: Path) -> tzinfo:
     except (OSError, ValueError, yaml.YAMLError):
         return timezone.utc
     return resolve_display_timezone(runtime)
+
+
+def _list_missing_summaries(data_dir: Path, date: str) -> int:
+    digest = build_daily_digest(data_dir, date)
+    for warning in digest.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    for item in missing_summaries(digest):
+        record = {
+            "hot_id": item.candidate.hot_id,
+            "title": item.candidate.title,
+            "first_seen": item.first_seen,
+            "evidence_urls": list(item.candidate.evidence_urls),
+        }
+        print(json.dumps(record, ensure_ascii=False))
+    return 0
