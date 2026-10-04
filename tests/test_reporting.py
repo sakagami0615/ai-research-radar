@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from ai_research_radar.reporting.markdown import render_daily_report
@@ -536,7 +537,7 @@ def test_article_proposals_drop_risks_that_duplicate_critique_and_debate_rows():
 
     hot = _selected_hot()
     proposal = generate_article_proposals(hot, max_proposals=1)[0]
-    extra = ArticleProposal(**{**proposal.__dict__, "risks": [*proposal.risks, "独自リスク"]})
+    extra = replace(proposal, risks=[*proposal.risks, "独自リスク"])
 
     markdown = render_daily_report("2026-09-25", [hot], [extra], _run_with_single_github_source(), [])
 
@@ -617,3 +618,57 @@ def test_article_proposals_point_to_critique_rows_when_all_risks_are_duplicates(
     markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
 
     assert "| Risks | Critique Notes / Debateと同じ内容 |" in markdown
+
+
+def test_article_proposals_do_not_turn_link_syntax_in_title_into_links():
+    hot = _selected_hot()
+    proposal = _free_text_proposal(title_idea="[click](https://evil.example) 解説")
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert "##### 1. \\[click\\](https://evil.example) 解説" in markdown
+    assert "| 1 | \\[click\\](https://evil.example) 解説 |" in markdown
+    assert "[click](" not in markdown
+
+
+def test_article_proposals_escape_trailing_hash_in_heading():
+    hot = _selected_hot()
+    proposal = _free_text_proposal(title_idea="C #")
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert "##### 1. C \\#\n" in markdown
+
+
+def test_article_proposals_keep_rejected_titles_containing_semicolon_in_one_debate_line():
+    from ai_research_radar.ideation.proposals import generate_article_proposals
+
+    hot = replace(_selected_hot(), topic="t; y")
+    proposal = generate_article_proposals(hot, max_proposals=1)[0]
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+    debate_row = next(line for line in markdown.splitlines() if line.startswith("| Debate |"))
+
+    assert debate_row.count("<br>") == 2
+    assert "却下候補: t; yを" in debate_row
+
+
+def test_article_proposals_treat_string_list_fields_as_single_item():
+    hot = _selected_hot()
+    proposal = _free_text_proposal(risks="単一のリスク", experiment_plan="単一の手順")
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert "| Risks | ・単一のリスク |" in markdown
+    assert "| Experiment Plan | 1. 単一の手順 |" in markdown
+
+
+def test_article_proposals_percent_encode_backslash_and_newline_in_evidence_url():
+    hot = _selected_hot()
+    proposal = _free_text_proposal(evidence_links=["https://a.example/x\\", "https://a.example/y\nz"])
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert "(<https://a.example/x%5C>)" in markdown
+    assert "(<https://a.example/y%0Az>)" in markdown
+    _assert_tables_well_formed(markdown)

@@ -113,7 +113,8 @@ def _sanitize_url(url: str) -> str:
     (&lt;/&gt;) is deliberately not used here because the URL is a link
     destination, not visible text, and entities would render literally in
     some viewers instead of being resolved as part of the URL."""
-    return url.replace("<", "%3C").replace(">", "%3E")
+    encoded = url.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E")
+    return encoded.replace("\r", "%0D").replace("\n", "%0A")
 
 
 def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) -> list[str]:
@@ -229,11 +230,11 @@ def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
                     ("Role", _cell(trace.role)),
                     ("Critique Score", f"{trace.critique_score}/100"),
                     ("Critique Notes", _bullets(trace.critique_notes)),
-                    ("Debate", "<br>".join(_cell(part) for part in trace.debate.split("; "))),
+                    ("Debate", "<br>".join(_cell(part) for part in trace.debate.split("; ", 2))),
                 ]
             )
             duplicated = {f"軽量Critique: {note}" for note in trace.critique_notes} | {f"Debate: {trace.debate}"}
-            risks = [risk for risk in proposal.risks if risk not in duplicated]
+            risks = [risk for risk in _as_list(proposal.risks) if risk not in duplicated]
             if proposal.risks and not risks:
                 risks_value = "Critique Notes / Debateと同じ内容"
             else:
@@ -249,7 +250,7 @@ def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
                 ("Traffic Opportunity", _cell(proposal.traffic_opportunity)),
                 ("Technical Opportunity", _cell(proposal.technical_opportunity)),
                 ("Risks", risks_value),
-                ("Evidence", "<br>".join(_evidence_link(url) for url in proposal.evidence_links) or "-"),
+                ("Evidence", "<br>".join(_evidence_link(url) for url in _as_list(proposal.evidence_links)) or "-"),
             ]
         )
         lines.extend(f"| {label} | {value} |" for label, value in rows)
@@ -259,6 +260,7 @@ def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
 
 def _escape_text(text: str) -> str:
     escaped = text.replace("\\", "\\\\")
+    escaped = escaped.replace("[", "\\[").replace("]", "\\]")
     return escaped.replace("<", "&lt;").replace(">", "&gt;")
 
 
@@ -272,18 +274,30 @@ def _cell(text: str) -> str:
 
 def _heading(text: str) -> str:
     escaped = _escape_text(str(text))
-    return escaped.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    escaped = escaped.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    if escaped.endswith("#"):
+        # A trailing "#" would be consumed as the ATX heading's closing sequence.
+        escaped = escaped[:-1] + "\\#"
+    return escaped
 
 
-def _bullets(items: list[str]) -> str:
+def _as_list(items: list[str] | str) -> list[str]:
+    """save-proposals does not type-check list fields, so an agent may pass a
+    plain string; treat it as one item instead of iterating characters."""
+    return [items] if isinstance(items, str) else list(items)
+
+
+def _bullets(items: list[str] | str) -> str:
+    items = _as_list(items)
     return "<br>".join(f"・{_cell(item)}" for item in items) or "-"
 
 
-def _numbered(items: list[str]) -> str:
+def _numbered(items: list[str] | str) -> str:
+    items = _as_list(items)
     return "<br>".join(f"{index}. {_cell(item)}" for index, item in enumerate(items, start=1)) or "-"
 
 
 def _evidence_link(url: str) -> str:
-    text = _cell(url).replace("[", "\\[").replace("]", "\\]")
+    text = _cell(url)
     destination = _sanitize_url(url).replace("|", "%7C")
     return f"[{text}](<{destination}>)"
