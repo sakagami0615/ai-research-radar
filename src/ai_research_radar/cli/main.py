@@ -15,6 +15,7 @@ from ai_research_radar.config.settings import (
     load_runtime_config,
     load_scoring_config,
     load_source_configs,
+    resolve_display_timezone,
 )
 from ai_research_radar.pipeline.daily import run_daily
 from ai_research_radar.periods import default_period, previous_day_period
@@ -77,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
                 else float(hot_selection.get("minimum_score", 75.0))
             ),
             hot_score_weights=dict(scoring.get("hot_score", {})),
+            display_timezone=resolve_display_timezone(runtime),
         )
         print(result.report_path)
         return 0

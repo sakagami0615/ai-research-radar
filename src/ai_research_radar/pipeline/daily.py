@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 
 from ai_research_radar.ideation.proposals import generate_article_proposals
@@ -47,6 +47,7 @@ def run_daily(
     hot_limit: int = 5,
     minimum_score: float = 75.0,
     hot_score_weights: dict[str, float] | None = None,
+    display_timezone: tzinfo | None = None,
 ) -> DailyPipelineResult:
     started_at = datetime.now(timezone.utc)
     date = period_date(until)
@@ -150,6 +151,7 @@ def run_daily(
                 run,
                 [to_json_dict(signal) for signal in deduped_signals],
                 digest,
+                display_timezone=display_timezone,
             ),
             encoding="utf-8",
         )

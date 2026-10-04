@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
@@ -682,4 +683,101 @@ def test_source_appendix_percent_encodes_pipe_backslash_and_newline_in_url():
     markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
 
     assert "[Repo](<https://example.com/a%7Cb%5Cc%0Ad>)" in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def _run_summary_run(**overrides) -> RunMetadata:
+    values = dict(
+        run_id="2026-10-04T02:09:55.419525+00:00",
+        started_at=datetime(2026, 10, 4, 2, 9, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 10, 4, 2, 10, tzinfo=timezone.utc),
+        mode="agent",
+        since="2026-10-03T02:09:55.415606+00:00",
+        until="2026-10-04T02:09:55.415606+00:00",
+        sources=["github", "arxiv"],
+        input_counts={"arxiv": 0, "github": 30},
+        output_counts={"events": 366, "signals": 395},
+        errors=[],
+        report_paths=[],
+    )
+    values.update(overrides)
+    return RunMetadata(**values)
+
+
+def _run_summary(markdown: str) -> str:
+    return markdown.split("## Run Summary")[1].split("## Errors")[0]
+
+
+def test_run_summary_is_rendered_as_key_value_table():
+    markdown = render_daily_report(
+        "2026-10-04", [], [], _run_summary_run(), [], display_timezone=ZoneInfo("Asia/Tokyo")
+    )
+
+    summary = _run_summary(markdown)
+    assert "| 項目 | 内容 |" in summary
+    assert "| --- | --- |" in summary
+    assert "| Run ID | 2026-10-04T02:09:55.419525+00:00 |" in summary
+    assert "| Period | 2026-10-03 11:09 〜 2026-10-04 11:09 (JST) |" in summary
+    assert "| Sources | github, arxiv |" in summary
+    assert "| Input Counts | arxiv: 0, github: 30 |" in summary
+    assert "| Output Counts | events: 366, signals: 395 |" in summary
+    assert "- Run ID" not in summary
+    _assert_tables_well_formed(markdown)
+
+
+def test_run_summary_period_defaults_to_utc():
+    markdown = render_daily_report("2026-10-04", [], [], _run_summary_run(), [])
+
+    assert "| Period | 2026-10-03 02:09 〜 2026-10-04 02:09 (UTC) |" in _run_summary(markdown)
+
+
+def test_run_summary_period_treats_naive_datetime_as_utc():
+    run = _run_summary_run(since="2026-10-03T00:00:00", until="2026-10-04T00:00:00")
+
+    markdown = render_daily_report("2026-10-04", [], [], run, [], display_timezone=ZoneInfo("Asia/Tokyo"))
+
+    assert "| Period | 2026-10-03 09:00 〜 2026-10-04 09:00 (JST) |" in _run_summary(markdown)
+
+
+def test_run_summary_period_keeps_date_only_and_unparseable_values_as_is():
+    date_only = render_daily_report(
+        "2026-10-04",
+        [],
+        [],
+        _run_summary_run(since="2026-10-03", until="2026-10-04"),
+        [],
+        display_timezone=ZoneInfo("Asia/Tokyo"),
+    )
+    mixed = render_daily_report(
+        "2026-10-04",
+        [],
+        [],
+        _run_summary_run(since="not-a-dateTime", until="2026-10-04T02:09:55+00:00"),
+        [],
+        display_timezone=ZoneInfo("Asia/Tokyo"),
+    )
+
+    out_of_range = render_daily_report(
+        "2026-10-04",
+        [],
+        [],
+        _run_summary_run(since="0001-01-01T00:00:00", until="2026-10-04T02:09:55+00:00"),
+        [],
+        display_timezone=ZoneInfo("America/New_York"),
+    )
+
+    assert "| Period | 2026-10-03 〜 2026-10-04 |" in _run_summary(date_only)
+    assert "| Period | 0001-01-01T00:00:00 〜 2026-10-03 22:09 |" in _run_summary(out_of_range)
+    assert "| Period | not-a-dateTime 〜 2026-10-04 11:09 |" in _run_summary(mixed)
+
+
+def test_run_summary_escapes_cells_and_shows_placeholder_for_empty_values():
+    run = _run_summary_run(sources=[], input_counts={}, output_counts={"a|b": 1})
+
+    markdown = render_daily_report("2026-10-04", [], [], run, [])
+
+    summary = _run_summary(markdown)
+    assert "| Sources | - |" in summary
+    assert "| Input Counts | - |" in summary
+    assert "| Output Counts | a\\|b: 1 |" in summary
     _assert_tables_well_formed(markdown)

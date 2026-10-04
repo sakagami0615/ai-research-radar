@@ -4,8 +4,10 @@ import argparse
 import json
 import sys
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
+
+import yaml
 
 from ai_research_radar.cli.commands.run_state import (
     add_error,
@@ -13,6 +15,7 @@ from ai_research_radar.cli.commands.run_state import (
     reset_errors_for,
     save_run_state,
 )
+from ai_research_radar.config.settings import load_runtime_config, resolve_display_timezone
 from ai_research_radar.reporting.digest import (
     build_daily_digest,
     missing_summaries,
@@ -33,6 +36,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--date", required=True)
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--reports-dir", default="reports")
+    parser.add_argument("--runtime-config", default="config/runtime.yaml")
     parser.add_argument(
         "--list-missing-summaries",
         action="store_true",
@@ -93,7 +97,15 @@ def run(args: argparse.Namespace) -> int:
     )
 
     digest = build_daily_digest(data_dir, date)
-    markdown = render_daily_report(date, hot_candidates, proposals, run_without_report, signals, digest)
+    markdown = render_daily_report(
+        date,
+        hot_candidates,
+        proposals,
+        run_without_report,
+        signals,
+        digest,
+        display_timezone=_display_timezone(Path(args.runtime_config)),
+    )
 
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,6 +123,16 @@ def run(args: argparse.Namespace) -> int:
     write_jsonl(data_dir / "runs" / date / "run.jsonl", [final_run])
     print(report_path)
     return 0
+
+
+def _display_timezone(runtime_config: Path) -> tzinfo:
+    """The timezone only affects how the period is displayed, so an unreadable
+    runtime config falls back to UTC instead of blocking the report."""
+    try:
+        runtime = load_runtime_config(runtime_config)
+    except (OSError, ValueError, yaml.YAMLError):
+        return timezone.utc
+    return resolve_display_timezone(runtime)
 
 
 def _list_missing_summaries(data_dir: Path, date: str) -> int:
