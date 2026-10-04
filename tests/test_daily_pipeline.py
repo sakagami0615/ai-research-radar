@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from ai_research_radar.pipeline.daily import run_daily
 from ai_research_radar.schemas.models import RawItem
@@ -146,3 +147,24 @@ def test_run_daily_records_report_write_failure_in_run_metadata(tmp_path: Path):
 
     run = read_jsonl(tmp_path / "data" / "runs" / "2026-09-25" / "run.jsonl")[0]
     assert run["errors"][-1]["type"] == "report_write_error"
+
+
+def test_run_daily_renders_period_in_given_display_timezone(tmp_path: Path):
+    adapter = FixtureAdapter(
+        source_name="github",
+        source_family="technology",
+        fixture_path=Path("tests/fixtures/sample_raw_items.jsonl"),
+    )
+
+    result = run_daily(
+        adapters=[adapter],
+        since="2026-09-24T00:00:00+00:00",
+        until="2026-09-25T00:00:00+00:00",
+        output_dir=tmp_path / "data",
+        report_dir=tmp_path / "reports",
+        minimum_score=0,
+        display_timezone=ZoneInfo("Asia/Tokyo"),
+    )
+
+    report = result.report_path.read_text(encoding="utf-8")
+    assert "| Period | 2026-09-24 09:00 〜 2026-09-25 09:00 (JST) |" in report

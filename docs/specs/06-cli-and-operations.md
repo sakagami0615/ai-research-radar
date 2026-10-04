@@ -28,10 +28,12 @@ ai-radar daily \
 
 - `sources.yaml`: Source一覧、family、adapter、keyword、RSS URL、新モデル検知の監視対象(公式feed、HF org、Ollama)など
 - `scoring.yaml`: HOT判定の重み、閾値、選抜数
-- `runtime.yaml`: 出力先などの実行時設定
+- `runtime.yaml`: 出力先(`output`)、レポートの表示用タイムゾーン(`runtime.timezone`、IANA名)などの実行時設定
 - `categories.yaml`: category定義の予約設定。現行MVPのPipelineはまだ読み込まず、公開SourceのカテゴリはAdapter側で付与する。
 
 CLI引数は設定ファイルより優先される。
+
+`runtime.timezone` は日次レポートのRun Summaryに出すPeriodの表示にだけ使う(期間の計算やファイル名の日付には使わない)。`ai-radar daily` と `ai-radar report` はどちらも `--runtime-config`(既定 `config/runtime.yaml`)から読み込む。`report` では、ファイルが無い・読めない、`runtime.timezone` が無い、タイムゾーン名が不正のいずれでもレポート生成を止めず、UTCで表示する(表記は `(UTC)`)。`daily` はこれまで通りruntime設定ファイルが無ければエラーになるが、`runtime.timezone` が無い・不正な場合は同じくUTCで表示する。
 
 ## cron想定
 

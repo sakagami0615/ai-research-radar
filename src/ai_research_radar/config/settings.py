@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timezone, tzinfo
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -54,3 +56,16 @@ def load_scoring_config(path: Path) -> dict[str, Any]:
 
 def load_runtime_config(path: Path) -> dict[str, Any]:
     return load_yaml_config(path)
+
+
+def resolve_display_timezone(runtime: dict[str, Any]) -> tzinfo:
+    """Return `runtime.timezone` for displaying report times. A missing or
+    invalid name falls back to UTC so a config typo never blocks the report."""
+    section = runtime.get("runtime")
+    name = section.get("timezone") if isinstance(section, dict) else None
+    if not isinstance(name, str):
+        return timezone.utc
+    try:
+        return ZoneInfo(name)
+    except (ValueError, LookupError, OSError):
+        return timezone.utc

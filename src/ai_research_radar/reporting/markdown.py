@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone, tzinfo
 from typing import Any
 
 from ai_research_radar.reporting.digest import (
@@ -20,6 +21,7 @@ def render_daily_report(
     run: RunMetadata,
     signals: list[dict[str, Any]],
     digest: DailyDigest | None = None,
+    display_timezone: tzinfo | None = None,
 ) -> str:
     digest = digest or DailyDigest()
     selected_hot = [candidate for candidate in hot_candidates if candidate.selected]
@@ -51,13 +53,8 @@ def render_daily_report(
     lines.extend(_digest_warnings(digest))
     lines.extend(_notable_section(digest))
     lines.extend(_model_release_section(digest))
-    lines.extend(["## Run Summary", ""])
-    lines.append(f"- Run ID: {run.run_id}")
-    lines.append(f"- Period: {run.since} to {run.until}")
-    lines.append(f"- Sources: {', '.join(run.sources)}")
-    lines.append(f"- Input Counts: {run.input_counts}")
-    lines.append(f"- Output Counts: {run.output_counts}")
-    lines.extend(["", "## Errors", ""])
+    lines.extend(_run_summary_section(run, display_timezone or timezone.utc))
+    lines.extend(["## Errors", ""])
     if not run.errors:
         lines.append("なし")
     else:
@@ -66,6 +63,51 @@ def render_daily_report(
     lines.append("")
     lines.extend(_source_appendix_section(run, signals))
     return "\n".join(lines)
+
+
+def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str]:
+    rows = [
+        ("Run ID", run.run_id),
+        ("Period", _format_period(run.since, run.until, display_timezone)),
+        ("Sources", ", ".join(run.sources)),
+        ("Input Counts", _format_counts(run.input_counts)),
+        ("Output Counts", _format_counts(run.output_counts)),
+    ]
+    lines = ["## Run Summary", "", "| 項目 | 内容 |", "| --- | --- |"]
+    lines.extend(f"| {label} | {_cell(value)} |" for label, value in rows)
+    lines.append("")
+    return lines
+
+
+def _format_counts(counts: dict[str, int]) -> str:
+    return ", ".join(f"{key}: {value}" for key, value in counts.items())
+
+
+def _format_period(since: str, until: str, display_timezone: tzinfo) -> str:
+    start = _to_display_time(since, display_timezone)
+    end = _to_display_time(until, display_timezone)
+    period = f"{_display_or_raw(start, since)} 〜 {_display_or_raw(end, until)}"
+    if start is None or end is None:
+        return period
+    return f"{period} ({end.strftime('%Z')})"
+
+
+def _to_display_time(value: str, display_timezone: tzinfo) -> datetime | None:
+    """Convert an ISO datetime to the display timezone. Date-only,
+    unparseable or out-of-range values return None so they are shown verbatim."""
+    if "T" not in value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(display_timezone)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _display_or_raw(value: datetime | None, raw: str) -> str:
+    return value.strftime("%Y-%m-%d %H:%M") if value is not None else raw
 
 
 _CHANNEL_LABELS = {"official": "公式発表", "huggingface": "Hugging Face", "ollama": "Ollama"}

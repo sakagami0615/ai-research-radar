@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from ai_research_radar.cli.commands.run_state import save_run_state
 from ai_research_radar.cli.main import main
 from ai_research_radar.sources.fixtures import FixtureAdapter
 from ai_research_radar.storage.jsonl import read_jsonl
@@ -223,3 +224,69 @@ def test_cli_report_includes_source_appendix_from_normalized_signals(tmp_path: P
     assert "## 収集Source一覧" in report_text
     assert "### github (1件)" in report_text
     assert "### other (1件)" in report_text
+
+
+def _write_iso_period_run_state(data_dir: Path) -> None:
+    save_run_state(
+        data_dir,
+        "2026-10-04",
+        {
+            "run_id": "2026-10-04T02:09:55.419525+00:00",
+            "since": "2026-10-03T02:09:55+00:00",
+            "until": "2026-10-04T02:09:55+00:00",
+            "sources": ["github"],
+            "stages_completed": [],
+            "input_counts": {"github": 1},
+            "output_counts": {},
+            "errors": [],
+        },
+    )
+
+
+def _report_period_row(tmp_path: Path, extra_args: list[str]) -> str:
+    data_dir = tmp_path / "data"
+    reports_dir = tmp_path / "reports"
+    _write_iso_period_run_state(data_dir)
+
+    exit_code = main(
+        ["report", "--date", "2026-10-04", "--data-dir", str(data_dir), "--reports-dir", str(reports_dir)]
+        + extra_args
+    )
+
+    assert exit_code == 0
+    report_text = (reports_dir / "daily" / "2026-10-04.md").read_text(encoding="utf-8")
+    return next(line for line in report_text.splitlines() if line.startswith("| Period |"))
+
+
+def test_cli_report_shows_period_in_runtime_config_timezone(tmp_path: Path):
+    runtime_config = tmp_path / "runtime.yaml"
+    runtime_config.write_text("runtime:\n  timezone: Asia/Tokyo\n", encoding="utf-8")
+
+    row = _report_period_row(tmp_path, ["--runtime-config", str(runtime_config)])
+
+    assert row == "| Period | 2026-10-03 11:09 〜 2026-10-04 11:09 (JST) |"
+
+
+def test_cli_report_defaults_to_runtime_config_in_working_directory(tmp_path: Path, monkeypatch):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "runtime.yaml").write_text("runtime:\n  timezone: Asia/Tokyo\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    row = _report_period_row(tmp_path, [])
+
+    assert row == "| Period | 2026-10-03 11:09 〜 2026-10-04 11:09 (JST) |"
+
+
+def test_cli_report_falls_back_to_utc_when_runtime_config_is_missing(tmp_path: Path):
+    row = _report_period_row(tmp_path, ["--runtime-config", str(tmp_path / "missing.yaml")])
+
+    assert row == "| Period | 2026-10-03 02:09 〜 2026-10-04 02:09 (UTC) |"
+
+
+def test_cli_report_falls_back_to_utc_when_runtime_config_is_broken(tmp_path: Path):
+    runtime_config = tmp_path / "runtime.yaml"
+    runtime_config.write_text("runtime: [unclosed\n", encoding="utf-8")
+
+    row = _report_period_row(tmp_path, ["--runtime-config", str(runtime_config)])
+
+    assert row == "| Period | 2026-10-03 02:09 〜 2026-10-04 02:09 (UTC) |"
