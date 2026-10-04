@@ -672,3 +672,14 @@ def test_article_proposals_percent_encode_backslash_and_newline_in_evidence_url(
     assert "(<https://a.example/x%5C>)" in markdown
     assert "(<https://a.example/y%0Az>)" in markdown
     _assert_tables_well_formed(markdown)
+
+
+def test_source_appendix_percent_encodes_pipe_backslash_and_newline_in_url():
+    signals = [
+        {"source": "github", "title": "Repo", "url": "https://example.com/a|b\\c\nd", "summary": "desc"}
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run_with_single_github_source(), signals)
+
+    assert "[Repo](<https://example.com/a%7Cb%5Cc%0Ad>)" in markdown
+    _assert_tables_well_formed(markdown)

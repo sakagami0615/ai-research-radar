@@ -109,11 +109,12 @@ def _sanitize_title(title: str) -> str:
 
 def _sanitize_url(url: str) -> str:
     """Percent-encode angle brackets so a raw '>' cannot terminate the
-    surrounding <...> link-destination syntax early. HTML-entity escaping
+    surrounding <...> link-destination syntax early, and backslash, '|' and
+    newlines so they cannot escape the bracket or break the table row. HTML-entity escaping
     (&lt;/&gt;) is deliberately not used here because the URL is a link
     destination, not visible text, and entities would render literally in
     some viewers instead of being resolved as part of the URL."""
-    encoded = url.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E")
+    encoded = url.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E").replace("|", "%7C")
     return encoded.replace("\r", "%0D").replace("\n", "%0A")
 
 
@@ -299,5 +300,4 @@ def _numbered(items: list[str] | str) -> str:
 
 def _evidence_link(url: str) -> str:
     text = _cell(url)
-    destination = _sanitize_url(url).replace("|", "%7C")
-    return f"[{text}](<{destination}>)"
+    return f"[{text}](<{_sanitize_url(url)}>)"
