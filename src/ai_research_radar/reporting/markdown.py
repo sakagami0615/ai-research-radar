@@ -110,8 +110,8 @@ def _sanitize_title(title: str) -> str:
 def _sanitize_url(url: str) -> str:
     """Percent-encode angle brackets so a raw '>' cannot terminate the
     surrounding <...> link-destination syntax early, and backslash, '|' and
-    newlines so they cannot escape the bracket or break the table row. HTML-entity escaping
-    (&lt;/&gt;) is deliberately not used here because the URL is a link
+    newlines so they cannot escape the bracket or break the table row.
+    HTML-entity escaping (&lt;/&gt;) is deliberately not used here because the URL is a link
     destination, not visible text, and entities would render literally in
     some viewers instead of being resolved as part of the URL."""
     encoded = url.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E").replace("|", "%7C")
