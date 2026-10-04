@@ -195,3 +195,78 @@ def test_unreadable_past_day_is_skipped_with_warning_instead_of_failing(tmp_path
     markdown = render_daily_report("2026-09-25", [], [], _run(), [], digest)
     assert "読めなかったため" in markdown
     assert markdown.index("読めなかったため") < markdown.index("## 注目候補(選抜外)")
+
+
+def test_notable_summary_prefers_candidate_then_digest_summaries_then_lists_missing(tmp_path: Path):
+    from dataclasses import replace
+
+    from ai_research_radar.reporting.digest import missing_summaries, save_digest_summaries
+
+    _write_hot(tmp_path, "2026-09-24", [_hot("old", 80), _hot("own", 79)])
+    _write_hot(tmp_path, "2026-09-25", [replace(_hot("own", 81), summary="候補自身の概要"), _hot("none", 78)])
+    save_digest_summaries(tmp_path, "2026-09-25", {"old": "当日に補った概要", "own": "使われない概要"})
+
+    digest = build_daily_digest(tmp_path, "2026-09-25")
+
+    assert {item.candidate.hot_id: item.summary for item in digest.notable} == {
+        "own": "候補自身の概要",
+        "old": "当日に補った概要",
+        "none": "",
+    }
+    assert [item.candidate.hot_id for item in missing_summaries(digest)] == ["none"]
+
+
+def test_missing_summaries_only_covers_displayed_items(tmp_path: Path):
+    from ai_research_radar.reporting.digest import missing_summaries
+
+    _write_hot(tmp_path, "2026-09-25", [_hot(f"h{index:02d}", 90 - index) for index in range(12)])
+
+    digest = build_daily_digest(tmp_path, "2026-09-25")
+
+    assert len(missing_summaries(digest)) == 10
+    assert digest.notable_overflow == 2
+
+
+def test_save_digest_summaries_merges_and_overwrites_same_id(tmp_path: Path):
+    from ai_research_radar.reporting.digest import load_digest_summaries, save_digest_summaries
+
+    save_digest_summaries(tmp_path, "2026-09-25", {"a": "最初", "b": "B"})
+    save_digest_summaries(tmp_path, "2026-09-25", {"a": "上書き"})
+
+    assert load_digest_summaries(tmp_path, "2026-09-25") == {"a": "上書き", "b": "B"}
+
+
+def test_corrupt_digest_summaries_is_skipped_with_warning(tmp_path: Path):
+    _write_hot(tmp_path, "2026-09-25", [_hot("a", 80)])
+    (tmp_path / "runs" / "2026-09-25" / "digest_summaries.json").write_text("{broken", encoding="utf-8")
+
+    digest = build_daily_digest(tmp_path, "2026-09-25")
+
+    assert [item.summary for item in digest.notable] == [""]
+    assert any("digest_summaries.json" in warning for warning in digest.warnings)
+
+
+def test_report_shows_summary_quote_for_selected_and_notable_items(tmp_path: Path):
+    from dataclasses import replace
+
+    selected = replace(_hot("pick", 95, selected=True), summary="選抜候補の概要。")
+    _write_hot(tmp_path, "2026-09-25", [selected, replace(_hot("other", 80), summary="注目候補の概要。"), _hot("blank", 79)])
+
+    markdown = render_daily_report("2026-09-25", [selected], [], _run(), [], build_daily_digest(tmp_path, "2026-09-25"))
+
+    lines = markdown.splitlines()
+    assert lines[lines.index("### PICK") + 2] == "> **概要**: 選抜候補の概要。"
+    other_heading = next(index for index, line in enumerate(lines) if line.startswith("### [OTHER]"))
+    assert lines[other_heading + 2] == "> **概要**: 注目候補の概要。"
+    blank_heading = next(index for index, line in enumerate(lines) if line.startswith("### [BLANK]"))
+    assert lines[blank_heading + 2] == "> **概要**: 概要未作成"
+
+
+def test_report_summary_is_escaped_and_kept_on_one_line():
+    from dataclasses import replace
+
+    selected = replace(_hot("pick", 95, selected=True), summary="一行目\n# 見出し [link](http://x) <b>|")
+
+    markdown = render_daily_report("2026-09-25", [selected], [], _run(), [])
+
+    assert "> **概要**: 一行目 # 見出し \\[link\\](http://x) &lt;b&gt;\\|" in markdown.splitlines()

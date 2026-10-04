@@ -23,7 +23,7 @@
 - SKILL.md やプロンプトテンプレートなど、AI Agent自身が解釈して実行する「手順書」を変更した場合、静的なレビュー(diffの目視確認)だけでなく、可能であれば実際にAgent(`claude -p` 等)を起動して手順どおりに動くか実機確認すること。手順の曖昧さ(ループ回数の数え方、分岐の飛び先など)は静的レビューでも見つかることがあるが、実際にAgentに読ませて実行させないと気づけない解釈違いも起こりうる。
 - 対話セッション(IDE拡張のAuto Modeなど)内で `agent-daily-run` Skillを手動実行し、レビュー手順(`claude -p ... --permission-mode bypassPermissions` などの別プロセス起動)を実行しようとすると、そのセッション固有の権限分類器に「Create Unsafe Agents」として拒否される場合がある。cronからの本番起動は独立プロセスのためこの制約を受けないが、対話セッションで手動実行する際はsubagent(Agent機能)へのレビュー委譲など代替手段で対応する(詳細は [docs/specs/06-cli-and-operations.md](docs/specs/06-cli-and-operations.md) を参照)。
 
-- `ai-research-radar` はメインチェックアウトにeditable installされているため、git worktree内で `python -m pytest` をそのまま実行するとメインチェックアウト側のコードがimportされ、worktreeの変更をテストしないまま全件passしてしまう。worktreeでは `PYTHONPATH=src python -m pytest -q`(CLIは `PYTHONPATH=src python -m ai_research_radar.cli.main ...`)を使うこと。
+- `ai-research-radar` はメインチェックアウトにeditable installされているため、git worktree内で `python -m pytest` をそのまま実行するとメインチェックアウト側のコードがimportされ、worktreeの変更をテストしないまま全件passしてしまう。worktreeでは `PYTHONPATH=src python -m pytest -q`(CLIは `PYTHONPATH=src python -m ai_research_radar.cli.main ...`)を使うこと。Skill(`agent-daily-run` など)をworktreeで実機確認する場合も、Skill内の `ai-radar` コマンドはメインチェックアウト側を指すため、`PYTHONPATH=<worktree>/src exec python -m ai_research_radar.cli.main "$@"` を実行する `ai-radar` ラッパーをscratchpadに置き、`PATH` の先頭に追加してから `claude -p` を起動すること。`data/` は `.gitignore` 対象でworktreeには無いため、直近3日分の集約を確認したい場合はメインチェックアウトの過去日の `data/` をコピーする。
 
 ## 可能であれば取り組みたい内容
 

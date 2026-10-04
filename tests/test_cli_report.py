@@ -84,6 +84,11 @@ def _run_full_pipeline(tmp_path: Path, monkeypatch) -> Path:
                 str(data_dir),
                 "--select",
                 first_id,
+                *[
+                    arg
+                    for candidate in candidates
+                    for arg in ("--summary", f"{candidate['hot_id']}=テスト概要")
+                ],
             ]
         )
         == 0
@@ -223,3 +228,45 @@ def test_cli_report_includes_source_appendix_from_normalized_signals(tmp_path: P
     assert "## 収集Source一覧" in report_text
     assert "### github (1件)" in report_text
     assert "### other (1件)" in report_text
+
+
+def test_cli_report_lists_missing_summaries_without_writing_anything(tmp_path: Path, capsys):
+    from ai_research_radar.schemas.models import HotCandidate
+    from ai_research_radar.storage.jsonl import write_jsonl
+
+    data_dir = tmp_path / "data"
+    reports_dir = tmp_path / "reports"
+    write_jsonl(
+        data_dir / "runs" / "2026-09-25" / "hot_candidates.jsonl",
+        [
+            HotCandidate("hot:a", "A", "a", 80.0, [], ["https://example.com/a"], ["technology"], ["pypi:a"], False),
+            HotCandidate("hot:b", "B", "b", 79.0, [], ["https://example.com/b"], ["technology"], ["pypi:b"], False, summary="概要あり"),
+            HotCandidate("hot:c", "C", "c", 78.0, [], ["https://example.com/c"], ["technology"], ["pypi:c"], False),
+        ],
+    )
+    assert main(["add-summary", "--date", "2026-09-25", "--data-dir", str(data_dir), "--summary", "hot:c=補完した概要"]) == 0
+
+    exit_code = main(
+        [
+            "report",
+            "--date",
+            "2026-09-25",
+            "--data-dir",
+            str(data_dir),
+            "--reports-dir",
+            str(reports_dir),
+            "--list-missing-summaries",
+        ]
+    )
+
+    assert exit_code == 0
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
+    assert lines == [
+        {"hot_id": "hot:a", "title": "A", "first_seen": "2026-09-25", "evidence_urls": ["https://example.com/a"]}
+    ]
+    assert not reports_dir.exists()
+    run_dir = data_dir / "runs" / "2026-09-25"
+    before = {path.name: path.read_bytes() for path in run_dir.iterdir()}
+    assert main(["report", "--date", "2026-09-25", "--data-dir", str(data_dir), "--list-missing-summaries"]) == 0
+    assert {path.name: path.read_bytes() for path in run_dir.iterdir()} == before
+    assert "report_digest.json" not in before

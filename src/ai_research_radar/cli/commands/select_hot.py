@@ -23,6 +23,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--select", default="")
     parser.add_argument("--reason", action="append", default=[])
+    parser.add_argument("--summary", action="append", default=[])
 
 
 def run(args: argparse.Namespace) -> int:
@@ -71,6 +72,16 @@ def run(args: argparse.Namespace) -> int:
             return 1
         reasons_by_id.setdefault(hot_id, []).append(text)
 
+    summaries_by_id: dict[str, str] = {}
+    for entry in args.summary:
+        hot_id, separator, text = entry.partition("=")
+        if not separator or hot_id not in known_ids or not text.strip():
+            add_error(state, "select-hot", "invalid_summary", f"invalid summary entry: {entry}")
+            save_run_state(data_dir, date, state)
+            print(f"invalid summary entry: {entry}")
+            return 1
+        summaries_by_id[hot_id] = text.strip()
+
     updated_candidates = []
     for candidate in candidates:
         existing = list(candidate.reasons)
@@ -82,7 +93,24 @@ def run(args: argparse.Namespace) -> int:
                 candidate,
                 selected=candidate.hot_id in selected_ids,
                 reasons=existing + new_texts,
+                summary=summaries_by_id.get(candidate.hot_id, candidate.summary),
             )
+        )
+
+    unsummarized = [candidate.hot_id for candidate in updated_candidates if not candidate.summary]
+    missing_selected = [hot_id for hot_id in unsummarized if hot_id in selected_ids]
+    if missing_selected:
+        message = f"selected candidate(s) without summary: {', '.join(missing_selected)}"
+        add_error(state, "select-hot", "missing_summary", message)
+        save_run_state(data_dir, date, state)
+        print(message)
+        return 1
+    if unsummarized:
+        add_error(
+            state,
+            "select-hot",
+            "missing_summary_warning",
+            f"{len(unsummarized)} unselected candidate(s) without summary: {', '.join(unsummarized)}",
         )
 
     try:

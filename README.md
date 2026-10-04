@@ -97,7 +97,7 @@ sudo systemctl enable --now crond
 
 ### AI Agent(Claude Code / Codex)による日次実行(推奨)
 
-HOT最終選抜と記事企画をAgent自身の判断で行う場合は、cronから `claude -p` / `codex exec` を直接起動する(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、Agentはこれに従って `ai-radar` の各サブコマンド(`collect`/`normalize`/`score`/`select-hot`/`save-proposals`/`report`)の実行、対象日の判定、レビュー・修正ループまで自分の判断で行う。
+HOT最終選抜と記事企画をAgent自身の判断で行う場合は、cronから `claude -p` / `codex exec` を直接起動する(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、Agentはこれに従って `ai-radar` の各サブコマンド(`collect`/`normalize`/`score`/`select-hot`/`save-proposals`/`add-summary`/`report`)の実行、選抜HOT・注目候補の日本語概要の作成、対象日の判定、レビュー・修正ループまで自分の判断で行う。
 
 `ai-radar` はpyenv shims経由のコマンドであり、`claude`/`codex`もPATH依存のため、crontabファイル先頭に `PATH=` 行が必要。同日の多重実行(ログが混ざる原因になる)を防ぐため `flock -n` で排他制御し、レポート未生成時にcronの失敗通知が機能するよう末尾で `test -f` による確認を行う。
 
