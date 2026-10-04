@@ -37,6 +37,8 @@ def render_daily_report(
             [
                 f"### {candidate.title}",
                 "",
+                _summary_quote(candidate.summary),
+                "",
                 f"- HOT Score: {candidate.score}",
                 f"- Topic: {candidate.topic}",
                 f"- Source Families: {', '.join(candidate.source_families)}",
@@ -99,6 +101,8 @@ def _notable_section(digest: DailyDigest) -> list[str]:
             lines.append(f"### {title}")
         lines.extend(
             [
+                "",
+                _summary_quote(item.summary),
                 "",
                 f"- HOT Score: {candidate.score}",
                 f"- Source: {', '.join(item.sources) or '不明'}",
@@ -178,6 +182,12 @@ def _sanitize_summary(summary: str) -> str:
     if not sanitized:
         return "(概要なし)"
     return sanitized
+
+
+def _summary_quote(summary: str) -> str:
+    # The "**概要**:" prefix keeps the text off the line start, so it cannot become a heading or list.
+    text = " ".join(_sanitize_title(summary).split())
+    return f"> **概要**: {text or '概要未作成'}"
 
 
 def _sanitize_title(title: str) -> str:

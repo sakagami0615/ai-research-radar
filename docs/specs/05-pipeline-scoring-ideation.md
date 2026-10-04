@@ -89,7 +89,7 @@ HOT scoreは以下を使う。
 
 ## 日次ダイジェスト
 
-日次レポートの「注目候補(選抜外)」「新モデルリリース」は、CLIが決定論的に生成する。Agentは選抜・編集に関与しない。`ai-radar report`(Agent経路)と `ai-radar daily`(決定論経路)の両方で、同じ集約処理(`reporting/digest.py`)を使う。記事企画は生成しない。
+日次レポートの「注目候補(選抜外)」「新モデルリリース」は、CLIが決定論的に生成する。Agentは項目の選定・並び順に関与しない。ただし、注目候補の概要(下記「注目候補の概要補完」)だけはAgentが書いた文章を表示する。`ai-radar report`(Agent経路)と `ai-radar daily`(決定論経路)の両方で、同じ集約処理(`reporting/digest.py`)を使う。記事企画は生成しない。
 
 ### 集約期間と既掲載除外
 
@@ -106,7 +106,15 @@ HOT scoreは以下を使う。
 - 集約期間内のどの日かで `selected=True` になった `hot_id` は除外する。
 - 同じ `hot_id` が複数日に出た場合は最新日の候補(スコア)を採用し、初出日は最も古い日とする。
 - スコア降順で最大10件を表示し、超過分は件数のみ表示する。
-- 表示項目: タイトル(先頭Evidence URLへのリンク)、HOT Score、Source(`signals` の `source:` 接頭辞から復元)、Reasons、初出日
+- 表示項目: タイトル(先頭Evidence URLへのリンク)、概要、HOT Score、Source(`signals` の `source:` 接頭辞から復元)、Reasons、初出日
+
+### 注目候補の概要補完
+
+- 注目候補の概要は、HotCandidateの `summary` を優先し、空の場合は対象日の `data/runs/<date>/digest_summaries.json` の値を使う(03章「Digest Summaries記録」参照)。HotCandidateは上記のとおり最新日のものを採用するため、最新日の候補の `summary` が空なら、古い日の同じ候補が概要を持っていても使わない(補完対象になる)。
+- 過去日の候補が自分で持っている概要は当日に修正できない。その日のレビューで確認済みとして扱う。
+- `ai-radar report --date <date> --list-missing-summaries` は、レポートやダイジェスト記録を書き出さずに、当日の注目候補として **表示される** 項目(上限10件、「ほかN件」に回る分は含まない)のうち概要がないものを、`hot_id`・タイトル・初出日・Evidence URL付きのJSON Linesで標準出力に出す。
+- Agent経路(`agent-daily-run`)では、`report` の前にこの一覧を確認し、各項目のEvidence URLにアクセスして概要を書き、`ai-radar add-summary` で保存する。一次情報を取得できない場合は取得できた範囲で書き、「一次情報未確認」と明記する。何も取得できない場合は「概要未作成(情報取得失敗: <理由>)」と書く。
+- 決定論経路(`ai-radar daily`)では概要を補完しないため、概要は「概要未作成」と表示される。
 
 ### 新モデルリリース
 

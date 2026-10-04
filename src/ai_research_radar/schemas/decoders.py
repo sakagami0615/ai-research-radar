@@ -31,7 +31,7 @@ def decode_event(data: object) -> Event:
 
 def decode_hot(data: object) -> HotCandidate:
     value = _record(data); version = _version(value)
-    return HotCandidate(hot_id=str(value["hot_id"]), title=str(value["title"]), topic=str(value["topic"]), score=float(value["score"]), reasons=list(value["reasons"]), evidence_urls=list(value["evidence_urls"]), source_families=list(value["source_families"]), signals=list(value["signals"]), selected=bool(value["selected"]), schema_version=version, quality=dict(value.get("quality", {})), assessment=value.get("assessment"))
+    return HotCandidate(hot_id=str(value["hot_id"]), title=str(value["title"]), topic=str(value["topic"]), score=float(value["score"]), reasons=list(value["reasons"]), evidence_urls=list(value["evidence_urls"]), source_families=list(value["source_families"]), signals=list(value["signals"]), selected=bool(value["selected"]), schema_version=version, quality=dict(value.get("quality", {})), assessment=value.get("assessment"), summary=str(value.get("summary") or ""))
 
 
 def decode_proposal(data: object) -> ArticleProposal:

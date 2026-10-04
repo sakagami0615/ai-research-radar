@@ -77,6 +77,8 @@ class HotCandidate:
     schema_version: int = 1
     quality: dict[str, Any] = field(default_factory=dict)
     assessment: dict[str, Any] | None = None
+    # Japanese overview written by the Agent (`select-hot --summary`); empty if not written.
+    summary: str = ""
 
 
 @dataclass(frozen=True)

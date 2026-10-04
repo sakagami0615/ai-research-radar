@@ -8,7 +8,7 @@ excluded using `data/runs/<date>/report_digest.json`.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date as date_cls
 from datetime import timedelta
 from pathlib import Path
@@ -23,6 +23,7 @@ LOOKBACK_DAYS = 3
 NOTABLE_LIMIT = 10
 MODELS_PER_PROVIDER_LIMIT = 10
 DIGEST_FILENAME = "report_digest.json"
+SUMMARIES_FILENAME = "digest_summaries.json"
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class NotableItem:
     candidate: HotCandidate
     sources: list[str]
     first_seen: str
+    # The candidate's own summary, else the one added on the target date; empty if neither.
+    summary: str = ""
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,12 @@ def build_daily_digest(data_dir: Path, date: str) -> DailyDigest:
     shown = _previously_shown(data_dir, dates[1:])
     warnings: list[str] = []
     notable = _notable_items(data_dir, dates, shown["notable"], warnings)
+    try:
+        added = load_digest_summaries(data_dir, date)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"{data_dir / 'runs' / date / SUMMARIES_FILENAME}: {exc}")
+        added = {}
+    notable = [replace(item, summary=item.candidate.summary or added.get(item.candidate.hot_id, "")) for item in notable]
     model_releases = _model_releases(data_dir, dates, shown["model_releases"], warnings)
     return DailyDigest(
         notable=notable[:NOTABLE_LIMIT],
@@ -67,6 +76,38 @@ def build_daily_digest(data_dir: Path, date: str) -> DailyDigest:
         model_releases=model_releases,
         warnings=warnings,
     )
+
+
+def missing_summaries(digest: DailyDigest) -> list[NotableItem]:
+    """Displayed notable items that still have no summary (overflow items are not displayed)."""
+    return [item for item in digest.notable if not item.summary]
+
+
+def summarizable_ids(digest: DailyDigest) -> set[str]:
+    """Displayed notable items whose candidate has no summary of its own.
+
+    Only for these does a summary added on the target date show up, since the
+    candidate's own summary takes precedence.
+    """
+    return {item.candidate.hot_id for item in digest.notable if not item.candidate.summary}
+
+
+def load_digest_summaries(data_dir: Path, date: str) -> dict[str, str]:
+    path = data_dir / "runs" / date / SUMMARIES_FILENAME
+    if not path.exists():
+        return {}
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    return {str(key): str(value) for key, value in record.items() if value}
+
+
+def save_digest_summaries(data_dir: Path, date: str, summaries: dict[str, str]) -> None:
+    """Merge summaries added on `date` into its digest_summaries.json (same hot_id is overwritten)."""
+    merged = {**load_digest_summaries(data_dir, date), **summaries}
+    path = data_dir / "runs" / date / SUMMARIES_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def save_digest_record(data_dir: Path, date: str, digest: DailyDigest) -> None:

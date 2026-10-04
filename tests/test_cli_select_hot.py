@@ -58,6 +58,10 @@ def test_cli_select_hot_marks_chosen_ids_selected(tmp_path: Path):
             "hot:event:tool-a",
             "--reason",
             "hot:event:tool-a=一次情報で確認済み",
+            "--summary",
+            "hot:event:tool-a=Tool Aの概要",
+            "--summary",
+            "hot:event:tool-b=Tool Bの概要",
         ]
     )
 
@@ -67,6 +71,8 @@ def test_cli_select_hot_marks_chosen_ids_selected(tmp_path: Path):
     assert by_id["hot:event:tool-a"]["selected"] is True
     assert by_id["hot:event:tool-b"]["selected"] is False
     assert "一次情報で確認済み" in by_id["hot:event:tool-a"]["reasons"]
+    assert by_id["hot:event:tool-a"]["summary"] == "Tool Aの概要"
+    assert by_id["hot:event:tool-b"]["summary"] == "Tool Bの概要"
     state = _read_state(data_dir)
     assert state["stages_completed"][-1] == "select-hot"
     assert state["output_counts"]["selected_hot"] == 1
@@ -134,6 +140,8 @@ def test_cli_select_hot_deduplicates_reason_across_repeated_invocations(tmp_path
         "hot:event:tool-a",
         "--reason",
         "hot:event:tool-a=一次情報で確認済み",
+        "--summary",
+        "hot:event:tool-a=Tool Aの概要",
     ]
 
     assert main(args) == 0
@@ -188,3 +196,71 @@ def test_cli_select_hot_fails_and_persists_error_when_hot_candidates_missing(tmp
         error["source"] == "select-hot" and error["type"] == "missing_input"
         for error in state["errors"]
     )
+
+
+def _select(data_dir: Path, *extra: str) -> int:
+    return main(["select-hot", "--date", "2026-09-25", "--data-dir", str(data_dir), *extra])
+
+
+def _by_id(data_dir: Path) -> dict:
+    candidates = read_jsonl(data_dir / "runs" / "2026-09-25" / "hot_candidates.jsonl")
+    return {item["hot_id"]: item for item in candidates}
+
+
+def test_cli_select_hot_keeps_existing_summary_and_replaces_respecified_one(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    assert _select(
+        data_dir,
+        "--select", "hot:event:tool-a",
+        "--summary", "hot:event:tool-a=最初の概要",
+        "--summary", "hot:event:tool-b=Bの概要",
+    ) == 0
+
+    assert _select(data_dir, "--select", "hot:event:tool-a", "--summary", "hot:event:tool-a=書き直した概要") == 0
+
+    by_id = _by_id(data_dir)
+    assert by_id["hot:event:tool-a"]["summary"] == "書き直した概要"
+    assert by_id["hot:event:tool-b"]["summary"] == "Bの概要"
+
+
+def test_cli_select_hot_rejects_selected_candidate_without_summary(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+
+    exit_code = _select(data_dir, "--select", "hot:event:tool-a", "--summary", "hot:event:tool-b=Bの概要")
+
+    assert exit_code == 1
+    by_id = _by_id(data_dir)
+    assert by_id["hot:event:tool-a"]["selected"] is False
+    assert by_id["hot:event:tool-b"].get("summary", "") == ""
+    state = _read_state(data_dir)
+    assert any(
+        error["source"] == "select-hot"
+        and error["type"] == "missing_summary"
+        and "hot:event:tool-a" in error["message"]
+        for error in state["errors"]
+    )
+
+
+def test_cli_select_hot_warns_about_unselected_candidates_without_summary(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+
+    exit_code = _select(data_dir, "--select", "hot:event:tool-a", "--summary", "hot:event:tool-a=Aの概要")
+
+    assert exit_code == 0
+    state = _read_state(data_dir)
+    warnings = [error for error in state["errors"] if error["type"] == "missing_summary_warning"]
+    assert len(warnings) == 1
+    assert "hot:event:tool-b" in warnings[0]["message"]
+    assert "hot:event:tool-a" not in warnings[0]["message"]
+
+
+def test_cli_select_hot_rejects_summary_for_unknown_id_or_empty_text(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+
+    assert _select(data_dir, "--summary", "hot:event:unknown=概要") == 1
+    assert _select(data_dir, "--summary", "hot:event:tool-a=  ") == 1
+    assert _select(data_dir, "--summary", "no-equals-sign") == 1
+
+    state = _read_state(data_dir)
+    assert any(error["type"] == "invalid_summary" for error in state["errors"])
+    assert all(item.get("summary", "") == "" for item in _by_id(data_dir).values())

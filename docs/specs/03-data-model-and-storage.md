@@ -28,6 +28,7 @@ data/
   runs/<date>/article_proposals.jsonl
   runs/<date>/run.jsonl
   runs/<date>/report_digest.json
+  runs/<date>/digest_summaries.json
 
 reports/
   daily/<date>.md
@@ -124,6 +125,7 @@ Eventから生成されるHOT候補。
 - `source_families`
 - `signals`
 - `selected`
+- `summary`: 候補が何かを説明する日本語の概要(2〜3文、おおむね150字以内)。`agent-daily-run` のAgentが一次情報を読んで書き、`select-hot --summary` で保存する。未設定は空文字列で、この項目を持たない既存データも空文字列として読み込む。
 
 `selected=True` の候補のみが日次レポートの中心になる。
 
@@ -179,11 +181,12 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `# AI Daily Radar <date>`
 - `## データ欠落`(収集に完全失敗したSourceがある場合のみ出力)
 - `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
+  - 各HOTの見出し直後に `> **概要**: <summary>` の引用ブロックを出す。概要が空の場合は `> **概要**: 概要未作成` と出す。概要はバックスラッシュ・`[]`・`<>`・`|` をエスケープし、改行を空白にする(先頭に `**概要**:` を付けるので、概要の先頭文字が見出し・リスト記号として解釈されることはない)。注目候補の概要も同じ表示・エスケープにする。
   - 各HOTの `#### Article Proposals` には、まず概要表(`# | 企画タイトル | Type | Role | Critique`)を出し、続けて企画ごとに `##### <番号>. <title_idea>` 見出しと2列の詳細表(`項目 | 内容`)を出す。詳細表の行は Type / Target Reader / Role / Critique Score / Critique Notes / Debate / Why Now / Technical Angle / Experiment Plan / Unique Angle / Competition / Traffic Opportunity / Technical Opportunity / Risks / Evidence。企画が0件の場合は `記事企画なし` と出す。
   - `why_now` が決定論的Ideation(`ideation/proposals.py`)の定型文に全体一致する場合だけ、レンダラーが Role / Critique Score / Critique Notes / Debate に分解して表示し、Why Now行は出さない(先頭のHOT score / reasonsは同じHOTセクションに表示済みのため再表示しない)。一致しない自由記述(Agent作成の企画など)は分解せず、Why Now行に全文を出し、概要表のRole / Critiqueは `-` にする。スキーマと保存データは変更しない。
   - 分解した場合、`risks` のうち表示済みのCritique Notes / Debateと完全一致する要素(`軽量Critique: <note>` / `Debate: <debate>`)は重複として除外する。すべて除外された場合は `Critique Notes / Debateと同じ内容` と出す。
   - 表崩れと意図しないリンクを防ぐため、セルの値はバックスラッシュ・`[]`・`|`・`<>`をエスケープしたうえで改行を `<br>` に置換し、リストは `<br>` 区切り(Experiment Planは番号付き、Critique Notes / Risksは `・` 付き)にする。`save-proposals` はリスト型を検証しないため、リスト項目に文字列が入っていた場合は1要素として扱う。空の値は `-` にする。見出しはバックスラッシュ・`[]`・`<>`をエスケープし、改行を空白にし、末尾の `#` はATX見出しの閉じ記号にならないようエスケープする。Debateは最大3要素(Advocate / Critic / Editor)に分割し、却下候補のタイトルに `; ` が含まれても分割しない。Evidenceは全URLを `[URL](<URL>)` 形式のリンクで出し、リンク先の `\`・`<>`・`|`・改行はパーセントエンコードする(リンク先のエンコードは収集Source一覧と共通の `_sanitize_url`)。本文中の素のURLは、GFMの自動リンクとして表示されることを許容する。
-- `## 注目候補(選抜外)`: 直近3日分のrunで `minimum_score` 以上だが選抜されなかったHotCandidate(05章「日次ダイジェスト」参照)
+- `## 注目候補(選抜外)`: 直近3日分のrunで `minimum_score` 以上だが選抜されなかったHotCandidate(05章「日次ダイジェスト」参照)。各項目の見出し直後に、選抜HOTと同じ形式で概要を出す。
 - `## 新モデルリリース`: 直近3日分のrunで `metadata.model_release` を持つSignalを提供元ごとに列挙したもの(05章「日次ダイジェスト」参照)
 - `## Run Summary`: RunMetadataのサマリ(Run ID、期間、Sources、Input/Output Counts)
 - `## Errors`: RunMetadataのerrors
@@ -201,3 +204,15 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `model_releases`: 掲載したSignalの正規化済みURL(URLが空の場合は `signal_id`)
 
 同じ日のレポートを再生成した場合は上書きする。除外判定には対象日より前の日付の記録だけを使う。
+
+## Digest Summaries記録
+
+`data/runs/<date>/digest_summaries.json` は、その日のレポートの注目候補に表示する項目のうち、HotCandidate自体に `summary` がないもの(過去日の候補や書き漏れ)について、Agentが当日に補った概要を記録する。`ai-radar add-summary` が書き込む。
+
+```json
+{"hot:event:...": "概要の本文"}
+```
+
+- キーは `hot_id`、値は概要の本文。同じ `hot_id` を再度追加した場合は上書きする。
+- 過去日の `hot_candidates.jsonl` は書き換えない(当日の run に「当日補った情報」として残す)。
+- 注目候補の概要は、HotCandidateの `summary` を優先し、空の場合に対象日のこのファイルの値を使う。どちらもなければ「概要未作成」と表示する。

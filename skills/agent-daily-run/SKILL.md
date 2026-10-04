@@ -7,7 +7,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 目的
 
-`ai-radar` CLIのサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report`)を順に呼び出し、HOT最終選抜と記事企画をAgent自身の判断で行い、日次レポートを完成させる。
+`ai-radar` CLIのサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に呼び出し、HOT最終選抜、選抜HOT・注目候補の日本語概要、記事企画をAgent自身の判断で作り、日次レポートを完成させる。
 
 `ai-radar daily` は決定論的な一括実行コマンドであり、このSkillでは使わない。
 
@@ -51,13 +51,21 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - 取得時刻を記録し忘れた根拠は、時刻を推定せずに取得し直してから記録する。
    - 取得時のコマンド出力(URL・HTTPステータス・時刻)を `data/runs/<date>/` 配下に残し、記録した時刻をレビュー担当が裏付けられるようにする。
 
+   あわせて、`hot_candidates.jsonl` の **全候補**(選抜しない候補も含む)について、レポートに載せる日本語の概要を書く。選抜外の候補も翌日以降まで「注目候補」としてレポートに載るためである。
+
+   - 内容: 2〜3文、おおむね150字以内で「それが何か」「何が新しい・変わったか」を書く。Reasons(選抜した/しなかった理由)の繰り返しや、タイトルの直訳だけにしない。
+   - 根拠: 評価のために読んだ一次情報(Evidence URLの中身)に基づいて書く。一次情報を取得できなかった場合(403など)は、取得できた範囲(報道記事、PyPIの説明など)で書き、「一次情報未確認」と明記する。何も取得できなかった場合は「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く。
+   - 確認できた事実と、発表元・報道の主張を区別する(例: 「〜と発表している」「〜と報じられている」)。
+
 5. 選抜結果を確定する。
 
    ```bash
-   ai-radar select-hot --date <date> --select <id1,id2,...> [--reason <hot_id>=<選抜理由>]
+   ai-radar select-hot --date <date> --select <id1,id2,...> [--reason <hot_id>=<選抜理由>] --summary <hot_id>=<概要> [--summary ...]
    ```
 
    `--reason` は複数の候補に理由を付けたい場合、繰り返し指定できる(`--reason id1=理由1 --reason id2=理由2`)。
+
+   `--summary` には手順4で書いた概要を、全候補分繰り返し指定する。指定しなかった候補は前回保存した概要を保持し、同じ候補を再指定すると置き換わる。選抜した候補に概要がないと `missing_summary` で失敗する。選抜外の候補に概要がない場合は成功するが、`run_state.json` の `errors` に `missing_summary_warning` が記録されるので、その候補の概要を追加して再実行する。
 
 6. 選抜された各候補について、article-ideation Skillの企画観点に従って `ArticleProposal` 形式のJSON配列を作成し、`data/runs/<date>/draft_proposals.json` に書き出す。候補1件あたり1〜3件程度の企画に絞る(既存の決定論的Ideation実装の上限である3件を目安とし、通知疲れを避ける)。
 
@@ -72,11 +80,29 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar save-proposals --date <date> --input data/runs/<date>/draft_proposals.json
    ```
 
-8. レポートを生成する。
+8. 注目候補の概要を補完してから、レポートを生成する。
 
-   ```bash
-   ai-radar report --date <date> --reports-dir reports
-   ```
+   a. レポートの注目候補に表示される項目のうち、概要がないもの(過去日の候補など)を一覧する。何も出力されなければ c へ進む。
+
+      ```bash
+      ai-radar report --date <date> --list-missing-summaries
+      ```
+
+      出力は1行1件のJSON(`hot_id` / `title` / `first_seen` / `evidence_urls`)。このコマンドは何もファイルを書き換えない。
+
+   b. 一覧の各項目について `evidence_urls` のサイトにアクセスして内容を確認し、手順4と同じ基準で概要を書いて保存する(一次情報を取得できない場合の書き方も手順4と同じ)。
+
+      ```bash
+      ai-radar add-summary --date <date> --summary <hot_id>=<概要> [--summary ...]
+      ```
+
+      保存後に a を再実行し、何も出力されないことを確認する。
+
+   c. レポートを生成する。
+
+      ```bash
+      ai-radar report --date <date> --reports-dir reports
+      ```
 
 9. `report` 完了後、成果物の質を別セッションのAgentにレビューさせる。
 
@@ -93,8 +119,10 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       - 存在しない場合: 承認。品質レビューループを終了し、完了確認へ進む。
       - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
-        記事企画の書き直しなど必要な修正を自分自身で行った上で、`ai-radar select-hot` /
-        `save-proposals` / `report` を再実行し、a に戻る。
+        記事企画・概要の書き直しなど必要な修正を自分自身で行った上で、`ai-radar select-hot` /
+        `save-proposals` を再実行し、手順8のa〜c(概要の補完とレポート生成)をやり直してから、
+        手順9のa(レビュー担当の起動)に戻る。
+        手順8bで補完した概要の修正は、`add-summary` で同じ `hot_id` を再指定すると上書きされる。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
 10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合:
@@ -108,10 +136,11 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## エラー時の自己修正方針
 
-`select-hot` または `save-proposals` がバリデーションエラー(終了コード1)を返した場合:
+`select-hot` / `save-proposals` / `add-summary` がバリデーションエラー(終了コード1)を返した場合:
 
-1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別(`invalid_selection` / `invalid_reason` / `invalid_input` / `invalid_proposal` など)とメッセージを確認する。
-2. 原因に応じて選抜IDまたは `draft_proposals.json` を修正し、再実行する。
+1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別(`invalid_selection` / `invalid_reason` / `invalid_summary` / `missing_summary` / `invalid_input` / `invalid_proposal` など)とメッセージを確認する。
+2. 原因に応じて選抜ID・概要・`draft_proposals.json` を修正し、再実行する。
+   - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
 3. 再実行は最大3回までとする。3回後も重要指摘が残る場合は`needs_review`として停止し、起動失敗・結果欠損は`failed`として承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
 
 `normalize` / `score` が終了コード1を返した場合も、内容を確認し可能なら1回だけ修正・再実行を試みる。それでも解決しない場合は諦めて手順8に進む。
