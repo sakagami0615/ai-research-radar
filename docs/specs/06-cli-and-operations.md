@@ -24,11 +24,30 @@ ai-radar daily \
 
 ### Agent経路のサブコマンド
 
-`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。概要(05章「注目候補の概要補完」)に関わる引数は次の通り。
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。選抜・概要(05章「注目候補の概要補完」)に関わる引数は次の通り。
 
-- `select-hot --summary <hot_id>=<概要>`: 候補の `summary` を保存する。繰り返し指定できる。指定しなかった候補は既存の `summary` を保持し、同じ候補を再指定した場合は置き換える。未知の `hot_id` や空の概要は `invalid_summary` として終了コード1にする。
-  - 選抜した候補に概要がない(今回の指定にも既存データにもない)場合は `missing_summary` として終了コード1にし、`hot_candidates.jsonl` を書き換えない。
-  - 選抜外の候補に概要がない場合は、終了コード0のまま `run_state.json` の `errors` に `missing_summary_warning` として件数と `hot_id` を記録する。
+- `select-hot --date <date> [--input <path>] [--limit <n>]`: `selection_input.json`(03章「SelectionInput」)を読み込んで検証し、当日の `hot_candidates.jsonl` の `selected` / `assessment` / `summary` を更新する。
+  - `--input` を省略した場合は `<data-dir>/runs/<date>/selection_input.json` を読む。明示したパスは、`save-proposals --input` と同じくカレントディレクトリを基準にする。
+  - `--limit` は選抜件数の上限で、既定値は2、範囲は0〜5。整数でない値は `invalid_input` にする(argparseの終了コード2ではなく `errors` に記録する)。範囲外も `invalid_input` にする。
+  - 旧オプション `--select` / `--reason` / `--summary` は廃止した。指定すると `deprecated_option` として、`selection_input.json` に assessments / screened_ids / selection_reason / summaries を書いて `select-hot --date <date>` を実行するよう促す移行メッセージを返す。
+  - `summaries` で指定しなかった候補は既存の `summary` を保持し、指定した候補は(前後の空白を除いた値で)置き換える。`summaries` がdictでない、当日の候補にない `hot_id` がある、値が空または文字列でない場合は `invalid_summary` にする。
+  - 選抜した候補に概要がない(`summaries` にも既存データにもない)場合は `missing_summary` にする。選抜外の候補に概要がない場合は、終了コード0のまま `run_state.json` の `errors` に `missing_summary_warning` として件数と `hot_id` を記録する。
+  - `screened_ids` に含まれない(未確認の)候補があれば、終了コード0のまま `errors` に `unreviewed_candidates` として件数と `hot_id` を記録する。
+  - 実行のはじめに `run_state.json` の `select-hot` のエラー・警告を消すため、再実行すると以前の警告は残らない。成功時は `output_counts.selected_hot` に選抜件数を記録し、`select-hot` を完了段階にする。選抜0件の日の理由・確認範囲は `selection_reason` と件数として扱い、`run_state.json` への記録は Issue #12 で行う予定である。
+  - エラー時は `run_state.json` の `errors` に記録して終了コード1にし、`hot_candidates.jsonl` は書き換えない。エラー・警告の種別は次の通り。
+
+    | 種別 | 条件 | 終了コード |
+    | --- | --- | --- |
+    | `deprecated_option` | 旧オプション `--select` / `--reason` / `--summary` を指定した | 1 |
+    | `missing_input` | `hot_candidates.jsonl` または `selection_input.json` がない | 1 |
+    | `invalid_input` | `--limit` が整数でない・範囲外、`selection_input.json` がJSONとして読めない、トップレベルの構造が不正 | 1 |
+    | `invalid_assessment` | 選抜理由が空、ID の重複・不整合、評価レコードの内容が不正、選抜に `verified` かつ `primary` の根拠がない | 1 |
+    | `selection_limit_exceeded` | 選抜件数が `--limit` を超える | 1 |
+    | `invalid_summary` | `summaries` が不正 | 1 |
+    | `missing_summary` | 選抜した候補に概要がない | 1 |
+    | `write_error` | `hot_candidates.jsonl` の書き込みに失敗した | 1 |
+    | `missing_summary_warning` / `unreviewed_candidates` | 選抜外の候補に概要がない / 未確認の候補がある(警告) | 0 |
+
 - `add-summary --date <date> --summary <hot_id>=<概要>`: 当日の注目候補に表示する過去日の候補などの概要を `data/runs/<date>/digest_summaries.json` に保存する。繰り返し指定できる。`hot_id` は当日のレポートに表示される注目候補のうち、候補自身が `summary` を持たないもの(`report --list-missing-summaries` の対象と、すでに `add-summary` で補完済みの項目)に限る。候補自身の `summary` が優先されるため、それ以外への保存は表示に反映されない。対象外の `hot_id`、空の概要、`--summary` の指定なしは `invalid_summary` として終了コード1にする(このときファイルは書き換えない)。パイプラインのステージ(`stages_completed`)としては扱わない。
 - `report --list-missing-summaries`: 概要がない注目候補(表示分のみ)をJSON Linesで出力する。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
 

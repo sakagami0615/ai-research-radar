@@ -25,6 +25,7 @@ data/
   events/<date>/events.jsonl
   topics/<date>/topics.jsonl
   runs/<date>/hot_candidates.jsonl
+  runs/<date>/selection_input.json
   runs/<date>/article_proposals.jsonl
   runs/<date>/run.jsonl
   runs/<date>/report_digest.json
@@ -125,9 +126,88 @@ Eventから生成されるHOT候補。
 - `source_families`
 - `signals`
 - `selected`
-- `summary`: 候補が何かを説明する日本語の概要(2〜3文、おおむね150字以内)。`agent-daily-run` のAgentが一次情報を読んで書き、`select-hot --summary` で保存する。未設定は空文字列で、この項目を持たない既存データも空文字列として読み込む。
+- `assessment`: `selection_input.json` の評価レコード(下記「Assessment」)。`select-hot` が保存する。評価していない候補(未確認・決定論経路)と、この項目を持たない旧データは `null`。
+- `summary`: 候補が何かを説明する日本語の概要(2〜3文、おおむね150字以内)。`agent-daily-run` のAgentが一次情報を読んで書き、`selection_input.json` の `summaries` から `select-hot` が保存する。未設定は空文字列で、この項目を持たない既存データも空文字列として読み込む。
 
 `selected=True` の候補のみが日次レポートの中心になる。
+
+## SelectionInput(selection_input.json)
+
+`data/runs/<date>/selection_input.json` は、Agent経路でAgentがHOT候補を確認・評価した結果を書くJSONファイル。`ai-radar select-hot` が読み込み、検証してから `hot_candidates.jsonl` の `selected` / `assessment` / `summary` に反映する(引数とエラー種別は06章「Agent経路のサブコマンド」参照)。型は `schemas/quality.py` の `SelectionInput`。
+
+```json
+{
+  "assessments": [{"hot_id": "hot:event:...", "decision": "selected", "...": "..."}],
+  "screened_ids": ["hot:event:..."],
+  "selection_reason": "当日の選抜方針・確認範囲の説明",
+  "summaries": {"hot:event:...": "概要の本文"}
+}
+```
+
+- `assessments`(必須): 評価レコード(下記「Assessment」)のリスト。
+- `screened_ids`(必須): 確認した候補の `hot_id` のリスト。
+- `selection_reason`(必須): 選抜全体の理由・確認範囲。0件の日も書く。
+- `summaries`(任意): `hot_id` から概要へのdict。省略時は `{}`。
+- 上記以外のトップレベルキーはエラーにする(`summary` のような綴り間違いで概要が黙って無視されるのを防ぐため)。
+
+検証は `scoring/assessments.py::apply_assessments` が次の順に行い、最初に見つかった誤りを `SelectionError`(`code` が `run_state.json` の `errors` の種別になる)として送出する。
+
+| 順 | 条件 | 種別 |
+| --- | --- | --- |
+| 1 | 選抜上限 `limit` が整数でない、または0〜5の範囲外 | `invalid_input` |
+| 2 | トップレベルの構造が不正(JSONオブジェクトでない、未知のキーがある、必須キーがない、`assessments` がリストでない、`screened_ids` が文字列のリストでない、`selection_reason` が文字列でない) | `invalid_input` |
+| 3 | `selection_reason` が空白だけ | `invalid_assessment` |
+| 4 | `screened_ids` が重複している、または当日の候補にない `hot_id` を含む | `invalid_assessment` |
+| 5 | `assessments` の要素が `validate_assessment` を通らない(`EvidenceCheck` の検証を含む)、または `hot_id` が当日の候補にない・重複している | `invalid_assessment` |
+| 6 | `screened_ids` の集合と評価レコードの `hot_id` の集合が一致しない(評価のない確認済みIDと、確認済みに含まれない評価IDの両方をメッセージに出す) | `invalid_assessment` |
+| 7 | `decision: selected` の評価に、`status: verified` かつ `kind: primary` の根拠がない | `invalid_assessment` |
+| 8 | 選抜件数が `limit` を超える | `selection_limit_exceeded` |
+
+- 種別の境界: トップレベルの構造(キーの有無と各キーの値の型)の誤りは `invalid_input`、各キーの中身(空の理由、IDの重複・不整合、評価レコードの内容、根拠の条件)の誤りは `invalid_assessment` にする。`validate_assessment` の `QualityValidationError` は `invalid_assessment` に包み直す。
+- `summaries` の検証(当日の候補にない `hot_id`、空または文字列でない値は `invalid_summary`)は `apply_assessments` の後に `select-hot` が行う。
+- 検証を通った場合、各候補の `selected` は評価の `decision` が `selected` かどうかで決まり、`assessment` に評価レコードがそのまま入る。評価のない候補は `selected=False`、`assessment=null` になる。`screened_ids` に含まれない候補は未確認として件数を数える(06章の `unreviewed_candidates` 警告)。
+
+### Assessment
+
+候補1件の評価レコード。型は `schemas/quality.py` の `Assessment`、検証は `validate_assessment`。
+
+- `hot_id`: 対象候補の `hot_id`(空でない文字列)
+- `decision`: `selected` / `deferred` / `rejected`
+- `assessed_at`: 判断日時(空でない文字列。記録時に実測したUTC時刻を書く。09章§5.1参照)
+- `assessor`: 評価担当(空でない文字列)
+- `relevance`: AI関連性の記録(`RelevanceRecord`)
+  - `status`: `related` / `uncertain` / `unrelated`
+  - `matched_terms`: 一致語(文字列のリスト。空リスト可)
+  - `reason`: 判定理由(空でない文字列)
+  - `method`: `keyword` / `agent` / `legacy`
+- `novelty` / `importance` / `reader_impact` / `reason`: 新規性・重要性・読者への影響・採否理由(いずれも空でない文字列)
+- `evidence`: 根拠(`EvidenceCheck` のリスト。空リスト可。ただし `selected` には `verified` かつ `primary` の根拠が1件以上必要)
+- `unknowns`: 未確認事項(文字列のリスト。空リスト可)
+
+### EvidenceCheck
+
+根拠1件の確認記録。型は `schemas/quality.py` の `EvidenceCheck`、検証は `validate_evidence_check` / `validate_evidence_list`。Assessment と ProposalQuality で共通に使う。
+
+キーは次の7つちょうどとし、欠落・余分なキーはエラーにする。
+
+- `url`: 根拠のURL。scheme が `http` / `https` で、ホスト部があること
+- `checked_at`: 確認日時(文字列。空文字も型としては許容する)
+- `target_version`: 確認対象の版(文字列または `null`)
+- `status`: `verified` / `unavailable` / `unverified` / `unknown`
+- `kind`: `primary` / `independent` / `republication` / `unknown`
+- `claim`: この根拠が支える主張(文字列。空文字も型としては許容する)
+- `note`: 補足(文字列。空文字可)
+
+### ProposalQuality
+
+記事企画の品質記録の契約。型は `schemas/quality.py` の `ProposalQuality`、検証は `validate_proposal_quality`。
+
+- `question` / `difference` / `baseline` / `baseline_version` / `measurement` / `inputs_and_environment` / `effort` / `effort_assumptions` / `success_condition` / `stop_condition`: 空でない文字列
+- `metrics`: 空でない文字列のリスト(1件以上)
+- `evidence`: `EvidenceCheck` のリスト
+- `unknowns`: リスト
+
+現在 `save-proposals` はこの契約を使っておらず、独自の必須項目チェックで企画を保存する。`save-proposals` への結線は Issue #11 で行う予定である。
 
 ## ArticleProposal
 
@@ -181,6 +261,12 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `# AI Daily Radar <date>`
 - `## データ欠落`(収集に完全失敗したSourceがある場合のみ出力)
 - `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
+  - 各HOTの既存の行(HOT Score / Topic / Source Families / Evidence / Reasons)の後、`#### Article Proposals` の前に、`assessment` がある場合だけ評価ブロックを出す(`_assessment_section`)。項目は 判断理由 / 関連性(`<status>(方法: <method> / 一致語: <matched_terms をカンマ区切り、空なら「なし」>)`、`relevance.reason` が空でなければ子項目に出す) / 新規性 / 重要性 / 読者への影響 / 根拠 / 未確認事項。`assessment` が `null` の旧データ(決定論経路を含む)は評価ブロックを出さず、従来どおりReasonsだけを表示する。
+    - 評価担当(`assessor`)・判断日時(`assessed_at`)は表示しない。`decision` は選抜HOTでは常に `selected` のため表示しない。
+    - 根拠は1件1行で `[URL](<URL>)(<status> / <kind>):<claim>` 形式にする(`_evidence_check_line`。#11 の企画の根拠でも使う予定)。`checked_at` / `target_version` / `note` は表示しない。`claim` が空なら「(主張未記載)」、URLが空なら「(URL未記載)」と出す。根拠が0件なら「- 根拠: なし」、未確認事項が0件なら「- 未確認事項: なし」の1行にする。
+    - 判断理由・新規性・重要性・読者への影響が空なら「(未記載)」と出す。
+    - 表示する文字列は `_inline_text` を通す。バックスラッシュ・`[]`・`<>`・`|` をエスケープし、改行と連続する空白を1つの空白に畳む。さらに、先頭の1文字が `#` `=` `+` `*` `_` `` ` `` `~` `-` のいずれかなら常にバックスラッシュでエスケープし、`数字.` / `数字)` + 空白で始まる場合は `1\.` のように記号側をエスケープする(見出し・リスト・区切り線・コードフェンス・setext下線として解釈されるのを防ぐ)。
+    - `decode_hot` は `assessment` を検証せずに読むため、表示側は防御的に読む。`assessment` がdictでなければブロックを出さない。`relevance` がdictでなければ「- 関連性: 記録なし」と出す。`evidence` / `unknowns` / `matched_terms` がリストでなければ空として扱い、dictでない根拠の要素は飛ばす。文字列であるべき項目が文字列でなければ空として扱う。
   - 各HOTの見出し直後に `> **概要**: <summary>` の引用ブロックを出す。概要が空の場合は `> **概要**: 概要未作成` と出す。概要はバックスラッシュ・`[]`・`<>`・`|` をエスケープし、改行を空白にする(先頭に `**概要**:` を付けるので、概要の先頭文字が見出し・リスト記号として解釈されることはない)。注目候補の概要も同じ表示・エスケープにする。
   - 各HOTの `#### Article Proposals` には、まず概要表(`# | 企画タイトル | Type | Role | Critique`)を出し、続けて企画ごとに `##### <番号>. <title_idea>` 見出しと2列の詳細表(`項目 | 内容`)を出す。詳細表の行は Type / Target Reader / Role / Critique Score / Critique Notes / Debate / Why Now / Technical Angle / Experiment Plan / Unique Angle / Competition / Traffic Opportunity / Technical Opportunity / Risks / Evidence。企画が0件の場合は `記事企画なし` と出す。
   - `why_now` が決定論的Ideation(`ideation/proposals.py`)の定型文に全体一致する場合だけ、レンダラーが Role / Critique Score / Critique Notes / Debate に分解して表示し、Why Now行は出さない(先頭のHOT score / reasonsは同じHOTセクションに表示済みのため再表示しない)。一致しない自由記述(Agent作成の企画など)は分解せず、Why Now行に全文を出し、概要表のRole / Critiqueは `-` にする。スキーマと保存データは変更しない。
