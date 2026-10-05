@@ -393,14 +393,16 @@ def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
 
 
 _ORDERED_MARKER = re.compile(r"^(\d+)([.)])(?=\s)")
-_BLOCK_MARKER = re.compile(r"^(#|[-+*](?=\s))")
+# Any leading character that can open a block (heading, list, thematic break, code fence,
+# setext underline) is escaped; a backslash before ASCII punctuation always renders as-is.
+_BLOCK_MARKER = re.compile(r"^([#=+*_`~-])")
 
 
 def _inline_text(value: object) -> str:
     """Escape agent-written text for one line of a Markdown list item.
 
     Non-strings (hand-edited records) become empty, newlines collapse to spaces,
-    and a leading heading/list marker is escaped so it stays plain text.
+    and a leading block marker is escaped so it stays plain text.
     """
     text = value if isinstance(value, str) else ""
     escaped = " ".join(_escape_text(text).replace("|", "\\|").split())
@@ -424,7 +426,7 @@ def _assessment_section(assessment: object) -> list[str]:
     """Agent assessment of a selected HOT, except assessor and assessed_at."""
     if not isinstance(assessment, dict):
         return []
-    lines = [f"- 判断理由: {_inline_text(assessment.get('reason'))}"]
+    lines = [f"- 判断理由: {_inline_text(assessment.get('reason')) or '(未記載)'}"]
     relevance = assessment.get("relevance")
     if isinstance(relevance, dict):
         terms = ", ".join(term for term in (_inline_text(item) for item in _list_of(relevance.get("matched_terms"))) if term)
@@ -439,9 +441,9 @@ def _assessment_section(assessment: object) -> list[str]:
         lines.append("- 関連性: 記録なし")
     lines.extend(
         [
-            f"- 新規性: {_inline_text(assessment.get('novelty'))}",
-            f"- 重要性: {_inline_text(assessment.get('importance'))}",
-            f"- 読者への影響: {_inline_text(assessment.get('reader_impact'))}",
+            f"- 新規性: {_inline_text(assessment.get('novelty')) or '(未記載)'}",
+            f"- 重要性: {_inline_text(assessment.get('importance')) or '(未記載)'}",
+            f"- 読者への影響: {_inline_text(assessment.get('reader_impact')) or '(未記載)'}",
         ]
     )
     evidence = [item for item in _list_of(assessment.get("evidence")) if isinstance(item, dict)]

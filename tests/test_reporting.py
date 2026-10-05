@@ -860,3 +860,26 @@ def test_malformed_assessment_does_not_break_report():
     assert "  - (URL未記載)( / ):(主張未記載)" in markdown
     assert "- 未確認事項: なし" in markdown
     assert render_daily_report("2026-10-05", [_assessed_hot("not a dict")], [], _empty_run(), []).count("判断理由") == 0
+
+
+def test_assessment_text_escapes_thematic_breaks_and_code_fences():
+    texts = ["---", "***", "___", "```python", "~~~", "+ 加算", "1) 番号", "=== x"]
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment(unknowns=texts))], [], _empty_run(), [])
+
+    for expected in ["\\---", "\\***", "\\___", "\\```python", "\\~~~", "\\+ 加算", "1\\) 番号", "\\=== x"]:
+        assert f"  - {expected}\n" in markdown
+
+
+def test_assessment_shows_placeholder_for_empty_text_fields():
+    record = _full_assessment(reason="", novelty=" ", importance=None, reader_impact="")
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(record)], [], _empty_run(), [])
+
+    assert "- 判断理由: (未記載)\n" in markdown
+    assert "- 新規性: (未記載)\n- 重要性: (未記載)\n- 読者への影響: (未記載)\n" in markdown
+
+
+def test_relevance_without_reason_or_list_terms_shows_single_line():
+    relevance = {"status": "related", "matched_terms": "llm", "reason": "", "method": "agent"}
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment(relevance=relevance))], [], _empty_run(), [])
+
+    assert "- 関連性: related(方法: agent / 一致語: なし)\n- 新規性:" in markdown
