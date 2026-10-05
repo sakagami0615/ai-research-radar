@@ -59,7 +59,7 @@ def _normalized_signal_ids(data_dir: Path, first_day: date, run_day: date) -> se
             continue
         try:
             records = read_jsonl(path)
-        except Exception:  # noqa: BLE001 - an unreadable day only weakens the dedup
+        except (OSError, ValueError):  # an unreadable day only weakens the dedup
             continue
         for record in records:
             if not isinstance(record, dict):
