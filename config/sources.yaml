@@ -55,22 +55,25 @@ sources:
     family: official
     adapter: official_blogs
     auth_required: false
+    # pubDateが実際の掲載より前になる記事があるため、前回期間より48時間前から取り直し、
+    # 前日以前のnormalizedにある記事は除外する(--since/--until省略時のみ)。
+    overlap_hours: 48
     # 提供元ごとの公式RSS/Atom。model_keywordsのいずれかをタイトルに含む記事を新モデルリリースとみなす。
+    # model_categoriesを設定したfeedは、そのcategoryの記事に限る(OpenAIの顧客事例を除くため)。
     # 提供元名そのもの(例: mistral)は提携記事などを誤検知するためkeywordにしない。
     # Meta / Anthropic / xAI は公式RSSなし(2026-10確認)。
+    # Qwenはブログがqwen.aiへ移転しRSSなし(2026-10確認)。huggingface_orgsのQwenで拾う。
     feeds:
       - provider: OpenAI
         url: https://openai.com/news/rss.xml
         model_keywords: [gpt-, gpt‑, sora, whisper]
+        model_categories: [Product, Research, Release]
       - provider: Google
         url: https://deepmind.google/blog/rss.xml
         model_keywords: [gemini, gemma, veo, imagen, genie]
       - provider: Mistral AI
         url: https://mistral.ai/rss.xml
         model_keywords: [magistral, codestral, devstral, ministral, pixtral, voxtral, mistral small, mistral medium, mistral large]
-      - provider: Qwen
-        url: https://qwenlm.github.io/blog/index.xml
-        model_keywords: [qwen]
   huggingface_orgs:
     enabled: true
     family: technology
@@ -80,6 +83,7 @@ sources:
     # HF org名: 提供元表示名(公式feedと同じ表示名にすると同じグループに並ぶ)
     orgs:
       meta-llama: Meta
+      meta-models: Meta
       mistralai: Mistral AI
       google: Google
       Qwen: Qwen
@@ -98,3 +102,4 @@ sources:
     family: technology
     adapter: ollama
     auth_required: false
+    overlap_hours: 48
