@@ -16,9 +16,10 @@ from ai_research_radar.config.settings import (
     load_scoring_config,
     load_source_configs,
     resolve_display_timezone,
+    resolve_max_lookback_days,
 )
 from ai_research_radar.pipeline.daily import run_daily
-from ai_research_radar.periods import default_period, previous_day_period
+from ai_research_radar.periods import previous_day_period, resolve_default_period
 from ai_research_radar.sources.public import build_adapters
 
 
@@ -50,22 +51,25 @@ def main(argv: list[str] | None = None) -> int:
         return int(exc.code)
 
     if args.command == "daily":
-        if args.since is None and args.until is None:
-            since, until = default_period()
-        else:
-            until = args.until or date.today().isoformat()
-            since = args.since or previous_day_period(until)
         configs = load_source_configs(Path(args.sources_config))
         scoring = load_scoring_config(Path(args.scoring_config))
         runtime = load_runtime_config(Path(args.runtime_config))
         hot_selection = scoring.get("hot_selection", {})
         output = runtime.get("output", {})
+        data_dir = Path(args.data_dir or output.get("data_dir", "data"))
+        if args.since is None and args.until is None:
+            since, until = resolve_default_period(
+                data_dir, max_lookback_days=resolve_max_lookback_days(runtime)
+            )
+        else:
+            until = args.until or date.today().isoformat()
+            since = args.since or previous_day_period(until)
         adapters = build_adapters(configs)
         result = run_daily(
             adapters=adapters,
             since=since,
             until=until,
-            output_dir=Path(args.data_dir or output.get("data_dir", "data")),
+            output_dir=data_dir,
             report_dir=Path(args.reports_dir or output.get("reports_dir", "reports")),
             hot_limit=(
                 args.hot_limit

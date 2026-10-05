@@ -4,6 +4,8 @@ import argparse
 from datetime import date as date_cls
 from pathlib import Path
 
+import yaml
+
 from ai_research_radar.cli.commands.run_state import (
     add_error,
     load_run_state,
@@ -11,8 +13,17 @@ from ai_research_radar.cli.commands.run_state import (
     reset_errors_for,
     save_run_state,
 )
-from ai_research_radar.config.settings import load_source_configs
-from ai_research_radar.periods import default_period, period_date, previous_day_period
+from ai_research_radar.config.settings import (
+    load_runtime_config,
+    load_source_configs,
+    resolve_max_lookback_days,
+)
+from ai_research_radar.periods import (
+    DEFAULT_MAX_LOOKBACK_DAYS,
+    period_date,
+    previous_day_period,
+    resolve_default_period,
+)
 from ai_research_radar.sources.base import SourceError
 from ai_research_radar.sources.public import build_adapters
 from ai_research_radar.storage.jsonl import write_jsonl
@@ -26,16 +37,19 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--until")
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--sources-config", default="config/sources.yaml")
+    parser.add_argument("--runtime-config", default="config/runtime.yaml")
 
 
 def run(args: argparse.Namespace) -> int:
+    data_dir = Path(args.data_dir)
     if args.since is None and args.until is None:
-        since, until = default_period()
+        since, until = resolve_default_period(
+            data_dir, max_lookback_days=_max_lookback_days(Path(args.runtime_config))
+        )
     else:
         until = args.until or date_cls.today().isoformat()
         since = args.since or previous_day_period(until)
     run_date = period_date(until)
-    data_dir = Path(args.data_dir)
 
     configs = load_source_configs(Path(args.sources_config))
     adapters = build_adapters(configs)
@@ -91,3 +105,12 @@ def run(args: argparse.Namespace) -> int:
 
     print(run_date)
     return 0
+
+
+def _max_lookback_days(runtime_config: Path) -> int:
+    """Collection must not stop over a missing or broken runtime config."""
+    try:
+        runtime = load_runtime_config(runtime_config)
+    except (OSError, ValueError, yaml.YAMLError):
+        return DEFAULT_MAX_LOOKBACK_DAYS
+    return resolve_max_lookback_days(runtime)

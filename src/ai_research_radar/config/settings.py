@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
+from ai_research_radar.periods import DEFAULT_MAX_LOOKBACK_DAYS
+
 
 @dataclass(frozen=True)
 class SourceConfig:
@@ -69,3 +71,13 @@ def resolve_display_timezone(runtime: dict[str, Any]) -> tzinfo:
         return ZoneInfo(name)
     except (ValueError, LookupError, OSError):
         return timezone.utc
+
+
+def resolve_max_lookback_days(runtime: dict[str, Any]) -> int:
+    """Return `collection.max_lookback_days`. Anything but a positive integer
+    falls back to the default so a config typo never blocks collection."""
+    section = runtime.get("collection")
+    value = section.get("max_lookback_days") if isinstance(section, dict) else None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return DEFAULT_MAX_LOOKBACK_DAYS
+    return value

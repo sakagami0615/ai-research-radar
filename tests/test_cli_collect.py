@@ -50,19 +50,19 @@ def test_cli_collect_writes_raw_and_collected_signals(tmp_path: Path, monkeypatc
     assert captured.out.strip() == "2026-09-25"
 
 
-def test_cli_collect_defaults_to_the_previous_24_hours(tmp_path: Path, monkeypatch):
-    observed: dict[str, str] = {}
+def test_cli_collect_resolves_default_period_from_previous_runs(tmp_path: Path, monkeypatch):
+    observed: dict[str, object] = {}
 
     class CapturingAdapter(FixtureAdapter):
         def collect(self, since: str, until: str):
             observed.update(since=since, until=until)
             return []
 
-    monkeypatch.setattr(
-        collect_command,
-        "default_period",
-        lambda: ("2026-10-03T00:00:00+00:00", "2026-10-04T00:00:00+00:00"),
-    )
+    def fake_resolve(data_dir, max_lookback_days):
+        observed.update(data_dir=data_dir, max_lookback_days=max_lookback_days)
+        return ("2026-10-03T00:00:00+00:00", "2026-10-04T00:00:00+00:00")
+
+    monkeypatch.setattr(collect_command, "resolve_default_period", fake_resolve)
     monkeypatch.setattr(
         collect_command,
         "build_adapters",
@@ -74,13 +74,35 @@ def test_cli_collect_defaults_to_the_previous_24_hours(tmp_path: Path, monkeypat
             )
         ],
     )
+    runtime_config = tmp_path / "runtime.yaml"
+    runtime_config.write_text("collection:\n  max_lookback_days: 3\n", encoding="utf-8")
 
-    assert main(["collect", "--data-dir", str(tmp_path / "data")]) == 0
+    assert main(["collect", "--data-dir", str(tmp_path / "data"), "--runtime-config", str(runtime_config)]) == 0
     assert observed == {
+        "data_dir": tmp_path / "data",
+        "max_lookback_days": 3,
         "since": "2026-10-03T00:00:00+00:00",
         "until": "2026-10-04T00:00:00+00:00",
     }
     assert (tmp_path / "data" / "runs" / "2026-10-04" / "run_state.json").exists()
+
+
+def test_cli_collect_uses_default_lookback_when_runtime_config_is_missing(tmp_path: Path, monkeypatch):
+    observed: dict[str, object] = {}
+
+    def fake_resolve(data_dir, max_lookback_days):
+        observed.update(max_lookback_days=max_lookback_days)
+        return ("2026-10-03T00:00:00+00:00", "2026-10-04T00:00:00+00:00")
+
+    monkeypatch.setattr(collect_command, "resolve_default_period", fake_resolve)
+    monkeypatch.setattr(collect_command, "build_adapters", lambda configs: [])
+
+    exit_code = main(
+        ["collect", "--data-dir", str(tmp_path / "data"), "--runtime-config", str(tmp_path / "missing.yaml")]
+    )
+
+    assert exit_code == 0
+    assert observed == {"max_lookback_days": 7}
 
 
 def test_cli_collect_records_source_error_and_continues(tmp_path: Path, monkeypatch):

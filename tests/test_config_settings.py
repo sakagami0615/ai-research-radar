@@ -2,12 +2,15 @@ from datetime import timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from ai_research_radar.config.settings import (
     load_runtime_config,
     load_scoring_config,
     load_source_configs,
     load_yaml_config,
     resolve_display_timezone,
+    resolve_max_lookback_days,
 )
 
 
@@ -45,3 +48,22 @@ def test_resolve_display_timezone_falls_back_to_utc_when_missing_or_invalid():
     assert resolve_display_timezone({"runtime": {"timezone": "Asia/Tokio"}}) == timezone.utc
     assert resolve_display_timezone({"runtime": {"timezone": "../etc/passwd"}}) == timezone.utc
     assert resolve_display_timezone({"runtime": {"timezone": 9}}) == timezone.utc
+
+
+def test_max_lookback_days_reads_collection_section():
+    assert resolve_max_lookback_days({"collection": {"max_lookback_days": 3}}) == 3
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        {},
+        {"collection": None},
+        {"collection": {"max_lookback_days": 0}},
+        {"collection": {"max_lookback_days": -1}},
+        {"collection": {"max_lookback_days": "7"}},
+        {"collection": {"max_lookback_days": True}},
+    ],
+)
+def test_max_lookback_days_falls_back_to_seven(runtime):
+    assert resolve_max_lookback_days(runtime) == 7
