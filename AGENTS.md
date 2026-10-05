@@ -24,6 +24,9 @@
 - 対話セッション(IDE拡張のAuto Modeなど)内で `agent-daily-run` Skillを手動実行し、レビュー手順(`claude -p ... --permission-mode bypassPermissions` などの別プロセス起動)を実行しようとすると、そのセッション固有の権限分類器に「Create Unsafe Agents」として拒否される場合がある。cronからの本番起動は独立プロセスのためこの制約を受けないが、対話セッションで手動実行する際はsubagent(Agent機能)へのレビュー委譲など代替手段で対応する(詳細は [docs/specs/06-cli-and-operations.md](docs/specs/06-cli-and-operations.md) を参照)。
 
 - `ai-research-radar` はメインチェックアウトにeditable installされているため、git worktree内で `python -m pytest` をそのまま実行するとメインチェックアウト側のコードがimportされ、worktreeの変更をテストしないまま全件passしてしまう。worktreeでは `PYTHONPATH=src python -m pytest -q`(CLIは `PYTHONPATH=src python -m ai_research_radar.cli.main ...`)を使うこと。Skill(`agent-daily-run` など)をworktreeで実機確認する場合も、Skill内の `ai-radar` コマンドはメインチェックアウト側を指すため、`PYTHONPATH=<worktree>/src exec python -m ai_research_radar.cli.main "$@"` を実行する `ai-radar` ラッパーをscratchpadに置き、`PATH` の先頭に追加してから `claude -p` を起動すること。`data/` は `.gitignore` 対象でworktreeには無いため、直近3日分の集約を確認したい場合はメインチェックアウトの過去日の `data/` をコピーする。
+- Agentが書くJSON(`selection_input.json` など)の値を許容値の集合と照合するときは、先に `isinstance(value, str)` を確認すること。リストやdictが来ると `value in {...}` が `TypeError` になり、CLIがエラー種別を記録できずトレースバックで終わる(実装例: `schemas/quality.py` の `_is_one_of`)。
+- Agentが書いた文字列をMarkdownのリスト項目などに出すときは、改行を畳むだけでなく、先頭の `#` / `-` / `*` / `` ` `` / `~` / `=` / `1.` などのブロック記号もエスケープすること。`---` や `` ``` `` が区切り線・コードブロックとして解釈され、表示が崩れる(`reporting/markdown.py` の `_inline_text` を使う)。
+- Skillで「警告が出たら直して再実行する」と書くときは、再実行の上限と、直せない場合(確認できなかった候補など)に警告を残して進む条件を明記すること。終了コード0の再実行は、`agent-daily-run` の「エラー時の自己修正方針」にある最大3回の制限の対象外になり、無人実行のAgentがループするおそれがある。
 
 ## 可能であれば取り組みたい内容
 
