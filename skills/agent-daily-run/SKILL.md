@@ -131,10 +131,12 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
    `--select` / `--reason` / `--summary` は廃止され、指定すると `deprecated_option` で失敗する。選抜・理由・概要はすべて `selection_input.json` に書く。
 
-   終了コード0でも、`data/runs/<date>/run_state.json` の `errors` に次の警告が残る場合がある。いずれも `selection_input.json` を直して手順5を再実行する。
+   `selection_input.json` はその日の判断の全体を表す。`select-hot` は実行のたびに、このファイルの内容で全候補の `selected` と評価レコードを置き換える(評価レコードがない候補は未選抜・未評価に戻る)。再実行するときは、既存の評価レコードを残したまま追加・修正する。評価を書き直した場合は、`assessed_at` を取り直す。
 
-   - `missing_summary_warning`: メッセージに出た選抜外の候補の概要を `summaries` に追加する。
-   - `unreviewed_candidates`: メッセージに出た未確認の候補を確認し、評価レコードを `assessments` に、`hot_id` を `screened_ids` に追加する。時間内に確認しきれない場合は、確認した範囲を `selection_reason` に書いて警告を残したまま進む。
+   終了コード0でも、`data/runs/<date>/run_state.json` の `errors` に次の警告が残る場合がある。それぞれ1回だけ `selection_input.json` を直して手順5を再実行し、それでも残る警告はそのままにして手順6へ進む(警告は失敗ではない)。
+
+   - `missing_summary_warning`: メッセージに出た選抜外の候補の概要を `summaries` に追加する。内容を確認できなかった候補(下の `unreviewed_candidates` の対象)は、推測で書かず「概要未作成(未確認: 時間内に確認できず)」と書く。
+   - `unreviewed_candidates`: メッセージに出た未確認の候補を確認し、評価レコードを `assessments` に、`hot_id` を `screened_ids` に追加する。時間内に確認しきれない場合は、確認した範囲(何件中何件を確認したか)を `selection_reason` に書いて警告を残したまま進む。確認していない候補を `rejected` として書いて警告を消してはならない。
 
    選抜した候補に概要がない場合は `missing_summary` で失敗する。
 
@@ -211,7 +213,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別は次のとおり。
    - `select-hot`: `deprecated_option` / `missing_input` / `invalid_input` / `invalid_assessment` / `selection_limit_exceeded` / `invalid_summary` / `missing_summary` / `write_error`
-   - `save-proposals`: `invalid_input` / `invalid_proposal`
+   - `save-proposals`: `missing_input` / `invalid_input` / `invalid_proposal` / `write_error`
    - `add-summary`: `invalid_summary` / `write_error`
 2. 原因に応じて `selection_input.json`・`draft_proposals.json`・概要を修正し、再実行する。
    - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
@@ -226,5 +228,5 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 ## 完了確認
 
 - `report` の標準出力(生成されたレポートのパス)を確認する。
-- `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。
+- `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。
