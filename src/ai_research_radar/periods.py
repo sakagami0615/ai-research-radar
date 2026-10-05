@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 
@@ -54,7 +55,8 @@ def _previous_run_until(data_dir: Path, until: datetime) -> datetime | None:
         if day < target:
             days.append(day)
     for day in sorted(days, reverse=True):
-        values = [value for value in _recorded_untils(runs_dir / day.isoformat() / "run.jsonl") if value < until]
+        recorded = _recorded_untils(runs_dir / day.isoformat() / "run.jsonl")
+        values = [value for value in recorded if value < until]
         if values:
             return max(values)
     return None
@@ -63,7 +65,7 @@ def _previous_run_until(data_dir: Path, until: datetime) -> datetime | None:
 def _recorded_untils(path: Path) -> list[datetime]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return []
     values: list[datetime] = []
     for line in lines:
@@ -78,7 +80,7 @@ def _recorded_untils(path: Path) -> list[datetime]:
     return values
 
 
-def _record_until(record: dict) -> datetime | None:
+def _record_until(record: dict[str, Any]) -> datetime | None:
     value = record.get("until")
     if not isinstance(value, str) or not value:
         return None

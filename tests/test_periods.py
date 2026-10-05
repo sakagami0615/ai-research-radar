@@ -92,6 +92,8 @@ def test_default_period_skips_broken_files_and_non_date_directories(tmp_path: Pa
     _write_run(tmp_path, "2026-10-01", _run("2026-09-30T23:00:00+00:00"))
     _write_run(tmp_path, "2026-10-03", "not json", json.dumps({"until": "garbage"}))
     _write_run(tmp_path, "scratch", _run("2026-10-04T23:00:00+00:00"))
+    (tmp_path / "runs" / "2026-10-02").mkdir(parents=True)
+    (tmp_path / "runs" / "2026-10-02" / "run.jsonl").write_bytes(b"\xff\xfe\x00garbage")
 
     assert resolve_default_period(tmp_path, NOW) == ("2026-09-30T23:00:00+00:00", UNTIL)
 
