@@ -25,6 +25,7 @@ from ai_research_radar.periods import (
     resolve_default_period,
 )
 from ai_research_radar.sources.base import SourceError
+from ai_research_radar.sources.collection import collect_new_items
 from ai_research_radar.sources.public import build_adapters
 from ai_research_radar.storage.jsonl import write_jsonl
 
@@ -42,7 +43,8 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir)
-    if args.since is None and args.until is None:
+    use_overlap = args.since is None and args.until is None
+    if use_overlap:
         since, until = resolve_default_period(
             data_dir, max_lookback_days=_max_lookback_days(Path(args.runtime_config))
         )
@@ -64,7 +66,7 @@ def run(args: argparse.Namespace) -> int:
     total_raw_items = 0
     for adapter in adapters:
         try:
-            collected = adapter.collect(since=since, until=until)
+            collected = collect_new_items(adapter, since, until, data_dir, run_date, use_overlap)
         except SourceError as exc:
             add_error(state, exc.source, exc.error_type, str(exc))
             continue

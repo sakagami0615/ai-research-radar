@@ -328,16 +328,23 @@ def build_adapters(configs: list[SourceConfig]) -> list[SourceAdapter]:
         if not config.enabled or config.auth_required:
             continue
         if config.adapter == "fixture":
-            adapters.append(
-                FixtureAdapter(
-                    source_name=config.name,
-                    source_family=config.family,
-                    fixture_path=Path(str(config.options["fixture_path"])),
-                )
+            adapter: SourceAdapter = FixtureAdapter(
+                source_name=config.name,
+                source_family=config.family,
+                fixture_path=Path(str(config.options["fixture_path"])),
             )
         else:
-            adapters.append(_public_adapter_for(config))
+            adapter = _public_adapter_for(config)
+        adapter.overlap_hours = _overlap_hours(config)
+        adapters.append(adapter)
     return adapters
+
+
+def _overlap_hours(config: SourceConfig) -> int:
+    value = config.options.get("overlap_hours", 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return 0
+    return value
 
 
 def _public_adapter_for(config: SourceConfig) -> SourceAdapter:

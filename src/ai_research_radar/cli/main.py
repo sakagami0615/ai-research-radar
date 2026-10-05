@@ -57,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
         hot_selection = scoring.get("hot_selection", {})
         output = runtime.get("output", {})
         data_dir = Path(args.data_dir or output.get("data_dir", "data"))
-        if args.since is None and args.until is None:
+        use_overlap = args.since is None and args.until is None
+        if use_overlap:
             since, until = resolve_default_period(
                 data_dir, max_lookback_days=resolve_max_lookback_days(runtime)
             )
@@ -83,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             hot_score_weights=dict(scoring.get("hot_score", {})),
             display_timezone=resolve_display_timezone(runtime),
+            use_overlap=use_overlap,
         )
         print(result.report_path)
         return 0
