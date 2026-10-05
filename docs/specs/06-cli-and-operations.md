@@ -8,7 +8,16 @@
 ai-radar daily
 ```
 
-`daily` は `--since` / `--until` を省略できる。両方を省略した場合は、実行時刻を終了時刻とする直近24時間を対象にする。実行時刻はAsia/Tokyoで扱い、Sourceへはタイムゾーン付きISO 8601日時を渡す。`--since` / `--until` を明示した場合は指定値をそのまま使う。
+`daily` と `collect` は `--since` / `--until` を省略できる。両方を省略した場合は、実行時刻を終了時刻とし、前回実行から引き継いだ期間を対象にする。実行時刻はAsia/Tokyoで扱い、Sourceへはタイムゾーン付きISO 8601日時を渡す。`--since` / `--until` を明示した場合は指定値をそのまま使う。
+
+省略時の開始時刻は次のように決める。実行しなかった日の記事を取りこぼさないためである。
+
+- `data/runs/<日付>/run.jsonl` のうち、日付ディレクトリ名が対象日(実行時刻のAsia/Tokyoの日付)より前のものを新しい順に見て、最初に見つかった有効な記録の `until` を開始時刻にする。対象日の記録を使わないのは、同日再実行で同じ期間を取り直すためである(`raw` は上書き保存)。
+- 日付のみの `until`(例: `"2026-10-02"`)は、その日の00:00(UTC)と記録の `started_at` の早いほうとして扱う。
+- 日付でないディレクトリ名、読めない `run.jsonl`、解釈できない・実行時刻以降の `until` は無視して、さらに前の記録を探す。
+- 開始時刻は `runtime.yaml` の `collection.max_lookback_days`(既定7)日前より前にしない。前回の記録がない初回も、この日数分を集める。
+- 件数上限付きのSource(qiita / arXiv / GitHub / huggingface / npm / PyPI は100件、huggingface_orgs はorgあたり50件)は、期間が長いと取り切れない場合がある。
+- 前回実行の `run.jsonl` が書かれる前に止まった場合や、あるSourceがその回だけ失敗した場合の扱いは、03章・04章を参照。
 
 明示指定する場合:
 
@@ -38,12 +47,14 @@ ai-radar daily \
 
 - `sources.yaml`: Source一覧、family、adapter、keyword、RSS URL、新モデル検知の監視対象(公式feed、HF org、Ollama)など
 - `scoring.yaml`: HOT判定の重み、閾値、選抜数
-- `runtime.yaml`: 出力先(`output`)、レポートの表示用タイムゾーン(`runtime.timezone`、IANA名)などの実行時設定
+- `runtime.yaml`: 出力先(`output`)、レポートの表示用タイムゾーン(`runtime.timezone`、IANA名)、省略時の収集期間の上限日数(`collection.max_lookback_days`)などの実行時設定
 - `categories.yaml`: category定義の予約設定。現行MVPのPipelineはまだ読み込まず、公開SourceのカテゴリはAdapter側で付与する。
 
 CLI引数は設定ファイルより優先される。
 
 `runtime.timezone` は日次レポートのRun Summaryに出すPeriodの表示にだけ使う(期間の計算やファイル名の日付には使わない)。`ai-radar daily` と `ai-radar report` はどちらも `--runtime-config`(既定 `config/runtime.yaml`)から読み込む。`report` では、ファイルが無い・読めない、`runtime.timezone` が無い、タイムゾーン名が不正のいずれでもレポート生成を止めず、UTCで表示する(表記は `(UTC)`)。`daily` はこれまで通りruntime設定ファイルが無ければエラーになるが、`runtime.timezone` が無い・不正な場合は同じくUTCで表示する。
+
+`collection.max_lookback_days` は `ai-radar daily` と `ai-radar collect` が `--runtime-config`(既定 `config/runtime.yaml`)から読み込む。正の整数でない場合は既定値7を使う。`collect` はファイルが無い・読めない場合も既定値7で続行する(`daily` はruntime設定ファイルが無ければこれまで通りエラー)。
 
 ## cron想定
 

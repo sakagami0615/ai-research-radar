@@ -170,7 +170,9 @@ MVPでは外部LLMを使わず、決定論的なRole生成、Critique、Debate�
 - `errors`
 - `report_paths`
 
-`since` / `until` は日付またはタイムゾーン付きISO 8601日時を保持する。通常の日次実行では、実行時刻から直近24時間の実際の取得範囲を記録する。
+`since` / `until` は日付またはタイムゾーン付きISO 8601日時を保持する。通常の日次実行(`--since` / `--until` 省略時)では、前日以前で最新の `run.jsonl` の `until` から実行時刻までの実際の取得範囲を記録する(最大 `collection.max_lookback_days` 日。前回の記録がない初回も同じ日数。06章)。`overlap_hours` を持つSource(04章)は、この `since` より前の重ね取得分も取得するが、記録する `since` は変えない。
+
+`overlap_hours` を持つSourceの `input_counts` と `raw/<date>/<source>.jsonl` は、前日以前の `normalized` に既にある記事を除いた件数・内容(その回に新しく収集した分)である。
 
 Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。
 

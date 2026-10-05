@@ -18,6 +18,8 @@ v2では`freshness_score`（公開日時から取得までの168時間線形値�
 - `hot_limit`
 - `minimum_score`
 - `hot_score_weights`
+- `display_timezone`(レポートのPeriod表示用)
+- `use_overlap`(`--since` / `--until` 省略時に真。`overlap_hours` を持つSourceの重ね取得と収集済み除外を有効にする。04章)
 
 主な出力:
 
@@ -27,7 +29,7 @@ v2では`freshness_score`（公開日時から取得までの168時間線形値�
 
 ## 処理順序
 
-1. Sourceごとに `collect` を実行する。
+1. Sourceごとに `collect` を実行する(`sources/collection.collect_new_items` 経由。`use_overlap` が真なら `overlap_hours` 分前から取得し、前日以前の `normalized` にある記事を除外する)。
 2. raw JSONLをSource別に保存する。
 3. `normalize` でCanonicalSignalへ変換する。
 4. Source単位のbatch normalizationを行う。
