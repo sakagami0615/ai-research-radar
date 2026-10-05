@@ -112,6 +112,11 @@ def _required_text(data: dict[str, Any], key: str) -> str:
     return value
 
 
+def _is_one_of(value: object, allowed: set[str] | frozenset[str]) -> bool:
+    # Check the type first: an unhashable value (list/dict) would raise TypeError on `in`.
+    return isinstance(value, str) and value in allowed
+
+
 _EVIDENCE_KEYS = frozenset({"url", "checked_at", "target_version", "status", "kind", "claim", "note"})
 _EVIDENCE_STATUSES = frozenset({"verified", "unavailable", "unverified", "unknown"})
 _EVIDENCE_KINDS = frozenset({"primary", "independent", "republication", "unknown"})
@@ -138,9 +143,9 @@ def validate_evidence_check(data: object) -> EvidenceCheck:
             raise QualityValidationError(f"evidence {key} must be a string")
     if value["target_version"] is not None and not isinstance(value["target_version"], str):
         raise QualityValidationError("evidence target_version must be a string or null")
-    if value["status"] not in _EVIDENCE_STATUSES:
+    if not _is_one_of(value["status"], _EVIDENCE_STATUSES):
         raise QualityValidationError(f"invalid evidence status: {value['status']!r}")
-    if value["kind"] not in _EVIDENCE_KINDS:
+    if not _is_one_of(value["kind"], _EVIDENCE_KINDS):
         raise QualityValidationError(f"invalid evidence kind: {value['kind']!r}")
     return value  # type: ignore[return-value]
 
@@ -156,7 +161,7 @@ def validate_relevance(data: object) -> RelevanceRecord:
     status = value.get("status")
     method = value.get("method")
     terms = value.get("matched_terms")
-    if status not in {"related", "uncertain", "unrelated"} or method not in {"keyword", "agent", "legacy"}:
+    if not _is_one_of(status, {"related", "uncertain", "unrelated"}) or not _is_one_of(method, {"keyword", "agent", "legacy"}):
         raise QualityValidationError("invalid relevance status or method")
     if not isinstance(terms, list) or any(not isinstance(item, str) for item in terms):
         raise QualityValidationError("matched_terms must be a string list")
@@ -165,7 +170,7 @@ def validate_relevance(data: object) -> RelevanceRecord:
 
 def validate_assessment(data: object) -> dict[str, Any]:
     value = _object(data)
-    if value.get("decision") not in {"selected", "deferred", "rejected"}:
+    if not _is_one_of(value.get("decision"), {"selected", "deferred", "rejected"}):
         raise QualityValidationError("invalid assessment decision")
     for key in ("hot_id", "assessed_at", "assessor", "novelty", "importance", "reader_impact", "reason"):
         _required_text(value, key)

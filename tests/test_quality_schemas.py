@@ -112,3 +112,17 @@ def test_assessment_and_proposal_quality_reject_malformed_evidence():
         validate_proposal_quality(_quality_with([None]))
     assert validate_assessment(_assessment_with([_evidence()]))["hot_id"] == "hot:x"
     assert validate_proposal_quality(_quality_with([_evidence()]))["question"] == "q"
+
+
+@pytest.mark.parametrize("field", ["status", "kind"])
+def test_evidence_check_rejects_unhashable_enum_value(field):
+    with pytest.raises(QualityValidationError):
+        validate_evidence_check(_evidence(**{field: ["verified"]}))
+
+
+def test_assessment_rejects_unhashable_decision_and_relevance_values():
+    with pytest.raises(QualityValidationError):
+        validate_assessment({**_assessment_with([]), "decision": ["selected"]})
+    relevance = {"status": {"related": 1}, "matched_terms": [], "reason": "r", "method": "agent"}
+    with pytest.raises(QualityValidationError):
+        validate_assessment({**_assessment_with([]), "relevance": relevance})
