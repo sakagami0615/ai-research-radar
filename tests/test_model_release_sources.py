@@ -373,7 +373,7 @@ def test_official_feed_model_categories_limit_keyword_matches(monkeypatch):
         ("Introducing gpt-oss", ["RELEASE"]),
         ("A model guide for the GPT-6 family", ["Company", "Product"]),
         ("Basis completes a tax workbook 2x faster with GPT-6 Astra", []),
-        ("Harvey turns legal context into stronger drafts with GPT-6 Astra", ["Startup"]),
+        ("Harvey turns legal context into stronger drafts with GPT-6 Astra", ["Startup"]),        ("Introducing GPT-8", ["  "]),
     )
     monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(body))
 
@@ -384,7 +384,7 @@ def test_official_feed_model_categories_limit_keyword_matches(monkeypatch):
     }
 
 
-@pytest.mark.parametrize("model_categories", [None, [], "Product"])
+@pytest.mark.parametrize("model_categories", [None, [], [" "], [None], "Product"])
 def test_official_feed_without_valid_model_categories_uses_keywords_only(monkeypatch, model_categories):
     adapter = OfficialFeedsAdapter("official_blogs", "official", [_openai_feed(model_categories)])
     body = _rss_with_categories(("Basis completes a tax workbook 2x faster with GPT-6 Astra", []))

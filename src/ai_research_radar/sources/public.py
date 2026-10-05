@@ -404,7 +404,7 @@ def _model_categories(feed: dict[str, Any]) -> set[str] | None:
     value = feed.get("model_categories")
     if not isinstance(value, list):
         return None
-    categories = {str(category).strip().casefold() for category in value if str(category).strip()}
+    categories = {category.strip().casefold() for category in value if isinstance(category, str) and category.strip()}
     return categories or None
 
 
