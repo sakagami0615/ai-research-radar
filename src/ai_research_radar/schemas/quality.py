@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
+from urllib.parse import urlsplit
 
 
 class QualityValidationError(ValueError):
@@ -84,6 +85,7 @@ class SelectionInput(TypedDict):
     assessments: list[Assessment]
     screened_ids: list[str]
     selection_reason: str
+    summaries: NotRequired[dict[str, str]]
 
 
 class ReviewResult(TypedDict):
@@ -110,6 +112,45 @@ def _required_text(data: dict[str, Any], key: str) -> str:
     return value
 
 
+_EVIDENCE_KEYS = frozenset({"url", "checked_at", "target_version", "status", "kind", "claim", "note"})
+_EVIDENCE_STATUSES = frozenset({"verified", "unavailable", "unverified", "unknown"})
+_EVIDENCE_KINDS = frozenset({"primary", "independent", "republication", "unknown"})
+
+
+def validate_evidence_check(data: object) -> EvidenceCheck:
+    value = _object(data)
+    keys = set(value)
+    if keys != _EVIDENCE_KEYS:
+        missing = sorted(_EVIDENCE_KEYS - keys)
+        unknown = sorted(keys - _EVIDENCE_KEYS)
+        raise QualityValidationError(f"evidence keys mismatch: missing={missing}, unknown={unknown}")
+    url = value["url"]
+    if not isinstance(url, str):
+        raise QualityValidationError("evidence url must be a string")
+    try:
+        parts = urlsplit(url)
+    except ValueError as exc:
+        raise QualityValidationError(f"evidence url is malformed: {url!r}") from exc
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise QualityValidationError(f"evidence url must be an http(s) URL: {url!r}")
+    for key in ("checked_at", "claim", "note"):
+        if not isinstance(value[key], str):
+            raise QualityValidationError(f"evidence {key} must be a string")
+    if value["target_version"] is not None and not isinstance(value["target_version"], str):
+        raise QualityValidationError("evidence target_version must be a string or null")
+    if value["status"] not in _EVIDENCE_STATUSES:
+        raise QualityValidationError(f"invalid evidence status: {value['status']!r}")
+    if value["kind"] not in _EVIDENCE_KINDS:
+        raise QualityValidationError(f"invalid evidence kind: {value['kind']!r}")
+    return value  # type: ignore[return-value]
+
+
+def validate_evidence_list(data: object) -> list[EvidenceCheck]:
+    if not isinstance(data, list):
+        raise QualityValidationError("evidence must be a list")
+    return [validate_evidence_check(item) for item in data]
+
+
 def validate_relevance(data: object) -> RelevanceRecord:
     value = _object(data)
     status = value.get("status")
@@ -129,9 +170,7 @@ def validate_assessment(data: object) -> dict[str, Any]:
     for key in ("hot_id", "assessed_at", "assessor", "novelty", "importance", "reader_impact", "reason"):
         _required_text(value, key)
     validate_relevance(value.get("relevance"))
-    evidence = value.get("evidence")
-    if not isinstance(evidence, list):
-        raise QualityValidationError("evidence must be a list")
+    validate_evidence_list(value.get("evidence"))
     if not isinstance(value.get("unknowns"), list) or any(not isinstance(item, str) for item in value["unknowns"]):
         raise QualityValidationError("unknowns must be a string list")
     return value
@@ -144,6 +183,7 @@ def validate_proposal_quality(data: object) -> ProposalQuality:
         _required_text(value, key)
     if not isinstance(value.get("metrics"), list) or not value["metrics"] or any(not isinstance(item, str) or not item.strip() for item in value["metrics"]):
         raise QualityValidationError("metrics must be a non-empty string list")
-    if not isinstance(value.get("evidence"), list) or not isinstance(value.get("unknowns"), list):
-        raise QualityValidationError("evidence and unknowns must be lists")
+    validate_evidence_list(value.get("evidence"))
+    if not isinstance(value.get("unknowns"), list):
+        raise QualityValidationError("unknowns must be a list")
     return value  # type: ignore[return-value]
