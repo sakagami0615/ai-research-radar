@@ -142,7 +142,9 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 6. 記事企画を作成する。
 
-   選抜0件の日(手順5で `decision: selected` がない日)は、企画を作らずに `data/runs/<date>/draft_proposals.json` に空の配列 `[]` を書いて手順7へ進む。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。
+   選抜0件の日(手順5の `select-hot` が成功し、`hot_candidates.jsonl` に `selected: true` の候補がない日)は、企画を作らずに `data/runs/<date>/draft_proposals.json` に空の配列 `[]` を書いて手順7へ進む。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。
+
+   手順5の `select-hot` が再実行の上限に達して `failed` のまま進む場合は、企画を作らずに `draft_proposals.json` に `[]` を書いて手順7を実行する(`save-proposals` は `hot_candidates.jsonl` の選抜で照合するため、`selection_input.json` の `selected` に対する企画は `invalid_proposal` になる)。
 
    選抜HOTがあるのに企画を作らない(`[]` を書く)場合、レポートに「記事企画なし(保留: 理由未記載)」と出てレビューで指摘されうるため、作れない理由がない限り各選抜HOTに企画を作る。
 
@@ -238,7 +240,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 2. 原因に応じて `selection_input.json`・`draft_proposals.json`・概要を修正し、再実行する。
    - すでに手順7(`save-proposals`)を実行した後に `select-hot` を再実行して成功した場合は、続けて手順7も再実行する(選抜が変わった場合は先に手順6で `draft_proposals.json` を作り直す)。手順5の時点(まだ手順7を実行していない)では、通常どおり手順6へ進む。
    - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
-3. 再実行は最大3回までとする。「3回」は、同じステージが終了コード1で失敗した後の修正再実行の回数を、その日の実行全体(手順5・7・8c・9bを通算)で数える。9bでレビュー指摘を受けて行う再実行そのものは数えない(9bの試行回数3回で別に上限がある)。ただし、その再実行が失敗した後の修正再実行は数える。上限に達したステージは `failed` を残したまま先へ進む。3回後も重要指摘が残る場合は`needs_review`として停止し、起動失敗・結果欠損は`failed`として承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
+3. 再実行は最大3回までとする。「3回」は、同じステージが終了コード1で失敗した後の修正再実行の回数を、その日の実行全体(手順5・7・8c・9bを通算)で数える。9bでレビュー指摘を受けて行う再実行そのものは数えない(9bの試行回数3回で別に上限がある)。ただし、その再実行が失敗した後の修正再実行は数える。上限に達したステージは `failed` を残したまま先へ進む。品質レビュー(手順9)で3回試行しても重要指摘が残る場合の扱いは手順10に従う(この3回は手順9bの試行回数であり、上の再実行回数とは別に数える)。レビュー担当の起動失敗・結果欠損は承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
 
 `normalize` / `score` が終了コード1を返した場合も、内容を確認し可能なら1回だけ修正・再実行を試みる。それでも解決しない場合は諦めて手順8に進む。
 
