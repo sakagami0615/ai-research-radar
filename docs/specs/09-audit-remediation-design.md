@@ -203,7 +203,7 @@ Agent Skillは本来のレビュー用CLI起動、利用可能なsubagentでの�
 - `sources/public.py::_matches_keywords`が`classify_relevance`の判定結果を`bool(result["matched_terms"])`に丸めて捨てるため、収集後に作られる`CanonicalSignal.quality`は常に空`{}`になる。その結果`normalize_quality_batch`は常にハードコードされた`{"status": "uncertain", ..., "method": "legacy"}`を`quality.relevance`に書き込み、実際のタイトル・概要に基づく関連性判定が反映されない。
 - `config/scoring.yaml`の`reference_priority`(`freshness_weight` / `popularity_weight` / `window_hours`)は`normalize_quality_batch`から一切読まれず、同じ値(`168.0` / `0.5` / `0.5`)がコード側にハードコードされている。`pipeline/stages.py::normalize_stage`は`metric_by_source`のみを読み込み渡している。
 - `storage/provenance.py::capture_provenance`の機密情報除去はトップレベルのキー名(`key`/`token`/`password`を含むか)と`user:pass@host`形式のURLしか見ておらず、ネストしたdict内の機密情報やURL形式でない裸のトークン文字列は`manifest.json`にそのまま書き込まれる。
-- `reporting/review.py::validate_review_result`は`attempt_number`(1〜3)を単独の範囲チェックのみ行い、実際に永続化された実行履歴と突き合わせない。また`findings`内の非dict要素は`isinstance(item, dict)`フィルタで静かに無視されるため、不正形式のfindingに重大指摘が混ざっていても検出できない。
+- `reporting/review.py::validate_review_result`は`attempt_number`(1〜3)を単独の範囲チェックのみ行い、実際に永続化された実行履歴と突き合わせない。また`findings`内の非dict要素は`isinstance(item, dict)`フィルタで静かに無視されるため、不正形式のfindingに重大指摘が混ざっていても検出できない。さらに、`status`の`not in`判定と、`status`が`approved`のときの`findings`要素の`severity`の`in`判定は、型を確かめずに許容値の集合と照合しているため、値がリストやdictだと`TypeError`になり`ValueError`として扱えない(`approved`以外では`severity`は検証されずに通る。`schemas/quality.py`の`_is_one_of`と同じく、先に文字列であることを確認する必要がある。Issue #7 のレビューで判明)。
 - `scripts/evaluate_audit.py::evaluate`の`precision`計算はラベル(`labels`、`signal_id`+正解の`selected`真偽)と実際の選抜(`selected`、`hot_id`)を比較しておらず、`selected`が空でなければ常に`0.0`を返す(空なら`None`で「算出不可」は正しい)。`hot_id`と`signal_id`の対応関係(どのHOT候補がどのSignalに由来するか)を評価に含める設計・実装が別途必要。
 
 ### 重複・簡素化(コード品質、動作への影響なし)
