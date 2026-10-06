@@ -883,3 +883,106 @@ def test_relevance_without_reason_or_list_terms_shows_single_line():
     markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment(relevance=relevance))], [], _empty_run(), [])
 
     assert "- 関連性: related(方法: agent / 一致語: なし)\n- 新規性:" in markdown
+
+
+DEFERRED = {"status": "deferred", "reason": "一次情報を確認できなかった", "candidate_count": 10, "screened_count": 8, "unreviewed_count": 2, "selected_count": 0}
+COMPLETED = {"status": "completed", "reason": "Aを確認した", "candidate_count": 2, "screened_count": 2, "unreviewed_count": 0, "selected_count": 1}
+NOT_RUN = {"status": "not_run", "reason": "未実行"}
+
+
+def _stage_run(select_hot=None, save_proposals=None) -> RunMetadata:
+    results = {}
+    if select_hot is not None:
+        results["select-hot"] = select_hot
+    if save_proposals is not None:
+        results["save-proposals"] = save_proposals
+    return _run_summary_run(stage_results=results)
+
+
+def _selected_section(markdown: str) -> str:
+    return markdown.split("## 選抜HOT")[1].split("## 注目候補(選抜外)")[0]
+
+
+def test_selection_without_record_keeps_legacy_message():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(), [])
+
+    assert "本日の選抜HOTはありません。" in _selected_section(markdown)
+
+
+def test_selection_deferred_shows_reason_and_scope():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(DEFERRED, {"status": "not_run", "reason": "選抜HOTなし", "proposal_count": 0}), [])
+
+    section = _selected_section(markdown)
+    assert "本日の選抜HOTはありません(保留: 一次情報を確認できなかった。候補 10件中 8件を確認、未確認 2件)。" in section
+    assert "記事企画" not in section
+
+
+def test_selection_deferred_on_a_day_without_candidates_is_short():
+    result = {"status": "deferred", "reason": "候補なし", "candidate_count": 0, "screened_count": 0, "unreviewed_count": 0, "selected_count": 0}
+
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(result), [])
+
+    assert "本日の選抜HOTはありません(保留: 候補なし。候補0件)。" in _selected_section(markdown)
+
+
+def test_selection_deferred_drops_trailing_period_of_reason():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(dict(DEFERRED, reason="確認できなかった。")), [])
+
+    assert "(保留: 確認できなかった。候補 10件中" in _selected_section(markdown)
+
+
+def test_selection_deferred_escapes_agent_reason():
+    result = dict(DEFERRED, reason="# 見出し\n次の行")
+
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(result), [])
+
+    assert "(保留: \\# 見出し 次の行。" in _selected_section(markdown)
+
+
+def test_selection_not_run_omits_default_reason():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(NOT_RUN), [])
+
+    section = _selected_section(markdown)
+    assert "選抜は未実行。" in section
+    assert "本日の選抜HOTはありません" not in section
+
+
+def test_selection_failed_with_previous_selection_shows_notice_and_results():
+    failed = {"status": "failed", "reason": "invalid_assessment: x"}
+
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(failed), [])
+
+    section = _selected_section(markdown)
+    assert "選抜は失敗(invalid_assessment: x)。以下は前回成功時の結果です。" in section
+    assert "### Tool A" in section
+
+
+def test_selection_failed_without_previous_selection_has_no_previous_notice():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run({"status": "failed", "reason": "invalid_input: bad"}), [])
+
+    section = _selected_section(markdown)
+    assert "選抜は失敗(invalid_input: bad)。" in section
+    assert "以下は前回" not in section
+
+
+def test_selection_completed_without_selected_hot_points_to_rescoring():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED), [])
+
+    assert "選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。" in _selected_section(markdown)
+
+
+def test_selection_completed_with_selected_hot_has_no_status_line():
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(COMPLETED), [])
+
+    section = _selected_section(markdown)
+    assert "本日の選抜HOT" not in section
+    assert "選抜は" not in section
+    assert "### Tool A" in section
+
+
+def test_invalid_stage_records_are_treated_as_missing():
+    run = _run_summary_run(stage_results={"select-hot": {"status": "weird"}, "save-proposals": "broken"})
+
+    markdown = render_daily_report("2026-10-04", [], [], run, [])
+
+    assert "本日の選抜HOTはありません。" in _selected_section(markdown)

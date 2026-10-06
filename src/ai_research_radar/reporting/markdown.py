@@ -11,7 +11,13 @@ from ai_research_radar.reporting.digest import (
     DailyDigest,
     group_model_releases,
 )
-from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
+from ai_research_radar.schemas.models import (
+    NOT_RUN_REASON,
+    ArticleProposal,
+    HotCandidate,
+    RunMetadata,
+    valid_stage_result,
+)
 
 
 def render_daily_report(
@@ -32,8 +38,7 @@ def render_daily_report(
     lines = [f"# AI Daily Radar {date}", ""]
     lines.extend(_data_gaps_section(run))
     lines.extend(["## 選抜HOT", ""])
-    if not selected_hot:
-        lines.extend(["本日の選抜HOTはありません。", ""])
+    lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
     for candidate in selected_hot:
         lines.extend(
             [
@@ -66,6 +71,52 @@ def render_daily_report(
     lines.append("")
     lines.extend(_source_appendix_section(run, signals))
     return "\n".join(lines)
+
+
+def _stage_result(run: RunMetadata, stage: str) -> dict[str, Any] | None:
+    results = run.stage_results if isinstance(run.stage_results, dict) else {}
+    return valid_stage_result(results.get(stage))
+
+
+def _stage_reason(result: dict[str, Any]) -> str:
+    reason = result.get("reason")
+    return reason if isinstance(reason, str) else ""
+
+
+def _stage_count(result: dict[str, Any], key: str) -> str:
+    value = result.get(key)
+    return str(value) if isinstance(value, int) and not isinstance(value, bool) else "?"
+
+
+def _with_reason(text: str, reason: str) -> str:
+    """"<text>(<reason>)。", omitting the parentheses for the default "未実行" reason."""
+    if not reason or reason == NOT_RUN_REASON:
+        return f"{text}。"
+    return f"{text}({_inline_text(reason)})。"
+
+
+def _selection_status(result: dict[str, Any] | None, has_selected: bool) -> list[str]:
+    """Status line shown under 選抜HOT so a deferred day reads differently from a skipped or failed one."""
+    if result is None:
+        return [] if has_selected else ["本日の選抜HOTはありません。", ""]
+    status = result["status"]
+    if status == "completed":
+        return [] if has_selected else ["選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。", ""]
+    if status == "deferred":
+        # The reason is followed by "。", so a trailing one written by the agent is dropped.
+        reason = _inline_text(_stage_reason(result)).rstrip("。") or "理由未記載"
+        if _stage_count(result, "candidate_count") == "0":
+            scope = "候補0件"
+        else:
+            scope = (
+                f"候補 {_stage_count(result, 'candidate_count')}件中 {_stage_count(result, 'screened_count')}件を確認、"
+                f"未確認 {_stage_count(result, 'unreviewed_count')}件"
+            )
+        return [f"本日の選抜HOTはありません(保留: {reason}。{scope})。", ""]
+    line = _with_reason("選抜は未実行" if status == "not_run" else "選抜は失敗", _stage_reason(result))
+    if has_selected:
+        line += "以下は前回成功時の結果です。"
+    return [line, ""]
 
 
 def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str]:
