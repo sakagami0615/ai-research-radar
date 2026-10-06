@@ -352,3 +352,39 @@ def test_cli_report_lists_missing_summaries_without_writing_anything(tmp_path: P
     assert main(["report", "--date", "2026-09-25", "--data-dir", str(data_dir), "--list-missing-summaries"]) == 0
     assert {path.name: path.read_bytes() for path in run_dir.iterdir()} == before
     assert "report_digest.json" not in before
+
+
+def _report(tmp_path: Path, date: str) -> tuple[dict, str]:
+    data_dir = tmp_path / "data"
+    reports_dir = tmp_path / "reports"
+    assert main(["report", "--date", date, "--data-dir", str(data_dir), "--reports-dir", str(reports_dir)]) == 0
+    run = read_jsonl(data_dir / "runs" / date / "run.jsonl")[0]
+    return run, (reports_dir / "daily" / f"{date}.md").read_text(encoding="utf-8")
+
+
+def test_cli_report_passes_stage_results_to_run_jsonl_and_report(tmp_path: Path):
+    deferred = {"status": "deferred", "reason": "未確認", "candidate_count": 3, "screened_count": 3, "unreviewed_count": 0, "selected_count": 0}
+    save_run_state(
+        tmp_path / "data",
+        "2026-10-04",
+        {
+            "run_id": "2026-10-04T02:09:55.419525+00:00",
+            "stages_completed": ["collect", "normalize", "score", "select-hot", "save-proposals"],
+            "errors": [],
+            "stage_results": {"select-hot": deferred, "save-proposals": {"status": "not_run", "reason": "選抜HOTなし", "proposal_count": 0}},
+        },
+    )
+
+    run, report_text = _report(tmp_path, "2026-10-04")
+
+    assert run["stage_results"]["select-hot"] == deferred
+
+
+def test_cli_report_does_not_fill_stage_results_for_old_run_state(tmp_path: Path):
+    _write_iso_period_run_state(tmp_path / "data")
+
+    run, report_text = _report(tmp_path, "2026-10-04")
+
+    assert run["stage_results"] == {}
+    state = json.loads((tmp_path / "data" / "runs" / "2026-10-04" / "run_state.json").read_text(encoding="utf-8"))
+    assert "stage_results" not in state
