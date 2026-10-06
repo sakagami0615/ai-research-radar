@@ -1,9 +1,9 @@
 """Daily digest: 注目候補(選抜外) and 新モデルリリース sections of the daily report.
 
 Both sections are built deterministically from the last few days of run data
-(no Agent judgement).
-Only the summaries are written by the Agent (data/runs/<date>/digest_summaries.json). Items already shown in an earlier day's report are
-excluded using `data/runs/<date>/report_digest.json`.
+(no Agent judgement); only the summaries are written by the Agent
+(`data/runs/<date>/digest_summaries.json`). Items already shown in an earlier
+day's report are excluded using `data/runs/<date>/report_digest.json`.
 """
 
 from __future__ import annotations
