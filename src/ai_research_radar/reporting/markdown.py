@@ -89,7 +89,7 @@ def _stage_count(result: dict[str, Any], key: str) -> str:
 
 
 def _with_reason(text: str, reason: str) -> str:
-    """"<text>(<reason>)。", omitting the parentheses for the default "未実行" reason."""
+    """Return "<text>(<reason>)。", omitting the parentheses for the default "未実行" reason."""
     if not reason or reason == NOT_RUN_REASON:
         return f"{text}。"
     return f"{text}({_inline_text(reason)})。"

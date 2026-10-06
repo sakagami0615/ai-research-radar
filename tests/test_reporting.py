@@ -986,3 +986,17 @@ def test_invalid_stage_records_are_treated_as_missing():
     markdown = render_daily_report("2026-10-04", [], [], run, [])
 
     assert "本日の選抜HOTはありません。" in _selected_section(markdown)
+
+
+def test_selection_deferred_with_invalid_counts_shows_question_marks():
+    result = dict(DEFERRED, candidate_count="x", screened_count=True)
+
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(result), [])
+
+    assert "候補 ?件中 ?件を確認" in _selected_section(markdown)
+
+
+def test_selection_not_run_with_custom_reason_shows_it():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run({"status": "not_run", "reason": "選抜の再実行により無効"}), [])
+
+    assert "選抜は未実行(選抜の再実行により無効)。" in _selected_section(markdown)
