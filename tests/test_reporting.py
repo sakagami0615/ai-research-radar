@@ -1074,3 +1074,28 @@ def test_missing_proposals_record_keeps_legacy_display():
     section = _selected_section(markdown)
     assert "記事企画は" not in section
     assert "記事企画なし\n" in section
+
+
+def test_deferred_proposals_drop_trailing_period_of_reason():
+    deferred = {"status": "deferred", "reason": "検証環境がない。", "proposal_count": 0}
+
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(COMPLETED, deferred), [])
+
+    assert "記事企画なし(保留: 検証環境がない)" in _selected_section(markdown)
+
+
+def test_failed_proposals_without_selected_hot_show_nothing():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED, {"status": "failed", "reason": "x"}), [])
+
+    assert "記事企画" not in _selected_section(markdown)
+
+
+def test_deferred_proposals_mark_only_hot_without_proposals():
+    deferred = {"status": "deferred", "reason": "", "proposal_count": 1}
+    hots = [_assessed_hot(None), _hot_b()]
+
+    markdown = render_daily_report("2026-10-04", hots, [_proposal("hot:a")], _stage_run(COMPLETED, deferred), [])
+
+    section = _selected_section(markdown)
+    assert "記事企画なし(保留: 理由未記載)" in section.split("### Tool B")[1]
+    assert section.count("記事企画なし(保留:") == 1

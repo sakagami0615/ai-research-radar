@@ -141,7 +141,8 @@ def _deferral_reason(result: dict[str, Any] | None) -> str | None:
     """Reason shown in the proposal block of a HOT without proposals, only on a deferred day."""
     if result is None or result["status"] != "deferred":
         return None
-    return _inline_text(_stage_reason(result)) or "理由未記載"
+    # The reason sits inside "(保留: ...)", so a trailing "。" written by the agent is dropped.
+    return _inline_text(_stage_reason(result)).rstrip("。") or "理由未記載"
 
 
 def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str]:
