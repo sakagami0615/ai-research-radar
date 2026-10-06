@@ -12,7 +12,7 @@ from ai_research_radar.cli.commands.run_state import (
 from ai_research_radar.reporting.digest import (
     build_daily_digest,
     save_digest_summaries,
-    summarizable_ids,
+    summarizable_keys,
 )
 
 COMMAND_NAME = "add-summary"
@@ -39,7 +39,7 @@ def run(args: argparse.Namespace) -> int:
 
     if not args.summary:
         return _fail(data_dir, date, state, "invalid_summary", "no --summary given")
-    known_ids = summarizable_ids(build_daily_digest(data_dir, date))
+    known_ids = summarizable_keys(build_daily_digest(data_dir, date))
 
     summaries: dict[str, str] = {}
     for entry in args.summary:

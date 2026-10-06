@@ -313,6 +313,7 @@ def test_cli_report_falls_back_to_utc_when_runtime_config_is_broken(tmp_path: Pa
 
 
 def test_cli_report_lists_missing_summaries_without_writing_anything(tmp_path: Path, capsys):
+    from ai_research_radar.reporting.digest import save_digest_summaries
     from ai_research_radar.schemas.models import HotCandidate
     from ai_research_radar.storage.jsonl import write_jsonl
 
@@ -326,7 +327,28 @@ def test_cli_report_lists_missing_summaries_without_writing_anything(tmp_path: P
             HotCandidate("hot:c", "C", "c", 78.0, [], ["https://example.com/c"], ["technology"], ["pypi:c"], False),
         ],
     )
-    assert main(["add-summary", "--date", "2026-09-25", "--data-dir", str(data_dir), "--summary", "hot:c=補完した概要"]) == 0
+    write_jsonl(
+        data_dir / "normalized" / "2026-09-25" / "signals.jsonl",
+        [
+            {
+                "signal_id": f"huggingface_orgs:org/{name}",
+                "source": "huggingface_orgs",
+                "source_family": "technology",
+                "content_type": "model",
+                "title": f"org/{name}",
+                "url": f"https://huggingface.co/org/{name}",
+                "published_at": "2026-09-25T00:00:00+00:00",
+                "fetched_at": "2026-09-25T00:00:00+00:00",
+                "summary": "",
+                "categories": [],
+                "raw_metrics": {},
+                "normalized_scores": {},
+                "metadata": {"model_release": {"provider": "Org", "channel": "huggingface"}},
+            }
+            for name in ("m1", "m2")
+        ],
+    )
+    save_digest_summaries(data_dir, "2026-09-25", {"hot:c": "補完した概要", "https://huggingface.co/org/m2": "補完した概要"})
 
     exit_code = main(
         [
@@ -344,7 +366,16 @@ def test_cli_report_lists_missing_summaries_without_writing_anything(tmp_path: P
     assert exit_code == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
     assert lines == [
-        {"hot_id": "hot:a", "title": "A", "first_seen": "2026-09-25", "evidence_urls": ["https://example.com/a"]}
+        {"kind": "notable", "hot_id": "hot:a", "title": "A", "first_seen": "2026-09-25", "evidence_urls": ["https://example.com/a"]},
+        {
+            "kind": "model_release",
+            "key": "https://huggingface.co/org/m1",
+            "title": "org/m1",
+            "provider": "Org",
+            "channel": "huggingface",
+            "url": "https://huggingface.co/org/m1",
+            "first_seen": "2026-09-25",
+        },
     ]
     assert not reports_dir.exists()
     run_dir = data_dir / "runs" / "2026-09-25"
