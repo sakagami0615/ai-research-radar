@@ -7,7 +7,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 目的
 
-`ai-radar` CLIのサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に呼び出し、HOT最終選抜、選抜HOT・注目候補の日本語概要、記事企画をAgent自身の判断で作り、日次レポートを完成させる。
+`ai-radar` CLIのサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に呼び出し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要、記事企画をAgent自身の判断で作り、日次レポートを完成させる。
 
 `ai-radar daily` は決定論的な一括実行コマンドであり、このSkillでは使わない。
 
@@ -153,23 +153,38 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar save-proposals --date <date> --input data/runs/<date>/draft_proposals.json
    ```
 
-8. 注目候補の概要を補完してから、レポートを生成する。
+8. 注目候補・新モデルリリースの概要を補完してから、レポートを生成する。
 
-   a. レポートの注目候補に表示される項目のうち、概要がないもの(過去日の候補など)を一覧する。何も出力されなければ c へ進む。
+   a. レポートに表示される注目候補・新モデルリリースのうち、概要がないもの(過去日の注目候補、当日の新モデルリリースなど)を一覧する。何も出力されなければ c へ進む。
 
       ```bash
       ai-radar report --date <date> --list-missing-summaries
       ```
 
-      出力は1行1件のJSON(`hot_id` / `title` / `first_seen` / `evidence_urls`)。このコマンドは何もファイルを書き換えない。
+      出力は1行1件のJSONで、`kind` で種類を見分ける。このコマンドは何もファイルを書き換えない。
 
-   b. 一覧の各項目について `evidence_urls` のサイトにアクセスして内容を確認し、手順4と同じ基準で概要を書いて保存する(一次情報を取得できない場合の書き方も手順4と同じ)。
+      - `"kind": "notable"`(注目候補): `hot_id` / `title` / `first_seen` / `evidence_urls`
+      - `"kind": "model_release"`(新モデルリリース): `key` / `title` / `provider` / `channel` / `url` / `first_seen`
 
-      ```bash
-      ai-radar add-summary --date <date> --summary <hot_id>=<概要> [--summary ...]
+      1回の実行の中で最初に実行した8aの出力で、`model_release` の行が30件を超えた場合は、その件数を控えておき、完了報告に書く(上限の追加や表示件数の削減を見直すきっかけにするため。手順9bから戻ったときの8aでは数え直さない)。
+
+   b. 一覧の各項目の内容を確認して概要を書き、保存する。
+
+      - 注目候補: `evidence_urls` のサイトにアクセスし、手順4と同じ基準で書く。
+      - 新モデルリリース: `url` のサイトにアクセスし、1文・おおむね80字以内で書く。わかる範囲で「何のモデルか / 規模(パラメータ数など)/ ライセンス / 特徴」を書き、確認できなかった項目は書かない(推測で埋めない)。
+      - どちらも、一次情報を取得できない場合の書き方は手順4と同じ(取得できた範囲で書いて「一次情報未確認」と明記する。何も取得できなければ「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く)。
+
+      書いた概要は、`hot_id`(注目候補)または `key`(新モデルリリース)をキーとするJSONオブジェクトとして `data/runs/<date>/summary_input.json` に書き(既存の内容は今回の分で置き換えてよい)、保存する。キーは一覧の値をそのまま使う(新モデルリリースの `key` は正規化済みURLなので、`url` とは一致しないことがある)。
+
+      ```json
+      {"hot:event:...": "注目候補の概要", "https://huggingface.co/org/model": "新モデルリリースの概要"}
       ```
 
-      保存後に a を再実行し、何も出力されないことを確認する。
+      ```bash
+      ai-radar add-summary --date <date> --input data/runs/<date>/summary_input.json
+      ```
+
+      保存後に a を1回だけ再実行して、何も出力されないことを確認する。それでも残る項目は、推測で書かずに「概要未作成(未確認: 時間内に確認できず)」と書いて同じ方法で保存し、a を再実行せずに c へ進む。この回数は、手順9bから手順8に戻るたびに数え直す。
 
    c. レポートを生成する。
 
@@ -195,7 +210,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
         記事企画・概要の書き直しなど必要な修正を自分自身で行った上で、HOT選抜・概要の修正は `selection_input.json` を書き直して `ai-radar select-hot` /
         `save-proposals` を再実行し、手順8のa〜c(概要の補完とレポート生成)をやり直してから、
         手順9のa(レビュー担当の起動)に戻る。
-        手順8bで補完した概要の修正は、`add-summary` で同じ `hot_id` を再指定すると上書きされる。
+        手順8bで補完した概要の修正は、`summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行すると上書きされる。キーは `data/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
 10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合:
@@ -214,8 +229,8 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別は次のとおり。
    - `select-hot`: `deprecated_option` / `missing_input` / `invalid_input` / `invalid_assessment` / `selection_limit_exceeded` / `invalid_summary` / `missing_summary` / `write_error`
    - `save-proposals`: `missing_input` / `invalid_input` / `invalid_proposal` / `write_error`
-   - `add-summary`: `invalid_summary` / `write_error`
-2. 原因に応じて `selection_input.json`・`draft_proposals.json`・概要を修正し、再実行する。
+   - `add-summary`: `deprecated_option`(`--summary` を指定した。`--input` に移る)/ `missing_input` / `invalid_input` / `invalid_summary` / `write_error`
+2. 原因に応じて `selection_input.json`・`draft_proposals.json`・`summary_input.json` を修正し、再実行する。
    - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
 3. 再実行は最大3回までとする。3回後も重要指摘が残る場合は`needs_review`として停止し、起動失敗・結果欠損は`failed`として承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
 
@@ -230,3 +245,4 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 - `report` の標準出力(生成されたレポートのパス)を確認する。
 - `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。
+- 手順8aで控えた新モデルリリースの対象件数が30件を超えていた場合は、その件数を完了報告に含める。
