@@ -39,6 +39,11 @@ def render_daily_report(
     lines.extend(_data_gaps_section(run))
     lines.extend(["## 選抜HOT", ""])
     lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
+    proposal_result = _stage_result(run, "save-proposals")
+    if selected_hot:
+        shown = any(proposals_by_hot.get(candidate.hot_id) for candidate in selected_hot)
+        lines.extend(_proposal_status(proposal_result, shown))
+    deferral_reason = _deferral_reason(proposal_result)
     for candidate in selected_hot:
         lines.extend(
             [
@@ -56,7 +61,7 @@ def render_daily_report(
         lines.extend([f"  - {reason}" for reason in candidate.reasons])
         lines.extend(_assessment_section(candidate.assessment))
         lines.extend(["", "#### Article Proposals", ""])
-        lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, [])))
+        lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, []), deferral_reason))
 
     lines.extend(_digest_warnings(digest))
     lines.extend(_notable_section(digest))
@@ -117,6 +122,26 @@ def _selection_status(result: dict[str, Any] | None, has_selected: bool) -> list
     if has_selected:
         line += "以下は前回成功時の結果です。"
     return [line, ""]
+
+
+def _proposal_status(result: dict[str, Any] | None, has_proposals: bool) -> list[str]:
+    """Shown once under 選抜HOT when proposals were not saved for the current selection."""
+    if result is None or result["status"] in {"completed", "deferred"}:
+        return []
+    if result["status"] == "not_run":
+        line = _with_reason("記事企画は未実行", _stage_reason(result))
+    else:
+        line = _with_reason("記事企画の保存は失敗", _stage_reason(result))
+    if has_proposals:
+        line += "表示中の企画は前回の結果です。"
+    return [line, ""]
+
+
+def _deferral_reason(result: dict[str, Any] | None) -> str | None:
+    """Reason shown in the proposal block of a HOT without proposals, only on a deferred day."""
+    if result is None or result["status"] != "deferred":
+        return None
+    return _inline_text(_stage_reason(result)) or "理由未記載"
 
 
 def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str]:
@@ -390,8 +415,10 @@ def _parse_why_now(why_now: str) -> _IdeationTrace | None:
     )
 
 
-def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
+def _article_proposals_section(proposals: list[ArticleProposal], deferral_reason: str | None = None) -> list[str]:
     if not proposals:
+        if deferral_reason is not None:
+            return [f"記事企画なし(保留: {deferral_reason})", ""]
         return ["記事企画なし", ""]
 
     traces = [_parse_why_now(proposal.why_now) for proposal in proposals]

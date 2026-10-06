@@ -1000,3 +1000,77 @@ def test_selection_not_run_with_custom_reason_shows_it():
     markdown = render_daily_report("2026-10-04", [], [], _stage_run({"status": "not_run", "reason": "選抜の再実行により無効"}), [])
 
     assert "選抜は未実行(選抜の再実行により無効)。" in _selected_section(markdown)
+
+
+def _proposal(hot_id: str) -> ArticleProposal:
+    return ArticleProposal(
+        proposal_id=f"{hot_id}:p1", source_hot_id=hot_id, title_idea="企画", article_type="Hands-on",
+        target_reader="AI Engineer", why_now="今", technical_angle="t", experiment_plan=["e"], competition="Low",
+        traffic_opportunity="High", technical_opportunity="High", unique_angle="u",
+        evidence_links=["https://example.com/a"], risks=["r"],
+    )
+
+
+def _hot_b() -> HotCandidate:
+    return replace(_assessed_hot(None), hot_id="hot:b", title="Tool B")
+
+
+def test_deferred_proposals_show_reason_placeholder_for_hot_without_proposals():
+    deferred = {"status": "deferred", "reason": "", "proposal_count": 0}
+
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(COMPLETED, deferred), [])
+
+    assert "記事企画なし(保留: 理由未記載)" in _selected_section(markdown)
+
+
+def test_deferred_proposals_show_escaped_reason():
+    deferred = {"status": "deferred", "reason": "- 検証環境がない", "proposal_count": 0}
+
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(COMPLETED, deferred), [])
+
+    assert "記事企画なし(保留: \\- 検証環境がない)" in _selected_section(markdown)
+
+
+def test_completed_proposals_keep_plain_message_for_hot_without_proposals():
+    completed = {"status": "completed", "reason": "", "proposal_count": 1}
+    hots = [_assessed_hot(None), _hot_b()]
+
+    markdown = render_daily_report("2026-10-04", hots, [_proposal("hot:a")], _stage_run(COMPLETED, completed), [])
+
+    section = _selected_section(markdown)
+    assert "記事企画なし\n" in section
+    assert "保留" not in section
+
+
+def test_invalidated_proposals_show_notice_and_previous_proposals():
+    invalidated = {"status": "not_run", "reason": "選抜の再実行により無効"}
+
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [_proposal("hot:a")], _stage_run(COMPLETED, invalidated), [])
+
+    section = _selected_section(markdown)
+    assert "記事企画は未実行(選抜の再実行により無効)。表示中の企画は前回の結果です。" in section
+    assert section.index("記事企画は未実行") < section.index("### Tool A")
+
+
+def test_failed_proposals_without_previous_proposals_show_failure_only():
+    failed = {"status": "failed", "reason": "invalid_proposal: x"}
+
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(COMPLETED, failed), [])
+
+    section = _selected_section(markdown)
+    assert "記事企画の保存は失敗(invalid_proposal: x)。" in section
+    assert "前回の結果" not in section
+
+
+def test_not_run_proposals_omit_default_reason():
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(COMPLETED, NOT_RUN), [])
+
+    assert "記事企画は未実行。" in _selected_section(markdown)
+
+
+def test_missing_proposals_record_keeps_legacy_display():
+    markdown = render_daily_report("2026-10-04", [_assessed_hot(None)], [], _stage_run(COMPLETED), [])
+
+    section = _selected_section(markdown)
+    assert "記事企画は" not in section
+    assert "記事企画なし\n" in section
