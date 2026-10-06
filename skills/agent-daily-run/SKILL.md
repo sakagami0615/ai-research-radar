@@ -207,10 +207,10 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       - 存在しない場合: 承認。品質レビューループを終了し、完了確認へ進む。
       - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
-        記事企画・概要の書き直しなど必要な修正を自分自身で行った上で、HOT選抜・概要の修正は `selection_input.json` を書き直して `ai-radar select-hot` /
+        記事企画・概要の書き直しなど必要な修正を自分自身で行った上で、HOT選抜・手順4で書いた概要の修正は `selection_input.json` を書き直して `ai-radar select-hot` /
         `save-proposals` を再実行し、手順8のa〜c(概要の補完とレポート生成)をやり直してから、
         手順9のa(レビュー担当の起動)に戻る。
-        手順8bで補完した概要の修正は、`summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行すると上書きされる。キーは `data/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。
+        手順8bで補完した概要の修正は、`summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行すると上書きされる。キーは `data/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。HOT選抜のやり直しなどで今はレポートに表示されていない項目のキーは書かない(1つでも含むと `invalid_summary` で全体が保存されない)。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
 10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合:
