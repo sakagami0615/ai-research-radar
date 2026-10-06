@@ -68,13 +68,13 @@ ai-radar daily \
   - 旧オプション `--summary` は廃止した。指定すると `deprecated_option` として、JSONファイルに書いて `--input` で渡すよう促す移行メッセージを返す。`--summary` の判定は他の検証より先に行う。
   - エラー時は `run_state.json` の `errors` に記録して終了コード1にし、`digest_summaries.json` は書き換えない。エラーの種別は次の通り。
 
-    | 種別 | 条件 |
-    | --- | --- |
-    | `deprecated_option` | 旧オプション `--summary` を指定した |
-    | `invalid_summary` | `--input` の指定がない、中身が空のオブジェクト、対象外のキーがある、値が文字列でない・空 |
-    | `missing_input` | `--input` のファイルがない |
-    | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない |
-    | `write_error` | `digest_summaries.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) |
+    | 種別 | 条件 | 終了コード |
+    | --- | --- | --- |
+    | `deprecated_option` | 旧オプション `--summary` を指定した | 1 |
+    | `invalid_summary` | `--input` の指定がない、中身が空のオブジェクト、対象外のキーがある、値が文字列でない・空 | 1 |
+    | `missing_input` | `--input` のファイルがない | 1 |
+    | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない | 1 |
+    | `write_error` | `digest_summaries.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) | 1 |
 
 - `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(05章「注目候補・新モデルリリースの概要補完」参照)。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
 
