@@ -273,7 +273,7 @@ def test_report_summary_is_escaped_and_kept_on_one_line():
 
 
 def test_model_release_summary_comes_from_digest_summaries_and_missing_lists_notable_first(tmp_path: Path):
-    from ai_research_radar.reporting.digest import missing_summaries, save_digest_summaries, summarizable_keys
+    from ai_research_radar.reporting.digest import NotableItem, missing_summaries, save_digest_summaries, summarizable_keys
 
     _write_hot(tmp_path, "2026-09-25", [_hot("pkg", 80)])
     _write_signals(
@@ -293,7 +293,7 @@ def test_model_release_summary_comes_from_digest_summaries_and_missing_lists_not
         "https://hf.co/o/todo": "",
     }
     missing = missing_summaries(digest)
-    assert [type(item).__name__ for item in missing] == ["NotableItem", "ModelRelease"]
+    assert [type(item) for item in missing] == [NotableItem, ModelRelease]
     assert missing[1].key == "https://hf.co/o/todo"
     assert summarizable_keys(digest) == {"pkg", "https://hf.co/o/done", "https://hf.co/o/todo"}
 
