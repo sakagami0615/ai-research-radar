@@ -180,7 +180,7 @@ def _proposals_summary(result: dict[str, Any] | None) -> str:
     if status == "completed":
         return f"completed(企画{_stage_count(result, 'proposal_count')}件)"
     if status == "deferred":
-        return f"deferred(企画{_stage_count(result, 'proposal_count')}件 / 理由: {_stage_reason(result) or '理由未記載'})"
+        return f"deferred(企画{_stage_count(result, 'proposal_count')}件 / 理由: {_stage_reason(result).rstrip('。') or '理由未記載'})"
     return _status_with_reason(result)
 
 

@@ -76,6 +76,8 @@ def test_run_daily_writes_jsonl_and_markdown(tmp_path: Path):
     assert "### other (1件)" in report_text
     assert "## 注目候補(選抜外)" in report_text
     assert "## 新モデルリリース" in report_text
+    assert "| Selection | 記録なし |" in report_text
+    assert "| Proposals | 記録なし |" in report_text
     assert (tmp_path / "data" / "runs" / "2026-09-25" / "report_digest.json").exists()
 
 

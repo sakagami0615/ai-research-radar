@@ -1137,3 +1137,11 @@ def test_run_summary_escapes_failure_reason_and_unknown_counts():
     assert "| Selection | failed(invalid_input: a\\|b) |" in failed_summary
     assert "| Proposals | not_run(未実行) |" in failed_summary
     assert "| Selection | deferred(候補?件 / 確認?件 / 未確認2件 / 選抜0件) |" in odd_summary
+
+
+def test_run_summary_drops_trailing_period_of_deferred_proposal_reason():
+    deferred = {"status": "deferred", "reason": "環境なし。", "proposal_count": 0}
+
+    summary = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED, deferred), []))
+
+    assert "| Proposals | deferred(企画0件 / 理由: 環境なし) |" in summary
