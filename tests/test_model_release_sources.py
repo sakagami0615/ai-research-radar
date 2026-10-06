@@ -42,6 +42,31 @@ def _rss(*titles: str) -> bytes:
     return f'<?xml version="1.0"?><rss><channel>{items}</channel></rss>'.encode("utf-8")
 
 
+def _rss_with_categories(*entries: tuple[str, list[str]]) -> bytes:
+    items = "".join(
+        f"<item><title>{title}</title><link>https://example.com/{index}</link><guid>{index}</guid>"
+        + "".join(f"<category>{category}</category>" for category in categories)
+        + "<pubDate>Thu, 25 Sep 2026 08:00:00 +0000</pubDate></item>"
+        for index, (title, categories) in enumerate(entries)
+    )
+    return f'<?xml version="1.0"?><rss><channel>{items}</channel></rss>'.encode("utf-8")
+
+
+def _openai_feed(model_categories) -> dict:
+    feed = {"provider": "OpenAI", "url": "https://feed/openai", "model_keywords": ["gpt-"]}
+    if model_categories is not None:
+        feed["model_categories"] = model_categories
+    return feed
+
+
+def _model_release_titles(adapter) -> set[str]:
+    return {
+        item.payload["title"]
+        for item in adapter.collect("2026-09-24", "2026-09-25")
+        if "model_release" in item.payload["metadata"]
+    }
+
+
 def _no_sleep(monkeypatch) -> None:
     monkeypatch.setattr(public_module, "_sleep", lambda seconds: None)
 
@@ -339,3 +364,67 @@ def test_ollama_post_classification_rules():
     assert _ollama_models_in_post('<a href="https://ollama.com/library/glm-5">x</a>', "The fastest way to setup OpenClaw", "https://ollama.com/blog/openclaw") == []
     # singular "model" is not enough
     assert _ollama_models_in_post('<a href="/library/llama3">x</a>', "New model scheduling", "https://ollama.com/blog/new-model-scheduling") == []
+
+
+def test_official_feed_model_categories_limit_keyword_matches(monkeypatch):
+    adapter = OfficialFeedsAdapter("official_blogs", "official", [_openai_feed(["Product", "Research", "Release"])])
+    body = _rss_with_categories(
+        ("Introducing GPT-7", [" product "]),
+        ("Introducing gpt-oss", ["RELEASE"]),
+        ("A model guide for the GPT-6 family", ["Company", "Product"]),
+        ("Basis completes a tax workbook 2x faster with GPT-6 Astra", []),
+        ("Harvey turns legal context into stronger drafts with GPT-6 Astra", ["Startup"]),        ("Introducing GPT-8", ["  "]),
+    )
+    monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(body))
+
+    assert _model_release_titles(adapter) == {
+        "Introducing GPT-7",
+        "Introducing gpt-oss",
+        "A model guide for the GPT-6 family",
+    }
+
+
+@pytest.mark.parametrize("model_categories", [None, [], [" "], [None], "Product"])
+def test_official_feed_without_valid_model_categories_uses_keywords_only(monkeypatch, model_categories):
+    adapter = OfficialFeedsAdapter("official_blogs", "official", [_openai_feed(model_categories)])
+    body = _rss_with_categories(("Basis completes a tax workbook 2x faster with GPT-6 Astra", []))
+    monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(body))
+
+    assert _model_release_titles(adapter) == {"Basis completes a tax workbook 2x faster with GPT-6 Astra"}
+
+
+def test_official_feed_title_release_rule_ignores_model_categories(monkeypatch):
+    adapter = OfficialFeedsAdapter("official_blogs", "official", [_openai_feed(["Product"])])
+    body = _rss_with_categories(("We launch a new reasoning model", ["Startup"]))
+    monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(body))
+
+    items = adapter.collect("2026-09-24", "2026-09-25")
+
+    assert items[0].payload["metadata"]["event_type"] == "major_model_release"
+    assert "model_release" in items[0].payload["metadata"]
+
+
+def test_official_feed_reads_atom_category_term(monkeypatch):
+    adapter = OfficialFeedsAdapter("official_blogs", "official", [_openai_feed(["Product"])])
+    body = (
+        '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">'
+        '<entry><title>Introducing GPT-7</title><link href="https://example.com/a"/><id>a</id>'
+        '<updated>2026-09-25T08:00:00Z</updated><category term="Product"/></entry>'
+        '<entry><title>Story with GPT-7</title><link href="https://example.com/b"/><id>b</id>'
+        '<updated>2026-09-25T08:00:00Z</updated><category term="Startup"/></entry></feed>'
+    ).encode("utf-8")
+    monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(body))
+
+    assert _model_release_titles(adapter) == {"Introducing GPT-7"}
+
+
+def test_shared_feed_entries_keep_first_category_only():
+    from xml.etree import ElementTree
+
+    root = ElementTree.fromstring(_rss_with_categories(("Title", ["Product", "Research"])))
+
+    entry = public_module._feed_entries(root)[0]
+
+    # Generic RSS / Ollama payload.raw must not change with the official category rule.
+    assert entry["category"] == "Product"
+    assert sorted(entry) == ["category", "guid", "link", "pubDate", "title"]

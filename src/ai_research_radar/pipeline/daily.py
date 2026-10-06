@@ -23,6 +23,7 @@ from ai_research_radar.schemas.models import (
 )
 from ai_research_radar.scoring.hot import build_hot_candidates_from_events
 from ai_research_radar.sources.base import SourceAdapter, SourceError
+from ai_research_radar.sources.collection import collect_new_items
 from ai_research_radar.storage.jsonl import write_jsonl
 
 
@@ -48,6 +49,7 @@ def run_daily(
     minimum_score: float = 75.0,
     hot_score_weights: dict[str, float] | None = None,
     display_timezone: tzinfo | None = None,
+    use_overlap: bool = False,
 ) -> DailyPipelineResult:
     started_at = datetime.now(timezone.utc)
     date = period_date(until)
@@ -58,7 +60,7 @@ def run_daily(
 
     for adapter in adapters:
         try:
-            collected = adapter.collect(since=since, until=until)
+            collected = collect_new_items(adapter, since, until, output_dir, date, use_overlap)
         except SourceError as exc:
             errors.append({"source": exc.source, "type": exc.error_type, "message": str(exc)})
             continue

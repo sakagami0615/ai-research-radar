@@ -211,8 +211,15 @@ class OfficialFeedsAdapter(SourceAdapter):
                 continue
             provider = str(feed.get("provider", "OpenAI"))
             keywords = [str(value).lower() for value in feed.get("model_keywords", [])]
-            for entry in _feed_entries(root):
-                item = _map_official_feed(entry, provider=provider, model_keywords=keywords)
+            model_categories = _model_categories(feed)
+            for element in _feed_elements(root):
+                item = _map_official_feed(
+                    _element_to_dict(element),
+                    provider=provider,
+                    model_keywords=keywords,
+                    categories=_entry_categories(element),
+                    model_categories=model_categories,
+                )
                 if _item_is_in_period(item, since, until):
                     items.append(item)
         if self.feeds and len(failures) == len(self.feeds):
@@ -328,16 +335,23 @@ def build_adapters(configs: list[SourceConfig]) -> list[SourceAdapter]:
         if not config.enabled or config.auth_required:
             continue
         if config.adapter == "fixture":
-            adapters.append(
-                FixtureAdapter(
-                    source_name=config.name,
-                    source_family=config.family,
-                    fixture_path=Path(str(config.options["fixture_path"])),
-                )
+            adapter: SourceAdapter = FixtureAdapter(
+                source_name=config.name,
+                source_family=config.family,
+                fixture_path=Path(str(config.options["fixture_path"])),
             )
         else:
-            adapters.append(_public_adapter_for(config))
+            adapter = _public_adapter_for(config)
+        adapter.overlap_hours = _overlap_hours(config)
+        adapters.append(adapter)
     return adapters
+
+
+def _overlap_hours(config: SourceConfig) -> int:
+    value = config.options.get("overlap_hours", 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return 0
+    return value
 
 
 def _public_adapter_for(config: SourceConfig) -> SourceAdapter:
@@ -382,6 +396,16 @@ def _public_adapter_for(config: SourceConfig) -> SourceAdapter:
         period_params=_period_params_for(config.name),
         credibility=85.0 if config.name in {"arxiv", "openalex"} else 70.0,
     )
+
+
+def _model_categories(feed: dict[str, Any]) -> set[str] | None:
+    """`model_categories` of a feed; None (keyword-only rule) unless it is a
+    non-empty list."""
+    value = feed.get("model_categories")
+    if not isinstance(value, list):
+        return None
+    categories = {category.strip().casefold() for category in value if isinstance(category, str) and category.strip()}
+    return categories or None
 
 
 def _official_feeds(config: SourceConfig) -> list[dict[str, Any]]:
@@ -558,7 +582,11 @@ def _map_pypi_feed(entry: dict[str, Any]) -> RawItem:
 
 
 def _map_official_feed(
-    entry: dict[str, Any], provider: str = "OpenAI", model_keywords: list[str] | None = None
+    entry: dict[str, Any],
+    provider: str = "OpenAI",
+    model_keywords: list[str] | None = None,
+    categories: list[str] | None = None,
+    model_categories: set[str] | None = None,
 ) -> RawItem:
     title = str(entry.get("title") or "")
     event_type = _official_event_type(title)
@@ -567,7 +595,12 @@ def _map_official_feed(
     # model_keywords only mark the entry for the 新モデルリリース section. They do
     # not change event_type, so the Official override for HOT keeps using the
     # stricter title rule below.
-    if event_type == "major_model_release" or _mentions_any(title, model_keywords or []):
+    keyword_match = _mentions_any(title, model_keywords or [])
+    if keyword_match and model_categories is not None:
+        # Feeds like OpenAI's also tag customer stories that name a model; only
+        # the configured categories count as model announcements.
+        keyword_match = any(category.casefold() in model_categories for category in categories or [])
+    if event_type == "major_model_release" or keyword_match:
         item.payload["metadata"]["model_release"] = {"provider": provider, "channel": "official"}
     return item
 
@@ -691,11 +724,31 @@ def _ai_keyword_strength(entry: dict[str, Any]) -> float:
 
 
 def _feed_entries(root: ElementTree.Element) -> list[dict[str, Any]]:
+    return [_element_to_dict(element) for element in _feed_elements(root)]
+
+
+def _feed_elements(root: ElementTree.Element) -> list[ElementTree.Element]:
     rss_items = root.findall("./channel/item")
     if rss_items:
-        return [_element_to_dict(item) for item in rss_items]
+        return rss_items
     atom = {"atom": "http://www.w3.org/2005/Atom"}
-    return [_element_to_dict(entry) for entry in root.findall("atom:entry", atom)]
+    return root.findall("atom:entry", atom)
+
+
+def _entry_categories(element: ElementTree.Element) -> list[str]:
+    """Every category of an RSS item (text) or Atom entry (`term`).
+
+    `_element_to_dict` keeps only the first one, and is shared with sources
+    whose payload must not change, so official feeds read them separately.
+    """
+    categories: list[str] = []
+    for child in element:
+        if child.tag.rsplit("}", 1)[-1] != "category":
+            continue
+        value = (child.attrib.get("term") or child.text or "").strip()
+        if value:
+            categories.append(value)
+    return categories
 
 
 def _element_to_dict(element: ElementTree.Element) -> dict[str, Any]:

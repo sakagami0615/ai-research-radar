@@ -10,6 +10,7 @@ Source Adapterは、Source固有の取得、期間反映、raw保持、正規化
 class SourceAdapter:
     source_name: str
     source_family: str
+    overlap_hours: int = 0  # sources.yamlのoverlap_hours。後述「重ね取得と収集済み除外」
 
     def collect(self, since: str, until: str) -> list[RawItem]:
         ...
@@ -53,16 +54,19 @@ PyPIは全Package検索ではなく、更新RSSをAI関連keywordで絞る。npm
 
 ### Official Blogs(`official_blogs`)
 
-`feeds` に提供元ごとのRSS/Atomを複数登録できる。各要素は `provider`(表示名)、`url`、`model_keywords`(モデル系列名)を持つ。旧形式の単一 `feed_url` も引き続き受け付け、その場合の `provider` は `OpenAI` とする。
+`feeds` に提供元ごとのRSS/Atomを複数登録できる。各要素は `provider`(表示名)、`url`、`model_keywords`(モデル系列名)、任意の `model_categories`(新モデル判定に使うcategoryの許可リスト)を持つ。旧形式の単一 `feed_url` も引き続き受け付け、その場合の `provider` は `OpenAI` とする。
 
 - 1つのfeedの取得に失敗しても他のfeedは継続する。失敗したfeedは `partial_feed_error`、`url` のない設定エントリは `config_error` としてerrorsに記録する。全feedが失敗した場合のみSource全体の失敗とする。
 - Accept-Encodingを送っていなくてもgzip圧縮で返すfeedがある(DeepMindで確認)。このため、レスポンス本文がgzipのマジックバイト(`1f 8b`)で始まる場合は展開してから解析する(ヘッダーは見ない)。
 - 次のいずれかを満たすエントリに `metadata.model_release`(`channel=official`)を付与し、「新モデルリリース」の対象にする。
   - タイトルに、そのfeedの `model_keywords` のいずれかが単語として含まれる。大文字小文字は区別しない。語頭は常に単語境界で判定し、語末はkeywordが英数字で終わる場合のみ単語境界で判定する(`gpt-` は "GPT-6" に一致し、`veo` は "Coveo" に一致しない)。
+    - ただし `model_categories` を設定したfeedでは、keyword一致はエントリのcategory(RSSの `category` 要素のテキスト、Atomの `category` 要素の `term` 属性)のいずれかが `model_categories` に一致する場合に限る。比較は前後空白を除き大文字小文字を区別しない。categoryのないエントリは対象外とする。空リストやリスト以外の値は未設定として扱う。OpenAIは顧客事例(`Startup` / `Company` / categoryなし)がモデル名をタイトルに含むため、`[Product, Research, Release]` を設定している。許可外categoryのモデル発表(例: `Company` の「Introducing GPT-5.4 mini and nano」)は検知されず、許可category内の発表以外の記事(例: 「Better prompt caching for GPT-6」)は検知される。
+    - category は official_blogs 専用の経路で読み取る。汎用RSS・Ollamaの `payload.raw` は変えない。
   - タイトルにrelease/launch系の語と "model" を含む(従来規則。この場合は `event_type=major_model_release` にもなる)。
 - `model_keywords` への一致は `event_type` を変えない。HOTのOfficial Override(05章)は従来のタイトル規則だけで決まり、keyword追加によって候補化の母集団が広がらないようにする。
 - 提供元名そのもの(例: "Mistral")はkeywordにしない。提携や拠点開設の記事まで誤検知するためである。
-- Meta、Anthropic、xAIは公式RSSを提供していないため登録しない(2026-10時点で確認)。Metaのオープンウェイトは `huggingface_orgs` で拾う。
+- Meta、Anthropic、xAIは公式RSSを提供していないため登録しない(2026-10時点で確認)。Metaのオープンウェイトは `huggingface_orgs`(`meta-llama` / `meta-models`。2026年のモデルは `meta-models`)で拾う。
+- Qwenのブログ(`qwenlm.github.io`)は `qwen.ai/research` へ移転し、RSSがないため登録しない(2026-10時点で確認。旧feedは2025-09で更新停止)。Qwenのモデルは `huggingface_orgs` の `Qwen` で拾う。
 
 ### Hugging Face org(`huggingface_orgs`)
 
@@ -91,6 +95,18 @@ Ollamaブログの公式RSS `https://ollama.com/blog/rss.xml` を取得し、期
 可能なSourceでは、API queryに `since` / `until` を反映する。値は日付またはタイムゾーン付きISO 8601日時を取り得る。日付粒度しか指定できないAPIは、範囲を包含する日付で検索した後、取得済み日時を使って厳密にフィルタする。
 
 API側で完全に期間指定できないSourceでも、取得後に `published_at` または `updated_at` を使って期間フィルタを行う。
+
+### 重ね取得と収集済み除外(`overlap_hours`)
+
+公開日時(pubDate)が実際にfeedへ載った時刻より前に付く記事がある(OpenAIで確認。2026-09-29の実行は、期間内のpubDateを持つ「Introducing GPT-6.1 Sol」を取得できなかった)。期間を隙間なくつないでも、載った時点で既に過ぎた期間の記事として取りこぼすため、`sources.yaml` の各Sourceに任意の `overlap_hours` を設定できる。正の整数以外は0(重ねない)として扱う。
+
+- `--since` / `--until` 省略時に限り、`overlap_hours` を持つSourceは `since - overlap_hours` 〜 `until` で取得する(期間を明示した実行では重ねない)。重ね分は `collection.max_lookback_days` の上限とは別に加算する。
+- 取得結果から、対象日より前の日付(`period_date(since - overlap_hours)` の前日から対象日の前日まで)の `normalized/<日付>/signals.jsonl` で、`signal_id` または `metadata.merged_signal_ids` に `"<source>:<raw_id>"` があるものを除外する。`raw` ではなく `normalized` を基準にするのは、`collect` 後に止まった実行で `raw` だけ残った記事を取り直すためである。対象日の `normalized` は同日再実行で上書きされるため基準にしない。読めないファイルは無視する。
+- 現在は `official_blogs` と `ollama` に `overlap_hours: 48` を設定している。GitHub / HF のように更新順で取得するSourceは、同じリポジトリの再浮上も新しいSignalとして扱うため設定しない。
+- 既知の限界:
+  - `normalize` まで終えて `report` 前に止まった実行の記事は除外される。新モデルリリースは直近3日の `normalized` から集約されるため次回レポートに出るが、HOT選抜の対象には戻らない。
+  - `ollama` は除外前に記事ページを取得するため、収集済み記事のページ取得に失敗すると、その `partial_feed_error` が残る。
+  - 期間判定は `updated_at` を優先するため、Atomの `updated` を持つfeedで古い記事が更新されると再収集される場合がある(現在の対象feedはRSSのpubDateのみ)。
 
 ## raw保持
 
