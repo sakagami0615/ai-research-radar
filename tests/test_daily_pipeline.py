@@ -168,3 +168,47 @@ def test_run_daily_renders_period_in_given_display_timezone(tmp_path: Path):
 
     report = result.report_path.read_text(encoding="utf-8")
     assert "| Period | 2026-09-24 09:00 〜 2026-09-25 09:00 (JST) |" in report
+
+
+def test_run_daily_shows_model_releases_without_summary(tmp_path: Path):
+    from ai_research_radar.storage.jsonl import write_jsonl
+
+    write_jsonl(
+        tmp_path / "data" / "normalized" / "2026-09-24" / "signals.jsonl",
+        [
+            {
+                "signal_id": "huggingface_orgs:org/model",
+                "source": "huggingface_orgs",
+                "source_family": "technology",
+                "content_type": "model",
+                "title": "org/model",
+                "url": "https://huggingface.co/org/model",
+                "published_at": "2026-09-24T00:00:00+00:00",
+                "fetched_at": "2026-09-24T00:00:00+00:00",
+                "summary": "",
+                "categories": [],
+                "raw_metrics": {},
+                "normalized_scores": {},
+                "metadata": {"model_release": {"provider": "Org", "channel": "huggingface"}},
+            }
+        ],
+    )
+    adapter = FixtureAdapter(
+        source_name="github",
+        source_family="technology",
+        fixture_path=Path("tests/fixtures/sample_raw_items.jsonl"),
+    )
+
+    result = run_daily(
+        adapters=[adapter],
+        since="2026-09-24",
+        until="2026-09-25",
+        output_dir=tmp_path / "data",
+        report_dir=tmp_path / "reports",
+        hot_limit=5,
+        minimum_score=0,
+    )
+
+    lines = result.report_path.read_text(encoding="utf-8").splitlines()
+    item = lines.index("- [org/model](<https://huggingface.co/org/model>) (Hugging Face / 公開日 2026-09-24)")
+    assert lines[item + 1] == "  - 概要: 概要未作成"
