@@ -294,3 +294,111 @@ def test_rerun_clears_previous_errors(tmp_path: Path):
 
     assert _select(data_dir) == 0
     assert _errors(data_dir) == []
+
+
+def _results(data_dir: Path) -> dict:
+    return _state(data_dir)["stage_results"]
+
+
+def test_records_completed_with_counts_and_keeps_initial_proposals_result(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    _write_selection(data_dir, _selection())
+
+    assert _select(data_dir) == 0
+
+    assert _results(data_dir) == {
+        "select-hot": {
+            "status": "completed",
+            "reason": "Aのみ一次情報で確認できた",
+            "candidate_count": 2,
+            "screened_count": 2,
+            "unreviewed_count": 0,
+            "selected_count": 1,
+        },
+        "save-proposals": {"status": "not_run", "reason": "未実行"},
+    }
+
+
+def test_records_deferred_when_nothing_is_selected(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    _write_selection(
+        data_dir,
+        _selection(assessments=[_assessment(A, "deferred"), _assessment(B, "rejected")], selection_reason="一次情報を確認できなかった"),
+    )
+
+    assert _select(data_dir) == 0
+
+    result = _results(data_dir)["select-hot"]
+    assert result["status"] == "deferred"
+    assert result["reason"] == "一次情報を確認できなかった"
+    assert result["selected_count"] == 0
+    assert "select-hot" in _state(data_dir)["stages_completed"]
+
+
+def test_records_deferred_on_a_day_without_candidates(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    write_jsonl(_run_dir(data_dir) / "hot_candidates.jsonl", [])
+    _write_selection(data_dir, {"assessments": [], "screened_ids": [], "selection_reason": "候補なし"})
+
+    assert _select(data_dir) == 0
+
+    assert _results(data_dir)["select-hot"] == {
+        "status": "deferred",
+        "reason": "候補なし",
+        "candidate_count": 0,
+        "screened_count": 0,
+        "unreviewed_count": 0,
+        "selected_count": 0,
+    }
+
+
+def test_failure_overwrites_previous_success_and_keeps_proposals_result(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    _write_selection(data_dir, _selection())
+    assert _select(data_dir) == 0
+    _write_selection(data_dir, _selection(selection_reason=""))
+
+    assert _select(data_dir) == 1
+
+    results = _results(data_dir)
+    assert results["select-hot"]["status"] == "failed"
+    assert results["select-hot"]["reason"].startswith("invalid_assessment: ")
+    assert set(results["select-hot"]) == {"status", "reason"}
+    assert results["save-proposals"] == {"status": "not_run", "reason": "未実行"}
+
+
+def test_deprecated_option_is_recorded_as_failed(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    _write_selection(data_dir, _selection())
+
+    assert _select(data_dir, "--select", A) == 1
+
+    assert _results(data_dir)["select-hot"]["reason"].startswith("deprecated_option: ")
+
+
+def test_rerun_success_invalidates_saved_proposals_result(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    _write_selection(data_dir, _selection())
+    assert _select(data_dir) == 0
+    state = _state(data_dir)
+    state["stage_results"]["save-proposals"] = {"status": "completed", "reason": "", "proposal_count": 2}
+    (_run_dir(data_dir) / "run_state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+    assert _select(data_dir) == 0
+
+    assert _results(data_dir)["save-proposals"] == {"status": "not_run", "reason": "選抜の再実行により無効"}
+
+
+def test_rerun_on_old_data_records_selection_and_invalidates_proposals(tmp_path: Path):
+    data_dir = _write_candidates(tmp_path)
+    (_run_dir(data_dir) / "run_state.json").write_text(
+        json.dumps({"run_id": "2026-09-25T00:00:00+00:00", "stages_completed": ["select-hot", "save-proposals"], "errors": [], "output_counts": {}}),
+        encoding="utf-8",
+    )
+    _write_selection(data_dir, _selection())
+
+    assert _select(data_dir) == 0
+
+    results = _results(data_dir)
+    assert results["select-hot"]["status"] == "completed"
+    assert results["save-proposals"] == {"status": "not_run", "reason": "選抜の再実行により無効"}
