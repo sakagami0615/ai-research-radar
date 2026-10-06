@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from ai_research_radar.schemas.decoders import decode_run
 from ai_research_radar.schemas.models import (
     ArticleProposal,
     CanonicalSignal,
@@ -10,6 +11,7 @@ from ai_research_radar.schemas.models import (
     canonical_signal_from_dict,
     event_from_dict,
     to_json_dict,
+    valid_stage_result,
 )
 
 
@@ -183,10 +185,6 @@ def test_decode_hot_reads_summary_and_defaults_to_empty_for_legacy_records():
     assert decode_hot(legacy).summary == ""
 
 
-from ai_research_radar.schemas.decoders import decode_run
-from ai_research_radar.schemas.models import valid_stage_result
-
-
 def _run_record(**overrides) -> dict:
     record = to_json_dict(
         RunMetadata(
@@ -199,7 +197,7 @@ def _run_record(**overrides) -> dict:
     return record
 
 
-def test_run_metadata_defaults_stage_results_to_empty_dict():
+def test_decode_run_defaults_stage_results_to_empty_for_legacy_records():
     assert decode_run(_run_record()).stage_results == {}
 
 
