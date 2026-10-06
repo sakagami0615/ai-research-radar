@@ -381,6 +381,7 @@ def test_cli_report_passes_stage_results_to_run_jsonl_and_report(tmp_path: Path)
         "select-hot": deferred,
         "save-proposals": {"status": "not_run", "reason": "選抜HOTなし", "proposal_count": 0},
     }
+    assert "| Selection | deferred(候補3件 / 確認3件 / 未確認0件 / 選抜0件) |" in report_text
 
 
 def test_cli_report_does_not_fill_stage_results_for_old_run_state(tmp_path: Path):
@@ -391,6 +392,7 @@ def test_cli_report_does_not_fill_stage_results_for_old_run_state(tmp_path: Path
     assert run["stage_results"] == {}
     state = json.loads((tmp_path / "data" / "runs" / "2026-10-04" / "run_state.json").read_text(encoding="utf-8"))
     assert "stage_results" not in state
+    assert "| Selection | 記録なし |" in report_text
 
 
 def test_cli_report_carries_stage_results_when_markdown_write_fails(tmp_path: Path):

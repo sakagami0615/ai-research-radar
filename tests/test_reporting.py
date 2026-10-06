@@ -1099,3 +1099,41 @@ def test_deferred_proposals_mark_only_hot_without_proposals():
     section = _selected_section(markdown)
     assert "記事企画なし(保留: 理由未記載)" in section.split("### Tool B")[1]
     assert section.count("記事企画なし(保留:") == 1
+
+
+def test_run_summary_shows_stage_results_rows():
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(DEFERRED, {"status": "not_run", "reason": "選抜HOTなし", "proposal_count": 0}), [])
+
+    summary = _run_summary(markdown)
+    assert "| Output Counts | events: 366, signals: 395 |\n| Selection | deferred(候補10件 / 確認8件 / 未確認2件 / 選抜0件) |\n| Proposals | not_run(選抜HOTなし) |" in summary
+    _assert_tables_well_formed(markdown)
+
+
+def test_run_summary_shows_missing_records_for_old_data():
+    summary = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(), []))
+
+    assert "| Selection | 記録なし |" in summary
+    assert "| Proposals | 記録なし |" in summary
+
+
+def test_run_summary_shows_proposal_counts_and_reasons():
+    completed = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED, {"status": "completed", "reason": "", "proposal_count": 3}), []))
+    deferred = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED, {"status": "deferred", "reason": "", "proposal_count": 0}), []))
+    with_reason = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED, {"status": "deferred", "reason": "環境なし", "proposal_count": 0}), []))
+
+    assert "| Selection | completed(候補2件 / 確認2件 / 未確認0件 / 選抜1件) |" in completed
+    assert "| Proposals | completed(企画3件) |" in completed
+    assert "| Proposals | deferred(企画0件 / 理由: 理由未記載) |" in deferred
+    assert "| Proposals | deferred(企画0件 / 理由: 環境なし) |" in with_reason
+
+
+def test_run_summary_escapes_failure_reason_and_unknown_counts():
+    failed = {"status": "failed", "reason": "invalid_input: a|b"}
+    odd_counts = dict(DEFERRED, candidate_count="10", screened_count=True)
+
+    failed_summary = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(failed, NOT_RUN), []))
+    odd_summary = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(odd_counts), []))
+
+    assert "| Selection | failed(invalid_input: a\\|b) |" in failed_summary
+    assert "| Proposals | not_run(未実行) |" in failed_summary
+    assert "| Selection | deferred(候補?件 / 確認?件 / 未確認2件 / 選抜0件) |" in odd_summary

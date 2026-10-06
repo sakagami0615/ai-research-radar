@@ -152,11 +152,41 @@ def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str
         ("Sources", ", ".join(run.sources)),
         ("Input Counts", _format_counts(run.input_counts)),
         ("Output Counts", _format_counts(run.output_counts)),
+        ("Selection", _selection_summary(_stage_result(run, "select-hot"))),
+        ("Proposals", _proposals_summary(_stage_result(run, "save-proposals"))),
     ]
     lines = ["## Run Summary", "", "| 項目 | 内容 |", "| --- | --- |"]
     lines.extend(f"| {label} | {_cell(value)} |" for label, value in rows)
     lines.append("")
     return lines
+
+
+def _selection_summary(result: dict[str, Any] | None) -> str:
+    if result is None:
+        return "記録なし"
+    status = result["status"]
+    if status in {"completed", "deferred"}:
+        return (
+            f"{status}(候補{_stage_count(result, 'candidate_count')}件 / 確認{_stage_count(result, 'screened_count')}件"
+            f" / 未確認{_stage_count(result, 'unreviewed_count')}件 / 選抜{_stage_count(result, 'selected_count')}件)"
+        )
+    return _status_with_reason(result)
+
+
+def _proposals_summary(result: dict[str, Any] | None) -> str:
+    if result is None:
+        return "記録なし"
+    status = result["status"]
+    if status == "completed":
+        return f"completed(企画{_stage_count(result, 'proposal_count')}件)"
+    if status == "deferred":
+        return f"deferred(企画{_stage_count(result, 'proposal_count')}件 / 理由: {_stage_reason(result) or '理由未記載'})"
+    return _status_with_reason(result)
+
+
+def _status_with_reason(result: dict[str, Any]) -> str:
+    reason = _stage_reason(result)
+    return f"{result['status']}({reason})" if reason else result["status"]
 
 
 def _format_counts(counts: dict[str, int]) -> str:
