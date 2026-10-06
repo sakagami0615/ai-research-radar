@@ -274,12 +274,12 @@ MVPでは外部LLMを使わず、決定論的なRole生成、Critique、Debate�
 | save-proposals | 成功・選抜1件以上・企画0件 | `deferred` | 入力の `deferral_reason`(#11 完了までは空) |
 | save-proposals | 成功・選抜0件 | `not_run` | 選抜HOTなし |
 | いずれも | 未実行 | `not_run` | 未実行 |
-| いずれも | 終了コード1で失敗 | `failed` | エラーの種別と内容 |
+| いずれも | 終了コード1で失敗(`errors` に記録したエラー) | `failed` | エラーの種別と内容 |
 
 - 再実行・失敗時はそのステージの記録を上書きする。`select-hot` が成功したときは、`save-proposals` の記録が初期値(未実行)以外なら `not_run`(選抜の再実行により無効)に戻す。古い `article_proposals.jsonl` は削除しない。
-- 新しい `run_state.json` は2ステージを `not_run`(未実行)で初期化する。`report` 以外のコマンドは、既存の `run_state.json` に有効な記録がなく、`stages_completed` にも入っていないステージだけを同じ値で補う(実行済みのステージは「記録なし」のまま)。`report` は補わない。
-- 記録がない・dictでない・`status` が4値以外のステージは「記録なし」として扱う。`decode_run` は `stage_results` のない旧 `run.jsonl` を空dictとして読む。決定論経路(`ai-radar daily`)は記録しない。
-- `run_state.json` が壊れたJSON、またはJSONとして正しくてもオブジェクトでない場合、`load_run_state` は `RunStateError` を送出する。
+- 新しい `run_state.json` は2ステージを `not_run`(未実行)で初期化する。`report` 以外のコマンドは、既存の `run_state.json` に有効な記録がなく、`stages_completed` にも入っていないステージだけを同じ値で補う(実行済みのステージは「記録なし」のまま)。既存の `run_state.json` について `report` は補わない(新規作成する場合は `report` でも2ステージを `not_run` で初期化する)。
+- 記録がない・dictでない・`status` が4値以外のステージは「記録なし」として扱う。`decode_run` は `stage_results` のない旧 `run.jsonl` を空dictとして読む。決定論経路(`ai-radar daily`)は記録せず、`run.jsonl` の `stage_results` は空dictのままである。
+- `run_state.json` が壊れたJSON、またはJSONとして正しくてもオブジェクトでない場合、`load_run_state` は `RunStateError` を送出する。この場合は `errors` にも `stage_results` にも記録できないため、`stage_results` は更新されない。
 - 判定用の定数・関数(`STAGE_RESULT_STATUSES` / `NOT_RUN_REASON` / `valid_stage_result`)は `schemas/models.py` にある。
 
 Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。
@@ -291,7 +291,7 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `# AI Daily Radar <date>`
 - `## データ欠落`(収集に完全失敗したSourceがある場合のみ出力)
 - `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
-  - 見出しの直後に、`stage_results` の `select-hot` に応じた状態を1行出す。記録なし(旧データ)は従来どおり、選抜0件のときだけ「本日の選抜HOTはありません。」。`completed` は状態行を出さず選抜HOTを列挙する(選抜HOTが0件なら「選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。」)。`deferred` は「本日の選抜HOTはありません(保留: <selection_reason>。候補 m件中 n件を確認、未確認 k件)。」(`selection_reason` の末尾の「。」は除いて表示する)(候補0件の日は「…(保留: <selection_reason>。候補0件)。」)。`not_run` / `failed` は「選抜は未実行(<理由>)。」/「選抜は失敗(<理由>)。」とし(理由が「未実行」なら括弧を省く)、選抜HOTが残っていれば「以下は前回成功時の結果です。」を続けて列挙する。
+  - 見出しの直後に、`stage_results` の `select-hot` に応じた状態を1行出す。記録なし(旧データ)は従来どおり、選抜0件のときだけ「本日の選抜HOTはありません。」。`completed` は状態行を出さず選抜HOTを列挙する(選抜HOTが0件なら「選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。」)。`deferred` は「本日の選抜HOTはありません(保留: <selection_reason>。候補 m件中 n件を確認、未確認 k件)。」(`selection_reason` の末尾の「。」は除いて表示し、理由が空なら「理由未記載」とする)(候補0件の日は「…(保留: <selection_reason>。候補0件)。」)。`not_run` / `failed` は「選抜は未実行(<理由>)。」/「選抜は失敗(<理由>)。」とし(理由が空または「未実行」なら括弧を省く。次の記事企画の行も同じ)、選抜HOTが残っていれば「以下は前回成功時の結果です。」を続けて列挙する。
   - 選抜HOTが1件以上あり、`save-proposals` が `not_run` / `failed` のときは、続けて「記事企画は未実行(<理由>)。」/「記事企画の保存は失敗(<理由>)。」を1回出す(企画が残っていれば「表示中の企画は前回の結果です。」を続ける)。`save-proposals` が `deferred` のときは、企画0件のHOTの企画欄を「記事企画なし(保留: <理由、空なら理由未記載>)」にする(理由の末尾の「。」は除く)。`completed` と記録なしのときは従来どおり「記事企画なし」。
   - 理由などAgentが書いた文字列は `_inline_text` を通す。
   - 各HOTの既存の行(HOT Score / Topic / Source Families / Evidence / Reasons)の後、`#### Article Proposals` の前に、`assessment` がある場合だけ評価ブロックを出す(`_assessment_section`)。項目は 判断理由 / 関連性(`<status>(方法: <method> / 一致語: <matched_terms をカンマ区切り、空なら「なし」>)`、`relevance.reason` が空でなければ子項目に出す) / 新規性 / 重要性 / 読者への影響 / 根拠 / 未確認事項。`assessment` が `null` の旧データ(決定論経路を含む)は評価ブロックを出さず、従来どおりReasonsだけを表示する。
@@ -311,7 +311,7 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
   - Run IDは識別子として加工せずそのまま出す。
   - Periodは `since` / `until` を表示用タイムゾーン(`config/runtime.yaml` の `runtime.timezone`。06章参照)に変換し、`YYYY-MM-DD HH:MM 〜 YYYY-MM-DD HH:MM (<略称>)` 形式で出す(例: `2026-10-03 11:09 〜 2026-10-04 11:09 (JST)`)。タイムゾーンなしの日時はUTCとして扱う。`T` を含まない値(日付のみ)や日時として解釈できない値は変換せずそのまま出し、変換時に範囲外となる値(`0001-01-01T00:00:00` など)も同様にそのまま出す。末尾の略称は両端とも変換できた場合だけ、終了時刻のものを1つ付ける。
   - Sourcesは `, ` 区切り、Input / Output Countsは `key: value` を `, ` 区切りで、いずれもRunMetadataの保持順のまま出す。
-  - Selectionは `<status>(候補m件 / 確認n件 / 未確認k件 / 選抜s件)`(completed / deferred)または `<status>(<理由>)`(not_run / failed)。Proposalsは `completed(企画n件)`、`deferred(企画n件 / 理由: <理由、空なら理由未記載>)`、`<status>(<理由>)`。deferredの理由は選抜HOTの節と同じく末尾の「。」を除いて表示する。記録なし(旧データ・決定論経路)は「記録なし」。件数が整数でなければ `?` と出す。
+  - Selectionは `<status>(候補m件 / 確認n件 / 未確認k件 / 選抜s件)`(completed / deferred)または `<status>(<理由>)`(not_run / failed)。Proposalsは `completed(企画n件)`、`deferred(企画n件 / 理由: <理由、空なら理由未記載>)`、`<status>(<理由>)`(理由が空なら `<status>` のみ)。deferredの理由は選抜HOTの節と同じく末尾の「。」を除いて表示する。記録なし(旧データ・決定論経路)は「記録なし」。件数が整数でなければ `?` と出す。
   - セルの値は記事企画の詳細表と同じエスケープ(`|`・`<>`・`[]` など)を行い、空の値は `-` にする。
 - `## Errors`: RunMetadataのerrors
 - `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない)。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。リンク先URLは `\`・`<>`・`|`・改行をパーセントエンコードする。
