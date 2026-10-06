@@ -26,6 +26,7 @@ data/
   topics/<date>/topics.jsonl
   runs/<date>/hot_candidates.jsonl
   runs/<date>/selection_input.json
+  runs/<date>/summary_input.json
   runs/<date>/article_proposals.jsonl
   runs/<date>/run.jsonl
   runs/<date>/report_digest.json
