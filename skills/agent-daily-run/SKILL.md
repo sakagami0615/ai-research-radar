@@ -212,6 +212,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
           続けて必ず手順7の `save-proposals` も再実行する(`select-hot` が成功すると、それまでの記事企画の記録は「選抜の再実行により無効」になるため。概要だけの修正でも同じ)。
           選抜した候補が変わった場合は、`save-proposals` の前に手順6に従って `draft_proposals.json` を作り直す(選抜0件になった場合は `[]`)。
           概要だけの修正で選抜が変わらない場合は、既存の `draft_proposals.json` のまま再実行してよい。
+          `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `[]` を書く段落は手順5での失敗だけに当てはまる)。
         - 記事企画だけの修正: `draft_proposals.json` を書き直して手順7の `save-proposals` を再実行する。
         - 手順8bで補完した概要の修正: `add-summary` で同じ `hot_id` を再指定する(上書きされる)。
         - `stage_results` の `failed` が再実行の上限(「エラー時の自己修正方針」の項目3)に達したため残っていることへの指摘: 再実行せず、修正不能として扱う。
