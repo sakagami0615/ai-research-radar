@@ -275,7 +275,7 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
   - 分解した場合、`risks` のうち表示済みのCritique Notes / Debateと完全一致する要素(`軽量Critique: <note>` / `Debate: <debate>`)は重複として除外する。すべて除外された場合は `Critique Notes / Debateと同じ内容` と出す。
   - 表崩れと意図しないリンクを防ぐため、セルの値はバックスラッシュ・`[]`・`|`・`<>`をエスケープしたうえで改行を `<br>` に置換し、リストは `<br>` 区切り(Experiment Planは番号付き、Critique Notes / Risksは `・` 付き)にする。`save-proposals` はリスト型を検証しないため、リスト項目に文字列が入っていた場合は1要素として扱う。空の値は `-` にする。見出しはバックスラッシュ・`[]`・`<>`をエスケープし、改行を空白にし、末尾の `#` はATX見出しの閉じ記号にならないようエスケープする。Debateは最大3要素(Advocate / Critic / Editor)に分割し、却下候補のタイトルに `; ` が含まれても分割しない。Evidenceは全URLを `[URL](<URL>)` 形式のリンクで出し、リンク先の `\`・`<>`・`|`・改行はパーセントエンコードする(リンク先のエンコードは収集Source一覧と共通の `_sanitize_url`)。本文中の素のURLは、GFMの自動リンクとして表示されることを許容する。
 - `## 注目候補(選抜外)`: 直近3日分のrunで `minimum_score` 以上だが選抜されなかったHotCandidate(05章「日次ダイジェスト」参照)。各項目の見出し直後に、選抜HOTと同じ形式で概要を出す。
-- `## 新モデルリリース`: 直近3日分のrunで `metadata.model_release` を持つSignalを提供元ごとに列挙したもの(05章「日次ダイジェスト」参照)
+- `## 新モデルリリース`: 直近3日分のrunで `metadata.model_release` を持つSignalを提供元ごとに列挙したもの(05章「日次ダイジェスト」参照)。各項目の行の次に、字下げして `  - 概要: <概要>` を出す(概要がなければ `  - 概要: 概要未作成`)。概要は注目候補と同じエスケープをし、改行・連続する空白を1つの空白に畳む(行頭が `概要:` になるため、`_inline_text` のブロック記号のエスケープは不要)。「ほかN件」の行には概要を付けない。
 - `## Run Summary`: RunMetadataのサマリを2列の表(`項目 | 内容`)で出す。行は Run ID / Period / Sources / Input Counts / Output Counts。
   - Run IDは識別子として加工せずそのまま出す。
   - Periodは `since` / `until` を表示用タイムゾーン(`config/runtime.yaml` の `runtime.timezone`。06章参照)に変換し、`YYYY-MM-DD HH:MM 〜 YYYY-MM-DD HH:MM (<略称>)` 形式で出す(例: `2026-10-03 11:09 〜 2026-10-04 11:09 (JST)`)。タイムゾーンなしの日時はUTCとして扱う。`T` を含まない値(日付のみ)や日時として解釈できない値は変換せずそのまま出し、変換時に範囲外となる値(`0001-01-01T00:00:00` など)も同様にそのまま出す。末尾の略称は両端とも変換できた場合だけ、終了時刻のものを1つ付ける。
@@ -299,12 +299,12 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 
 ## Digest Summaries記録
 
-`data/runs/<date>/digest_summaries.json` は、その日のレポートの注目候補に表示する項目のうち、HotCandidate自体に `summary` がないもの(過去日の候補や書き漏れ)について、Agentが当日に補った概要を記録する。`ai-radar add-summary` が書き込む。
+`data/runs/<date>/digest_summaries.json` は、その日のレポートに表示する項目のうち、Agentが当日に補った概要を記録する。対象は、注目候補のうちHotCandidate自体に `summary` がないもの(過去日の候補や書き漏れ)と、新モデルリリースの全表示項目である。`ai-radar add-summary` が書き込む。
 
 ```json
-{"hot:event:...": "概要の本文"}
+{"hot:event:...": "注目候補の概要", "https://huggingface.co/org/model": "新モデルリリースの概要"}
 ```
 
-- キーは `hot_id`、値は概要の本文。同じ `hot_id` を再度追加した場合は上書きする。
+- キーは、注目候補は `hot_id`、新モデルリリースは `ModelRelease.key`(正規化済みURL、URLが空なら `signal_id`)。`hot_id` は `hot:` で始まり、`key` はURLか `<source>:...` 形式なので衝突しない。値は概要の本文。同じキーを再度追加した場合は上書きする。
 - 過去日の `hot_candidates.jsonl` は書き換えない(当日の run に「当日補った情報」として残す)。
-- 注目候補の概要は、HotCandidateの `summary` を優先し、空の場合に対象日のこのファイルの値を使う。どちらもなければ「概要未作成」と表示する。
+- 注目候補の概要は、HotCandidateの `summary` を優先し、空の場合に対象日のこのファイルの値を使う。新モデルリリースの概要は、このファイルの値だけを使う。どちらもなければ「概要未作成」と表示する。

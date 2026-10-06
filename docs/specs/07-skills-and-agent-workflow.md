@@ -24,13 +24,13 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 
 ### agent-daily-run
 
-`ai-radar` のサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に実行し、HOT最終選抜、選抜HOT・注目候補の日本語概要の作成、記事企画をAgent自身の判断で行う日次ワークフロー。cronから `claude -p` / `codex exec` で直接起動されることを想定する(ラッパースクリプトなし)。HOT最終選抜は `data/runs/<date>/selection_input.json` に評価レコードを書き、`select-hot` で検証・保存する(形式は03章「SelectionInput」参照)。対象日の判定、および`review-daily-report`を使ったレビュー・修正ループ(最大3回)もこのSkillの手順内でAgent自身が行う。判断基準は `hot-detection` / `article-ideation` を参照する。
+`ai-radar` のサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に実行し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要の作成、記事企画をAgent自身の判断で行う日次ワークフロー。cronから `claude -p` / `codex exec` で直接起動されることを想定する(ラッパースクリプトなし)。HOT最終選抜は `data/runs/<date>/selection_input.json` に評価レコードを書き、`select-hot` で検証・保存する(形式は03章「SelectionInput」参照)。対象日の判定、および`review-daily-report`を使ったレビュー・修正ループ(最大3回)もこのSkillの手順内でAgent自身が行う。判断基準は `hot-detection` / `article-ideation` を参照する。
 
 ### review-daily-report
 
 `agent-daily-run` Skillを実行したAgentとは別セッション・別プロセスのAgentとして、その日のHOT選抜・記事企画・レポートの「質」を検証する。対象hashを固定し、問題があれば`ReviewResult`と人間向けfeedbackを別保存する。最大3回まで再レビューし、起動失敗・記録欠落・hash不一致を承認扱いしない。判断基準は`hot-detection` / `article-ideation`を参照する。
 
-レポートの「注目候補(選抜外)」「新モデルリリース」はCLIが決定論的に生成し実行Agentが修正できないため、内容そのものは指摘対象にしない(HOT選抜の見落とし判断の材料としては参照してよい)。ただし、選抜HOT・注目候補の概要のうち当日に書かれたもの(当日の `hot_candidates.jsonl` または `digest_summaries.json` にある `hot_id`)は実行Agentが修正できるため、Evidenceとの整合・タイトルの直訳だけになっていないか・未確認の内容を断定していないかを指摘対象にする。過去日の候補が自分で持っている概要は当日に修正できないため指摘対象にしない。
+レポートの「注目候補(選抜外)」「新モデルリリース」はCLIが決定論的に生成し実行Agentが修正できないため、セクションの内容(どの項目が載るか、並び順、スコアなど)は指摘対象にしない(HOT選抜の見落とし判断の材料としては参照してよい)。ただし、概要のうち当日に書かれたものは実行Agentが修正できるため、Evidence・リンク先との整合、タイトルの直訳だけになっていないか、未確認の内容を断定していないかを指摘対象にする。当日に書かれた概要は、選抜HOT・注目候補では当日の `hot_candidates.jsonl` または `digest_summaries.json` にある `hot_id` のもの、新モデルリリースではすべて(概要は当日の `digest_summaries.json` にしかなく、いつでも `add-summary --input` で直せるため)である。過去日の注目候補が自分で持っている概要は当日に修正できないため指摘対象にしない。
 
 ### hot-detection
 

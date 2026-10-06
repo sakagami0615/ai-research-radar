@@ -37,7 +37,7 @@ ai-radar daily \
 
 ### Agent経路のサブコマンド
 
-`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。選抜・概要(05章「注目候補の概要補完」)に関わる引数は次の通り。
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。選抜・概要(05章「注目候補・新モデルリリースの概要補完」)に関わる引数は次の通り。
 
 - `select-hot --date <date> [--input <path>] [--limit <n>]`: `selection_input.json`(03章「SelectionInput」)を読み込んで検証し、当日の `hot_candidates.jsonl` の `selected` / `assessment` / `summary` を更新する。
   - `--input` を省略した場合は `<data-dir>/runs/<date>/selection_input.json` を読む。明示したパスは、`save-proposals --input` と同じくカレントディレクトリを基準にする。
@@ -61,8 +61,22 @@ ai-radar daily \
     | `write_error` | `hot_candidates.jsonl` の書き込みに失敗した | 1 |
     | `missing_summary_warning` / `unreviewed_candidates` | 選抜外の候補に概要がない / 未確認の候補がある(警告) | 0 |
 
-- `add-summary --date <date> --summary <hot_id>=<概要>`: 当日の注目候補に表示する過去日の候補などの概要を `data/runs/<date>/digest_summaries.json` に保存する。繰り返し指定できる。`hot_id` は当日のレポートに表示される注目候補のうち、候補自身が `summary` を持たないもの(`report --list-missing-summaries` の対象と、すでに `add-summary` で補完済みの項目)に限る。候補自身の `summary` が優先されるため、それ以外への保存は表示に反映されない。対象外の `hot_id`、空の概要、`--summary` の指定なしは `invalid_summary` として終了コード1にする(このときファイルは書き換えない)。パイプラインのステージ(`stages_completed`)としては扱わない。
-- `report --list-missing-summaries`: 概要がない注目候補(表示分のみ)をJSON Linesで出力する。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
+- `add-summary --date <date> --input <path>`: 当日のレポートに表示する注目候補(過去日の候補など)・新モデルリリースの概要を `data/runs/<date>/digest_summaries.json` に保存する。パイプラインのステージ(`stages_completed`)としては扱わない。
+  - `--input` は `{"<hot_id または key>": "概要"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/summary_input.json` に書く。新モデルリリースの `key` はクエリ文字列(`=` を含む)を持つことがあるため、コマンドライン引数ではなくファイルで渡す。
+  - キーは、当日のレポートに表示される注目候補のうち候補自身が `summary` を持たないものの `hot_id`(候補自身の `summary` が優先されるため、それ以外への保存は表示に反映されない)と、表示される新モデルリリースの `key` に限る。`report --list-missing-summaries` の対象と、すでに補完済みの項目がこれに当たる。
+  - 値は前後の空白を除いて保存し、同じキーは上書きする。
+  - 旧オプション `--summary` は廃止した。指定すると `deprecated_option` として、JSONファイルに書いて `--input` で渡すよう促す移行メッセージを返す。`--summary` の判定は他の検証より先に行う。
+  - エラー時は `run_state.json` の `errors` に記録して終了コード1にし、`digest_summaries.json` は書き換えない。エラーの種別は次の通り。
+
+    | 種別 | 条件 |
+    | --- | --- |
+    | `deprecated_option` | 旧オプション `--summary` を指定した |
+    | `invalid_summary` | `--input` の指定がない、中身が空のオブジェクト、対象外のキーがある、値が文字列でない・空 |
+    | `missing_input` | `--input` のファイルがない |
+    | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない |
+    | `write_error` | `digest_summaries.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) |
+
+- `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(05章「注目候補・新モデルリリースの概要補完」参照)。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
 
 ## 設定ファイル
 
@@ -110,7 +124,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 1. CLIが終了コード0で終わるか確認する。
 2. `data/runs/<date>/run.jsonl` を確認する。
 3. `errors` にSource失敗がないか確認する。
-4. `reports/daily/<date>.md` を確認する。選抜HOTの下に「注目候補(選抜外)」「新モデルリリース」が直近3日分の未掲載項目として出る。選抜HOTと注目候補には各項目の見出し直後に日本語の概要が出る(Agent経路のみ。決定論経路では「概要未作成」)。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
+4. `reports/daily/<date>.md` を確認する。選抜HOTの下に「注目候補(選抜外)」「新モデルリリース」が直近3日分の未掲載項目として出る。選抜HOTと注目候補には各項目の見出し直後に、新モデルリリースには各項目の次の行に、日本語の概要が出る(Agent経路のみ。決定論経路では「概要未作成」)。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
 5. HOT候補のEvidence URLを確認する。
 
 ## 外部ネットワーク制約
