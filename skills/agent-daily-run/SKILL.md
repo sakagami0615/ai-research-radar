@@ -185,7 +185,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       生成する前に `data/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば、そのまま生成する。`stage_results` にそのステージの記録がない場合(旧形式の `run_state.json`)も、そのまま生成する。
       - `select-hot` が `not_run`(手順5を実行していない)の場合: `data/runs/<date>/hot_candidates.jsonl` があれば手順4〜7を1回だけ実行してから生成する。`normalize` / `score` の失敗で `hot_candidates.jsonl` がない場合は実行せずにそのまま生成する(レポートに「選抜は未実行」と出る)。
-      - `save-proposals` が `not_run`(理由: 選抜の再実行により無効、または未実行)の場合: 手順7だけを再実行してから生成する。手順7の再実行は1回だけとし、失敗した場合は下の `failed` の項目に従う。
+      - `save-proposals` が `not_run`(理由: 選抜の再実行により無効、または未実行)の場合: 手順7だけを再実行してから生成する(ただし、上の項目で `hot_candidates.jsonl` がなく、そのまま生成へ進む場合は再実行しない)。手順7の再実行は1回だけとし、失敗した場合は下の `failed` の項目に従う。
       - いずれかが `failed` の場合: 「エラー時の自己修正方針」に従って該当ステージだけを直して再実行する(回数の上限と数え方は同方針の項目3に従う)。上限に達している場合は、再実行せず `failed` を残したまま生成する(レポートに失敗として表示される)。
 
       ```bash
