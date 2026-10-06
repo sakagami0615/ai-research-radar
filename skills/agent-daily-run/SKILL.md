@@ -185,7 +185,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       生成する前に `data/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば、そのまま生成する。`stage_results` にそのステージの記録がない場合(旧形式の `run_state.json`)も、そのまま生成する。
       - `select-hot` が `not_run`(手順5を実行していない)の場合: `data/runs/<date>/hot_candidates.jsonl` があれば手順4〜7を1回だけ実行してから生成する。`normalize` / `score` の失敗で `hot_candidates.jsonl` がない場合は実行せずにそのまま生成する(レポートに「選抜は未実行」と出る)。
-      - `save-proposals` が `not_run`(理由: 選抜の再実行により無効、または未実行)の場合: 手順7だけを再実行してから生成する(ただし、上の項目で `hot_candidates.jsonl` がなく、そのまま生成へ進む場合は再実行しない)。手順7の再実行は1回だけとし、失敗した場合は下の `failed` の項目に従う。
+      - `save-proposals` が `not_run`(理由: 選抜の再実行により無効、または未実行)の場合: 手順7だけを再実行してから生成する(`draft_proposals.json` がなければ先に手順6で作る)。ただし、上の項目で手順4〜7を実行した場合、または `hot_candidates.jsonl` がなくそのまま生成へ進む場合は、手順7を重ねて実行しない。手順7の再実行は1回だけとし、失敗した場合は下の `failed` の項目に従う。
       - いずれかが `failed` の場合: 「エラー時の自己修正方針」に従って該当ステージだけを直して再実行する(回数の上限と数え方は同方針の項目3に従う)。上限に達している場合は、再実行せず `failed` を残したまま生成する(レポートに失敗として表示される)。
 
       ```bash
@@ -209,7 +209,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
         記事企画・概要の書き直しなど必要な修正を自分自身で行う。修正の仕方は次のとおり。
         - HOT選抜・概要の修正: `selection_input.json` を書き直して `ai-radar select-hot` を再実行し、
-          続けて必ず手順7の `save-proposals` も再実行する(`select-hot` が成功すると、それまでの記事企画の記録は「選抜の再実行により無効」になるため。概要だけの修正でも同じ)。
+          `select-hot` が成功したら続けて必ず手順7の `save-proposals` も再実行する(`select-hot` が成功すると、それまでの記事企画の記録は「選抜の再実行により無効」になるため。概要だけの修正でも同じ)。
           選抜した候補が変わった場合は、`save-proposals` の前に手順6に従って `draft_proposals.json` を作り直す(選抜0件になった場合は `[]`)。
           概要だけの修正で選抜が変わらない場合は、既存の `draft_proposals.json` のまま再実行してよい。
           `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `[]` を書く段落は手順5での失敗だけに当てはまる)。
