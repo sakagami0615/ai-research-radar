@@ -152,3 +152,90 @@ def test_cli_save_proposals_rejects_malformed_json_input(tmp_path: Path):
     assert exit_code == 1
     state = _read_state(data_dir)
     assert any(error["source"] == "save-proposals" for error in state["errors"])
+
+
+DATE = "2026-09-25"
+
+
+def _write_unselected_candidate(data_dir: Path) -> None:
+    _write_selected_candidate(data_dir)
+    path = data_dir / "runs" / DATE / "hot_candidates.jsonl"
+    records = read_jsonl(path)
+    records[0]["selected"] = False
+    path.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
+
+
+def _run_with_bytes(tmp_path: Path, data_dir: Path, content: bytes) -> int:
+    input_path = tmp_path / "proposals.json"
+    input_path.write_bytes(content)
+    return main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)])
+
+
+def _run_with_records(tmp_path: Path, data_dir: Path, records: object) -> int:
+    return _run_with_bytes(tmp_path, data_dir, json.dumps(records, ensure_ascii=False).encode("utf-8"))
+
+
+def _result(data_dir: Path) -> dict:
+    return _read_state(data_dir)["stage_results"]["save-proposals"]
+
+
+def test_records_completed_with_proposal_count(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+
+    assert _run_with_records(tmp_path, data_dir, [_valid_proposal("hot:event:tool-a")]) == 0
+
+    assert _result(data_dir) == {"status": "completed", "reason": "", "proposal_count": 1}
+
+
+def test_records_deferred_when_selected_hot_has_no_proposals(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+
+    assert _run_with_records(tmp_path, data_dir, []) == 0
+
+    assert _result(data_dir) == {"status": "deferred", "reason": "", "proposal_count": 0}
+    assert "save-proposals" in _read_state(data_dir)["stages_completed"]
+
+
+def test_records_not_run_when_nothing_is_selected(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_unselected_candidate(data_dir)
+
+    assert _run_with_records(tmp_path, data_dir, []) == 0
+
+    assert _result(data_dir) == {"status": "not_run", "reason": "選抜HOTなし", "proposal_count": 0}
+    assert "save-proposals" in _read_state(data_dir)["stages_completed"]
+
+
+def test_failure_overwrites_previous_success(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+    assert _run_with_records(tmp_path, data_dir, [_valid_proposal("hot:event:tool-a")]) == 0
+    broken = _valid_proposal("hot:event:tool-a")
+    broken["evidence_links"] = []
+
+    assert _run_with_records(tmp_path, data_dir, [broken]) == 1
+
+    result = _result(data_dir)
+    assert result["status"] == "failed"
+    assert result["reason"].startswith("invalid_proposal: ")
+    assert set(result) == {"status", "reason"}
+
+
+def test_non_utf8_input_is_recorded_as_invalid_input(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+
+    assert _run_with_bytes(tmp_path, data_dir, b"\xff\xfe[") == 1
+
+    assert _result(data_dir)["reason"].startswith("invalid_input: ")
+
+
+def test_non_object_element_is_recorded_as_invalid_proposal(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+
+    assert _run_with_records(tmp_path, data_dir, [1]) == 1
+
+    assert _result(data_dir)["reason"] == "invalid_proposal: proposal[0] must be an object"
