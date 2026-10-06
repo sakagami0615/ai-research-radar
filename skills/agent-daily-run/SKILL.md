@@ -72,7 +72,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
              "status": "verified",
              "kind": "primary",
              "claim": "v2.0を公開し、APIの既定モデルを切り替えた",
-             "note": "公式ブログ。HTTP 200で取得"
+             "note": "公式ブログ。HTTP 200、本文で発表内容を確認"
            }
          ],
          "unknowns": ["発表元のベンチマーク値は独立に検証していない"]
@@ -113,12 +113,53 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - 根拠の `checked_at`: そのURLを実際に取得した直後に `date -u +%Y-%m-%dT%H:%M:%S+00:00` を実行し、その出力を書く。複数URLをまとめて取得した場合は、それぞれの取得直後の値を使う。
    - 評価の `assessed_at`: その評価の根拠をすべて確認し終えた後、レコードを書く直前に同じコマンドで取得した値を書く(`checked_at` 以降、かつファイル保存前)。
    - 取得時刻を記録し忘れた根拠は、時刻を推定せずに取得し直してから記録する。
-   - 取得時のコマンド出力(URL・HTTPステータス・時刻)を `data/runs/<date>/` 配下に残し、記録した時刻をレビュー担当が裏付けられるようにする。
+   - 取得したURL・HTTPステータス・時刻を、下の「根拠の取得」に従って `data/runs/<date>/evidence_fetch_log.tsv` に残し、記録した時刻をレビュー担当が裏付けられるようにする。
+
+   根拠の取得(手順4〜9でURLを取得するときは、すべてこの規則に従う):
+
+   - 取得方法: HTTPステータスと本文を確認できる `curl` を基本とする。保存先を変数に入れ、取得直後に時刻を取り、そのあと保存した本文を読んで内容を確認する(一般のページの例。冒頭だけで判断できなければ続きも読む)。
+
+     ```bash
+     tmp=$(mktemp); code=$(curl -sS -L -o "$tmp" -w '%{http_code}' '<URL>'); date -u +%Y-%m-%dT%H:%M:%S+00:00; echo "$code"; head -c 3000 "$tmp"
+     ```
+
+     PyPIのJSON APIは `info.description` が長く、`info.version` が後ろにあるため、`head` で切らずに次のように取り出す:
+
+     ```bash
+     python3 -c "import json,sys;i=json.load(open(sys.argv[1]))['info'];print(i['version']);print(i['summary'])" "$tmp"
+     ```
+
+   - 根拠(`EvidenceCheck`)は、すべて実際に取得してから記録する。取得していないURLを根拠に書かない。
+   - HTTP 200でも、本文がbot対策ページ(「Client Challenge」「Just a moment」「captcha」など)のように本文そのものを取得できなかった場合は、`status` を `unavailable` にし、`note` に理由を書く。HTTPステータスだけを見て `verified` にしない。
+   - `target_version` を特定している根拠で、本文は取得できたがその版を確認できなかった場合は、`status` を `unverified` にする(版の概念がない根拠には当てはめない)。
+   - PyPIの候補は、`https://pypi.org/project/...` のページ(bot対策ページを返す)ではなく、JSON APIで確認する。
+     - 候補のタイトル・URL・`hot_candidates.jsonl` の内容から版を特定できる場合は `https://pypi.org/pypi/<name>/<version>/json`、特定できない場合だけ `https://pypi.org/pypi/<name>/json` を使う。
+     - `info.version` で対象の版を、`info.summary`(必要なら `info.description` と `info.project_urls`)で用途を確認する。
+     - 版を指定しないAPIの `info.version`(最新版)が対象の版と違う場合は、版付きのAPIで取り直してよい(取り直した結果で記録する)。取り直さない場合は `unverified` にする。
+     - 版付きのAPIが404などで取得できない場合は、`unavailable` にし、`note` にHTTPステータスを書く。
+     - 根拠の記録: `url` は実際に取得したJSON APIのURL、`kind` は `primary`(配布元である公式レジストリのメタデータのため)、`target_version` は対象の版、`note` は取得した `info.version`(例: `PyPI JSON API, info.version=4.2.8`)。
+     - 候補の `evidence_urls`(レポートの見出しや注目候補のリンク)は、人が見る `/project/` ページのままでよい。選抜HOTの評価の根拠の行には、記録したとおりJSON APIのURLが出る。
+   - 取得ログ `data/runs/<date>/evidence_fetch_log.tsv`(タブ区切り):
+     - ファイルが無いときだけ、ヘッダー行 `url	http_status	fetched_at	content_verified	note` を書く。
+     - ヘッダーと各行は、Edit / Writeツールでは書かず(区切りのタブが空白に化けるおそれがあるため)、次のように `printf` で追記する。
+
+       ```bash
+       f=data/runs/<date>/evidence_fetch_log.tsv; [ -f "$f" ] || printf 'url\thttp_status\tfetched_at\tcontent_verified\tnote\n' > "$f"; printf '%s\t%s\t%s\t%s\t%s\n' '<URL>' '<http_status>' '<fetched_at>' '<true|false>' '<note>' >> "$f"
+       ```
+
+       `<http_status>` には取得時に表示したステータスを書く(`000` は `-`)。`<true|false>` は下の `content_verified` の定義に従う。`note` に `'` を含めない(含む場合は空白に置き換える)。
+
+     - 手順4〜9で行ったURLの取得は、成功・失敗・bot対策ページを問わず、1回につき1行を追記する。根拠の確認、概要を書くための確認、手順5の警告対応、手順8bの概要補完、手順9の修正ループでの再取得を含む。既存の行は上書きしない。
+     - `url`: 要求したURL(リダイレクト後の最終URLではない。`EvidenceCheck` の `url` と同じ値)。
+     - `http_status`: HTTPステータスコード。接続失敗(`curl` の出力が `000`)や、使ったツールがステータスを返さない場合は `-`。
+     - `fetched_at`: 取得直後に `date -u +%Y-%m-%dT%H:%M:%S+00:00` で得た値。根拠に使う場合は、`EvidenceCheck` の `checked_at` と同じ値を書く。
+     - `content_verified`: 本文そのもの(bot対策ページやエラーページではない内容)を取得して読めたら `true`、できなければ `false`。版が対象と一致したかは問わない(版の不一致は根拠の `status` で表す)。
+     - `note`: 補足。`content_verified` が `false` のときは理由を必ず書く(例: `bot対策ページ(Client Challenge)`)。タブ・改行は空白に置き換える。
 
    あわせて、`hot_candidates.jsonl` の **全候補**(選抜しない候補も含む)について、レポートに載せる日本語の概要を書き、`summaries` に `hot_id` をキーとして入れる。選抜外の候補も翌日以降まで「注目候補」としてレポートに載るためである。`summaries` に書かなかった候補は前回保存した概要を保持し、書いた候補は置き換わる。`summaries` のキーは `hot_candidates.jsonl` にある `hot_id` に限り、値は空でない文字列にする(違反すると `invalid_summary`)。
 
    - 内容: 2〜3文、おおむね150字以内で「それが何か」「何が新しい・変わったか」を書く。Reasons(選抜した/しなかった理由)の繰り返しや、タイトルの直訳だけにしない。
-   - 根拠: 評価のために読んだ一次情報(Evidence URLの中身)に基づいて書く。一次情報を取得できなかった場合(403など)は、取得できた範囲(報道記事、PyPIの説明など)で書き、「一次情報未確認」と明記する。何も取得できなかった場合は「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く。
+   - 根拠: 評価のために読んだ一次情報(Evidence URLの中身)に基づいて書く。一次情報を取得できなかった場合(403など)は、取得できた範囲(報道記事など)で書き、「一次情報未確認」と明記する。PyPI候補では、JSON APIで取得したメタデータが一次情報である。何も取得できなかった場合は「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く。
    - 確認できた事実と、発表元・報道の主張を区別する(例: 「〜と発表している」「〜と報じられている」)。
 
 5. 選抜結果を確定する。
@@ -163,7 +204,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       出力は1行1件のJSON(`hot_id` / `title` / `first_seen` / `evidence_urls`)。このコマンドは何もファイルを書き換えない。
 
-   b. 一覧の各項目について `evidence_urls` のサイトにアクセスして内容を確認し、手順4と同じ基準で概要を書いて保存する(一次情報を取得できない場合の書き方も手順4と同じ)。
+   b. 一覧の各項目について `evidence_urls` のサイトにアクセスして内容を確認し、手順4と同じ基準で概要を書いて保存する(一次情報を取得できない場合の書き方も手順4と同じ)。取得は手順4の「根拠の取得」に従い、取得ログに1行ずつ追記する。PyPIの項目は `evidence_urls` の `/project/` ページではなく、JSON APIで取得する。
 
       ```bash
       ai-radar add-summary --date <date> --summary <hot_id>=<概要> [--summary ...]
