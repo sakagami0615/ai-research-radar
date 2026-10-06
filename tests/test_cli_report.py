@@ -75,25 +75,40 @@ def _run_full_pipeline(tmp_path: Path, monkeypatch) -> Path:
 
     candidates = read_jsonl(data_dir / "runs" / "2026-09-25" / "hot_candidates.jsonl")
     first_id = candidates[0]["hot_id"]
-    assert (
-        main(
-            [
-                "select-hot",
-                "--date",
-                "2026-09-25",
-                "--data-dir",
-                str(data_dir),
-                "--select",
-                first_id,
-                *[
-                    arg
-                    for candidate in candidates
-                    for arg in ("--summary", f"{candidate['hot_id']}=テスト概要")
+    run_dir = data_dir / "runs" / "2026-09-25"
+    selection = {
+        "assessments": [
+            {
+                "hot_id": candidate["hot_id"],
+                "decision": "selected" if candidate["hot_id"] == first_id else "rejected",
+                "assessed_at": "2026-09-25T01:00:00+00:00",
+                "assessor": "agent",
+                "relevance": {"status": "related", "matched_terms": [], "reason": "テスト", "method": "agent"},
+                "novelty": "テスト",
+                "importance": "テスト",
+                "reader_impact": "テスト",
+                "reason": "テスト",
+                "evidence": [
+                    {
+                        "url": "https://example.com/release",
+                        "checked_at": "2026-09-25T00:59:00+00:00",
+                        "target_version": None,
+                        "status": "verified",
+                        "kind": "primary",
+                        "claim": "テスト",
+                        "note": "",
+                    }
                 ],
-            ]
-        )
-        == 0
-    )
+                "unknowns": [],
+            }
+            for candidate in candidates
+        ],
+        "screened_ids": [candidate["hot_id"] for candidate in candidates],
+        "selection_reason": "テスト",
+        "summaries": {candidate["hot_id"]: "テスト概要" for candidate in candidates},
+    }
+    (run_dir / "selection_input.json").write_text(json.dumps(selection, ensure_ascii=False), encoding="utf-8")
+    assert main(["select-hot", "--date", "2026-09-25", "--data-dir", str(data_dir), "--limit", "5"]) == 0
 
     proposal = {
         "proposal_id": f"{first_id}:proposal:1",

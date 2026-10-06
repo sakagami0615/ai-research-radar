@@ -72,7 +72,7 @@ AgentはSource別の候補一覧・概要を確認し、研究・公式発表も
 
 ### 5.1 内容評価と選抜
 
-`select-hot` に評価JSONを入力する `--assessments` を追加する。評価レコードは次を持つ。
+`select-hot` は評価JSON `data/runs/<date>/selection_input.json`(`--input` で変更可)を必須入力とする(形式は03章 SelectionInput)。評価レコードは次を持つ。
 
 - `hot_id`、判断 `selected / deferred / rejected`、判断日時、担当。
 - AI関連性の説明、新規性、重要性、読者への影響。
@@ -84,7 +84,7 @@ AgentはSource別の候補一覧・概要を確認し、研究・公式発表も
 
 独立検証がない単一の公式発表でも、確認した範囲を「発表された仕様・主張」に限定すれば選抜できる。性能や人気まで確認済みに広げない。取得失敗は存在しない証拠にしない。一次情報を確認できないものは発見候補として保留する。
 
-通常上限2件、明示指定時の上限5件。枠を埋める義務はない。0件でも選抜処理の完了、理由、確認範囲を記録する。未実行の0件と区別する。`--reason` の自由文だけで新規HOT選抜はできない。旧CLI入力は明確な移行メッセージを返す。
+通常上限2件、明示指定時の上限5件。枠を埋める義務はない。0件でも選抜処理の完了、理由、確認範囲を記録する。未実行の0件と区別する。旧オプション `--select` / `--reason` / `--summary` は `deprecated_option` として移行メッセージを返し、自由文だけで選抜することはできない。0件の日の理由・確認範囲は `selection_input.json` の `selection_reason` と `apply_assessments` の集計(確認件数・未確認件数・選抜件数)として扱い、`run_state.json` への記録は #12 で行う。
 
 ## 6. 同一成果と版・転載
 
@@ -186,16 +186,15 @@ Agent Skillは本来のレビュー用CLI起動、利用可能なsubagentでの�
 
 ### CLI未結線(本番パイプラインから到達不能)
 
-以下のモジュールは現在 `tests/` からのみ呼ばれ、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` のいずれのCLIサブコマンドからも呼ばれていない。本番の`ai-radar`コマンドは今も旧実装(`normalization.dedup.deduplicate_signals` / `normalization.scores.normalize_source_batch` / `pipeline.events.build_events` / `select_hot.py`の`--select`/`--reason`素通しチェック / `save_proposals.py`独自の`REQUIRED_FIELDS`チェック)のみで動作する。
+以下のモジュールは現在 `tests/` からのみ呼ばれ、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` のいずれのCLIサブコマンドからも呼ばれていない。本番の`ai-radar`コマンドは今も旧実装(`normalization.dedup.deduplicate_signals` / `normalization.scores.normalize_source_batch` / `pipeline.events.build_events` / `save_proposals.py`独自の`REQUIRED_FIELDS`チェック)のみで動作する。
 
 - 品質v2パイプライン: `normalize_quality_batch` / `deduplicate_quality_signals` / `build_quality_events` / `normalization/identity.py` / `normalization/relevance.py` / `pipeline/stages.py`(`collect_stage` / `normalize_stage` / `score_stage`)
-- `scoring/assessments.py::apply_assessments`(選抜にverified+primary Evidenceを要求するゲート)
 - `ideation/validation.py::validate_proposals`(企画のEvidence整合・HOTあたり0〜3件の検証)
 - `storage/attempts.py`(`begin_attempt` / `finish_attempt` / `invalidate_after`、再実行時の下流無効化)
 - `storage/provenance.py::capture_provenance`
 - `reporting/review.py`(`build_review_target` / `validate_review_result`)
 
-これらを結線するには、本番CLIの入出力契約変更(`--assessments`入力形式の追加、旧`--select`/`--reason`の移行方針等)に加え、`skills/agent-daily-run/SKILL.md`等の関連Skill・運用手順の同時更新が必要であり、今回のバグ修正の範囲を超えるため別タスクとする。
+これらを結線するには、本番CLIの入出力契約変更と関連Skill・運用手順の同時更新が必要であり、別タスクとする(`apply_assessments` は Issue #7 で結線済み、`validate_proposals` は #11 で対応予定)。
 
 ### 上記モジュール自身に残る不整合(結線時に合わせて解消が必要)
 
@@ -204,9 +203,8 @@ Agent Skillは本来のレビュー用CLI起動、利用可能なsubagentでの�
 - `deduplicate_quality_signals`(`normalization/dedup.py`)と`build_quality_events`(`pipeline/events.py`)は同じ`extract_identity(...)["event_key"]`でグルーピングするため、`normalize_stage`の呼び出し順(dedup→build_quality_events)では`build_quality_events`に渡る時点で同一event_keyのSignalは既に1件に統合済みとなり、`build_quality_events`側の複数member集計(`priority_breakdown` / `representative_signal_id` / `members`)は本番経路では実質発火しない。実際の挙動は`dedup.py::_merge_quality`(優先度が高い側を採用し`metrics`のみ連結、他フィールドは勝者のみ保持)が支配する。
 - `sources/public.py::_matches_keywords`が`classify_relevance`の判定結果を`bool(result["matched_terms"])`に丸めて捨てるため、収集後に作られる`CanonicalSignal.quality`は常に空`{}`になる。その結果`normalize_quality_batch`は常にハードコードされた`{"status": "uncertain", ..., "method": "legacy"}`を`quality.relevance`に書き込み、実際のタイトル・概要に基づく関連性判定が反映されない。
 - `config/scoring.yaml`の`reference_priority`(`freshness_weight` / `popularity_weight` / `window_hours`)は`normalize_quality_batch`から一切読まれず、同じ値(`168.0` / `0.5` / `0.5`)がコード側にハードコードされている。`pipeline/stages.py::normalize_stage`は`metric_by_source`のみを読み込み渡している。
-- `schemas/quality.py::validate_assessment` / `validate_proposal_quality`は`evidence`がlistであることしか検証せず、各要素が`EvidenceCheck`形状(dict、`status`/`kind`/`url`等)かを検証しない。非dict要素があると`apply_assessments`側で`AttributeError`になりうる(本体は`apply_assessments`側で非dict要素を直接弾くよう2026-10-03に修正済みだが、`schemas/quality.py`自体の検証不足は未解消)。
 - `storage/provenance.py::capture_provenance`の機密情報除去はトップレベルのキー名(`key`/`token`/`password`を含むか)と`user:pass@host`形式のURLしか見ておらず、ネストしたdict内の機密情報やURL形式でない裸のトークン文字列は`manifest.json`にそのまま書き込まれる。
-- `reporting/review.py::validate_review_result`は`attempt_number`(1〜3)を単独の範囲チェックのみ行い、実際に永続化された実行履歴と突き合わせない。また`findings`内の非dict要素は`isinstance(item, dict)`フィルタで静かに無視されるため、不正形式のfindingに重大指摘が混ざっていても検出できない。
+- `reporting/review.py::validate_review_result`は`attempt_number`(1〜3)を単独の範囲チェックのみ行い、実際に永続化された実行履歴と突き合わせない。また`findings`内の非dict要素は`isinstance(item, dict)`フィルタで静かに無視されるため、不正形式のfindingに重大指摘が混ざっていても検出できない。さらに、`status`の`not in`判定と、`status`が`approved`のときの`findings`要素の`severity`の`in`判定は、型を確かめずに許容値の集合と照合しているため、値がリストやdictだと`TypeError`になり`ValueError`として扱えない(`approved`以外では`severity`は検証されずに通る。`schemas/quality.py`の`_is_one_of`と同じく、先に文字列であることを確認する必要がある。Issue #7 のレビューで判明)。
 - `scripts/evaluate_audit.py::evaluate`の`precision`計算はラベル(`labels`、`signal_id`+正解の`selected`真偽)と実際の選抜(`selected`、`hot_id`)を比較しておらず、`selected`が空でなければ常に`0.0`を返す(空なら`None`で「算出不可」は正しい)。`hot_id`と`signal_id`の対応関係(どのHOT候補がどのSignalに由来するか)を評価に含める設計・実装が別途必要。
 
 ### 重複・簡素化(コード品質、動作への影響なし)

@@ -22,6 +22,7 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 
 - `reports/daily/<date>.md`
 - `data/runs/<date>/hot_candidates.jsonl`(`selected` の内訳を含む)
+- `data/runs/<date>/selection_input.json`(評価レコード・確認範囲 `screened_ids`・`selection_reason`)
 - `data/runs/<date>/article_proposals.jsonl`(存在する場合)
 - `data/runs/<date>/digest_summaries.json`(存在する場合。注目候補のうち過去日の候補などに当日補った概要)
 
@@ -31,6 +32,8 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - Momentumのみで低Credibility情報を過大評価していないか。
 - Source Familyが単一に偏ったまま選抜していないか(cross-source確認なし)。
 - 選抜0件の場合、その判断が妥当か(見落としがないか)も確認する。
+- 選抜HOTの評価ブロック(レポートの判断理由・根拠・未確認事項)が、根拠のURLの内容と対応しているか(必要に応じて根拠のURLを確認する)。
+- `selection_reason` と確認範囲が妥当か(`hot_candidates.jsonl` のうち `screened_ids` にない候補は未確認であり、`unreviewed_candidates` の警告対象になる。未確認の候補が残っている場合、確認した範囲が `selection_reason` に書かれているか)。
 - 記事企画にEvidence URLなしの主張がないか。
 - 各 `article_proposals` の `evidence_links` が、対応するHOT候補(`source_hot_id` が一致するもの)の `evidence_urls` と整合しているか。
 - 「使ってみた」だけに偏った企画になっていないか、日本語記事としての独自性があるか。
@@ -40,7 +43,7 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
   - 確認できていない内容(報道ベースの主張、性能値など)を確認済みの事実として断定していないか。一次情報を取得できなかった場合に「一次情報未確認」と明記されているか。
   - 「概要未作成」のまま残っている項目がないか(情報取得失敗の理由が書かれている場合は除く)。
 
-レポートの「注目候補(選抜外)」「新モデルリリース」セクションはCLIが決定論的に生成するものであり、実行Agentには修正手段がない。このため、これらのセクションの内容そのもの(どの項目が載るか、並び順、スコアなど)を `review_feedback.md` の指摘対象にしない(指摘すると修正ループが解消されないまま3回で終わる)。ただし、注目候補の概要のうち、当日に書かれたもの(`hot_id` が当日の `hot_candidates.jsonl` または `digest_summaries.json` にあるもの)は、実行Agentが `select-hot --summary` / `add-summary` で修正できるため、上記の概要の観点で指摘対象にする。過去日の候補が自分で持っている概要(当日のどちらのファイルにもない `hot_id`)はその日のレビューで確認済みで、当日には修正できないため指摘対象にしない。また、選抜0件の妥当性や見落としを判断する材料として参照するのはよい(例: 注目候補にある項目を選抜すべきだった、という指摘はHOT選抜への指摘として扱う)。
+レポートの「注目候補(選抜外)」「新モデルリリース」セクションはCLIが決定論的に生成するものであり、実行Agentには修正手段がない。このため、これらのセクションの内容そのもの(どの項目が載るか、並び順、スコアなど)を `review_feedback.md` の指摘対象にしない(指摘すると修正ループが解消されないまま3回で終わる)。ただし、注目候補の概要のうち、当日に書かれたもの(`hot_id` が当日の `hot_candidates.jsonl` または `digest_summaries.json` にあるもの)は、実行Agentが修正できる(当日の `hot_candidates.jsonl` にある候補は `selection_input.json` の `summaries` を書き直して `select-hot` を再実行し、`digest_summaries.json` にある項目は `add-summary` で修正する)ため、上記の概要の観点で指摘対象にする。過去日の候補が自分で持っている概要(当日のどちらのファイルにもない `hot_id`)はその日のレビューで確認済みで、当日には修正できないため指摘対象にしない。また、選抜0件の妥当性や見落としを判断する材料として参照するのはよい(例: 注目候補にある項目を選抜すべきだった、という指摘はHOT選抜への指摘として扱う)。
 
 ## 出力
 

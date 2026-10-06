@@ -781,3 +781,105 @@ def test_run_summary_escapes_cells_and_shows_placeholder_for_empty_values():
     assert "| Input Counts | - |" in summary
     assert "| Output Counts | a\\|b: 1 |" in summary
     _assert_tables_well_formed(markdown)
+
+
+def _assessed_hot(assessment):
+    return HotCandidate(
+        hot_id="hot:a", title="Tool A", topic="tool-a", score=90, reasons=["Momentum 90"],
+        evidence_urls=["https://example.com/a"], source_families=["technology"], signals=["github:a"],
+        selected=True, assessment=assessment, summary="概要",
+    )
+
+
+def _empty_run():
+    return RunMetadata(
+        run_id="r", started_at=datetime(2026, 10, 5, tzinfo=timezone.utc), finished_at=None, mode="agent",
+        since="2026-10-04", until="2026-10-05", sources=[], input_counts={}, output_counts={}, errors=[], report_paths=[],
+    )
+
+
+def _full_assessment(**overrides):
+    record = {
+        "hot_id": "hot:a", "decision": "selected", "assessed_at": "2026-10-05T01:02:03+00:00", "assessor": "agent-xyz",
+        "relevance": {"status": "related", "matched_terms": ["agent", "llm"], "reason": "AIエージェント向けのツール", "method": "agent"},
+        "novelty": "初の公式実装", "importance": "利用者が多い", "reader_impact": "導入判断が変わる", "reason": "一次情報で確認できた",
+        "evidence": [
+            {"url": "https://example.com/release", "checked_at": "2026-10-05T01:00:00+00:00", "target_version": "1.0", "status": "verified", "kind": "primary", "claim": "1.0のリリース", "note": "メモ"},
+            {"url": "https://news.example.com/x", "checked_at": "2026-10-05T01:01:00+00:00", "target_version": None, "status": "unverified", "kind": "independent", "claim": "", "note": ""},
+        ],
+        "unknowns": ["性能は未検証"],
+    }
+    record.update(overrides)
+    return record
+
+
+def test_selected_hot_shows_assessment_block_without_assessor_or_time():
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment())], [], _empty_run(), [])
+
+    assert "- Reasons:\n  - Momentum 90\n- 判断理由: 一次情報で確認できた\n" in markdown
+    assert "- 関連性: related(方法: agent / 一致語: agent, llm)\n  - AIエージェント向けのツール\n" in markdown
+    assert "- 新規性: 初の公式実装\n- 重要性: 利用者が多い\n- 読者への影響: 導入判断が変わる\n" in markdown
+    assert "- 根拠:\n  - [https://example.com/release](<https://example.com/release>)(verified / primary):1.0のリリース\n" in markdown
+    assert "  - [https://news.example.com/x](<https://news.example.com/x>)(unverified / independent):(主張未記載)\n" in markdown
+    assert "- 未確認事項:\n  - 性能は未検証\n" in markdown
+    assert "agent-xyz" not in markdown
+    assert "2026-10-05T01:02:03" not in markdown
+    assert markdown.index("- 未確認事項:") < markdown.index("#### Article Proposals")
+
+
+def test_selected_hot_shows_none_for_empty_lists():
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment(evidence=[], unknowns=[], relevance={"status": "uncertain", "matched_terms": [], "reason": "r", "method": "keyword"}))], [], _empty_run(), [])
+
+    assert "- 関連性: uncertain(方法: keyword / 一致語: なし)" in markdown
+    assert "- 根拠: なし" in markdown
+    assert "- 未確認事項: なし" in markdown
+
+
+def test_legacy_candidate_without_assessment_shows_only_reasons():
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(None)], [], _empty_run(), [])
+
+    assert "- Reasons:\n  - Momentum 90\n\n#### Article Proposals" in markdown
+    assert "判断理由" not in markdown
+
+
+def test_assessment_text_escapes_markdown_block_markers_and_html():
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment(unknowns=["# 見出し", "1. 番号", "- 箇条", "<b>x</b> | y\n次の行"]))], [], _empty_run(), [])
+
+    assert "  - \\# 見出し\n" in markdown
+    assert "  - 1\\. 番号\n" in markdown
+    assert "  - \\- 箇条\n" in markdown
+    assert "  - &lt;b&gt;x&lt;/b&gt; \\| y 次の行\n" in markdown
+
+
+def test_malformed_assessment_does_not_break_report():
+    broken = {"reason": 1, "relevance": "related", "evidence": [None, "x", {"url": None}], "unknowns": "not a list"}
+
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(broken)], [], _empty_run(), [])
+
+    assert "- 関連性: 記録なし" in markdown
+    assert "  - (URL未記載)( / ):(主張未記載)" in markdown
+    assert "- 未確認事項: なし" in markdown
+    assert render_daily_report("2026-10-05", [_assessed_hot("not a dict")], [], _empty_run(), []).count("判断理由") == 0
+
+
+def test_assessment_text_escapes_thematic_breaks_and_code_fences():
+    texts = ["---", "***", "___", "```python", "~~~", "+ 加算", "1) 番号", "=== x"]
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment(unknowns=texts))], [], _empty_run(), [])
+
+    for expected in ["\\---", "\\***", "\\___", "\\```python", "\\~~~", "\\+ 加算", "1\\) 番号", "\\=== x"]:
+        assert f"  - {expected}\n" in markdown
+
+
+def test_assessment_shows_placeholder_for_empty_text_fields():
+    record = _full_assessment(reason="", novelty=" ", importance=None, reader_impact="")
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(record)], [], _empty_run(), [])
+
+    assert "- 判断理由: (未記載)\n" in markdown
+    assert "- 新規性: (未記載)\n- 重要性: (未記載)\n- 読者への影響: (未記載)\n" in markdown
+
+
+def test_relevance_without_reason_or_list_terms_shows_single_line():
+    relevance = {"status": "related", "matched_terms": "llm", "reason": "", "method": "agent"}
+    markdown = render_daily_report("2026-10-05", [_assessed_hot(_full_assessment(relevance=relevance))], [], _empty_run(), [])
+
+    assert "- 関連性: related(方法: agent / 一致語: なし)\n- 新規性:" in markdown

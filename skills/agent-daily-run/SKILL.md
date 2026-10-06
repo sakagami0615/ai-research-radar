@@ -20,7 +20,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 実行手順
 
-実行時は`SelectionInput`と`ProposalQuality`を03の共通契約として使う。空の選抜`[]`・空の企画`[]`は未実施または保留の結果として保存し、成功したことに置き換えない。レビュー対象は`review_target.json`で固定し、レビュー担当は原成果物を編集せず`review_result.json`だけを返す。初回をattempt 1として最大3回まで修正し、起動失敗・記録なし・3回後の重要指摘は承認しない。
+実行時は`SelectionInput`と`ProposalQuality`を[03章](../../docs/specs/03-data-model-and-storage.md)の共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・空の企画`[]`は未実施または保留の結果として保存し、成功したことに置き換えない。レビュー対象は`review_target.json`で固定し、レビュー担当は原成果物を編集せず`review_result.json`だけを返す。初回をattempt 1として最大3回まで修正し、起動失敗・記録なし・3回後の重要指摘は承認しない。
 
 1. 対象日を判定する。`date +%F` を実行し、今日の日付(`YYYY-MM-DD`)を取得する。以降の手順ではこの日付を `<date>` として使う。`collect` の `--since` / `--until` は省略し、前回実行の終了時刻から実行時刻までを収集する(最大7日、初回も7日分)。明示的な期間で再実行する必要がある場合だけ、タイムゾーン付きISO 8601日時または日付を指定する。
 
@@ -42,7 +42,71 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar score --date <date> --scoring-config config/scoring.yaml
    ```
 
-4. `data/runs/<date>/hot_candidates.jsonl` を読み、hot-detection Skillの判断方針に従って選抜するHOT候補の `hot_id` を決める。
+4. `data/runs/<date>/hot_candidates.jsonl` を読み、hot-detection Skillの判断方針に従って候補を確認し、判断を `data/runs/<date>/selection_input.json` に書く。
+
+   例(候補を1件確認して選抜した場合。`hot_id` は `hot_candidates.jsonl` の値をそのまま使う):
+
+   ```json
+   {
+     "assessments": [
+       {
+         "hot_id": "hot:event:example-model-release",
+         "decision": "selected",
+         "assessed_at": "2026-10-05T01:23:45+00:00",
+         "assessor": "claude-code",
+         "relevance": {
+           "status": "related",
+           "matched_terms": ["LLM", "release"],
+           "reason": "汎用LLMの新バージョン公開であり、AIエンジニア向けの調査対象に該当する",
+           "method": "agent"
+         },
+         "novelty": "前バージョンからコンテキスト長と推論性能が更新された",
+         "importance": "主要ベンダーの公式リリースで、APIの既定モデルが切り替わる",
+         "reader_impact": "既存アプリのモデル指定と料金見積もりの見直しが必要になる",
+         "reason": "公式発表で公開事実と変更点を確認でき、読者への影響が大きいため選抜する",
+         "evidence": [
+           {
+             "url": "https://example.com/blog/model-release",
+             "checked_at": "2026-10-05T01:20:10+00:00",
+             "target_version": "v2.0",
+             "status": "verified",
+             "kind": "primary",
+             "claim": "v2.0を公開し、APIの既定モデルを切り替えた",
+             "note": "公式ブログ。HTTP 200で取得"
+           }
+         ],
+         "unknowns": ["発表元のベンチマーク値は独立に検証していない"]
+       }
+     ],
+     "screened_ids": ["hot:event:example-model-release"],
+     "selection_reason": "1件を確認し、公式発表で変更点を確認できた1件を選抜した",
+     "summaries": {
+       "hot:event:example-model-release": "Example社の汎用LLMの新バージョン。コンテキスト長と推論性能が更新され、APIの既定モデルが切り替わったと発表している。"
+     }
+   }
+   ```
+
+   トップレベルのキーは `assessments` / `screened_ids` / `selection_reason`(必須)と `summaries`(任意)だけにする(それ以外のキーがあると `invalid_input`)。評価レコードの値は次のとおり。
+
+   - `decision`: `selected`(選抜)/ `deferred`(保留。根拠が取得できない・未確認など)/ `rejected`(除外)のいずれか。
+   - `assessor`: 自分の種別(`claude-code` または `codex`)。
+   - `relevance`: `status` は `related` / `uncertain` / `unrelated`、`method` は `agent`、`matched_terms` は文字列の配列(なければ `[]`)、`reason` は空にしない。
+   - `hot_id` / `assessed_at` / `assessor` / `novelty` / `importance` / `reader_impact` / `reason` は空でない文字列、`unknowns` は文字列の配列(なければ `[]`)。
+   - `evidence` の各要素(`EvidenceCheck`)は、`url` / `checked_at` / `target_version` / `status` / `kind` / `claim` / `note` の7キーちょうどにする(過不足があると `invalid_assessment`)。
+     - `url`: `http://` または `https://` で始まるURL。
+     - `target_version`: 確認した対象のバージョン。特定できなければ `null`。
+     - `status`: `verified`(内容を確認できた)/ `unavailable`(取得できなかった)/ `unverified`(取得したが主張を確認できていない)/ `unknown`。
+     - `kind`: `primary`(発表元の一次情報)/ `independent`(独立した検証・報道)/ `republication`(転載・まとめ)/ `unknown`。
+     - `claim`: そのURLで確認した(または確認しようとした)主張。`note`: 取得結果などの補足(なければ `""`)。
+
+   記録の規則:
+
+   - 内容を確認した候補は、すべて `screened_ids` に入れ、`assessments` に評価レコードを1件ずつ書く。両者の `hot_id` の集合は一致させる(食い違うと `invalid_assessment`)。
+   - 確認しきれなかった候補は、`screened_ids` にも `assessments` にも入れない。この場合 `select-hot` は成功し、`unreviewed_candidates` 警告を記録する。確認していない候補を `rejected` として書かない。
+   - `decision: selected` の評価レコードには、`status: verified` かつ `kind: primary` の根拠を1件以上含める(ないと `invalid_assessment`)。
+   - 選抜は既定で2件まで(超えると `selection_limit_exceeded`)。3件以上選抜する場合は手順5の `--limit` を参照。
+   - `selection_reason` は、選抜件数に関係なく常に空でない文字列で書く。選抜0件の日は、保留・除外とした理由を書く。確認しきれなかった候補がある日は、確認した範囲も書く。
+   - 候補が0件の日も `{"assessments": [], "screened_ids": [], "selection_reason": "<候補0件の理由>"}` を書き、手順5を必ず実行する。
 
    判断の記録(`selection_input.json` の評価レコード)に書く日時は、推定や切りのよい値ではなく実測値にする。
 
@@ -51,7 +115,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - 取得時刻を記録し忘れた根拠は、時刻を推定せずに取得し直してから記録する。
    - 取得時のコマンド出力(URL・HTTPステータス・時刻)を `data/runs/<date>/` 配下に残し、記録した時刻をレビュー担当が裏付けられるようにする。
 
-   あわせて、`hot_candidates.jsonl` の **全候補**(選抜しない候補も含む)について、レポートに載せる日本語の概要を書く。選抜外の候補も翌日以降まで「注目候補」としてレポートに載るためである。
+   あわせて、`hot_candidates.jsonl` の **全候補**(選抜しない候補も含む)について、レポートに載せる日本語の概要を書き、`summaries` に `hot_id` をキーとして入れる。選抜外の候補も翌日以降まで「注目候補」としてレポートに載るためである。`summaries` に書かなかった候補は前回保存した概要を保持し、書いた候補は置き換わる。`summaries` のキーは `hot_candidates.jsonl` にある `hot_id` に限り、値は空でない文字列にする(違反すると `invalid_summary`)。
 
    - 内容: 2〜3文、おおむね150字以内で「それが何か」「何が新しい・変わったか」を書く。Reasons(選抜した/しなかった理由)の繰り返しや、タイトルの直訳だけにしない。
    - 根拠: 評価のために読んだ一次情報(Evidence URLの中身)に基づいて書く。一次情報を取得できなかった場合(403など)は、取得できた範囲(報道記事、PyPIの説明など)で書き、「一次情報未確認」と明記する。何も取得できなかった場合は「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く。
@@ -60,12 +124,21 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 5. 選抜結果を確定する。
 
    ```bash
-   ai-radar select-hot --date <date> --select <id1,id2,...> [--reason <hot_id>=<選抜理由>] --summary <hot_id>=<概要> [--summary ...]
+   ai-radar select-hot --date <date>
    ```
 
-   `--reason` は複数の候補に理由を付けたい場合、繰り返し指定できる(`--reason id1=理由1 --reason id2=理由2`)。
+   `data/runs/<date>/selection_input.json` を読み、評価レコードと概要を `hot_candidates.jsonl` に保存する。3件以上選抜する理由があるときだけ `--limit <n>`(最大5)を付ける(例: `ai-radar select-hot --date <date> --limit 3`)。
 
-   `--summary` には手順4で書いた概要を、全候補分繰り返し指定する。指定しなかった候補は前回保存した概要を保持し、同じ候補を再指定すると置き換わる。選抜した候補に概要がないと `missing_summary` で失敗する。選抜外の候補に概要がない場合は成功するが、`run_state.json` の `errors` に `missing_summary_warning` が記録されるので、その候補の概要を追加して再実行する。
+   `--select` / `--reason` / `--summary` は廃止され、指定すると `deprecated_option` で失敗する。選抜・理由・概要はすべて `selection_input.json` に書く。
+
+   `selection_input.json` はその日の判断の全体を表す。`select-hot` は実行のたびに、このファイルの内容で全候補の `selected` と評価レコードを置き換える(評価レコードがない候補は未選抜・未評価に戻る)。再実行するときは、既存の評価レコードを残したまま追加・修正する。評価を書き直した場合は、`assessed_at` を取り直す。
+
+   終了コード0でも、`data/runs/<date>/run_state.json` の `errors` に次の警告が残る場合がある。それぞれ1回だけ `selection_input.json` を直して手順5を再実行し、それでも残る警告はそのままにして手順6へ進む(警告は失敗ではない)。
+
+   - `missing_summary_warning`: メッセージに出た選抜外の候補の概要を `summaries` に追加する。内容を確認できなかった候補(下の `unreviewed_candidates` の対象)は、推測で書かず「概要未作成(未確認: 時間内に確認できず)」と書く。
+   - `unreviewed_candidates`: メッセージに出た未確認の候補を確認し、評価レコードを `assessments` に、`hot_id` を `screened_ids` に追加する。時間内に確認しきれない場合は、確認した範囲(何件中何件を確認したか)を `selection_reason` に書いて警告を残したまま進む。確認していない候補を `rejected` として書いて警告を消してはならない。
+
+   選抜した候補に概要がない場合は `missing_summary` で失敗する。
 
 6. 選抜された各候補について、article-ideation Skillの企画観点に従って `ArticleProposal` 形式のJSON配列を作成し、`data/runs/<date>/draft_proposals.json` に書き出す。候補1件あたり1〜3件程度の企画に絞る(既存の決定論的Ideation実装の上限である3件を目安とし、通知疲れを避ける)。
 
@@ -119,7 +192,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       - 存在しない場合: 承認。品質レビューループを終了し、完了確認へ進む。
       - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
-        記事企画・概要の書き直しなど必要な修正を自分自身で行った上で、`ai-radar select-hot` /
+        記事企画・概要の書き直しなど必要な修正を自分自身で行った上で、HOT選抜・概要の修正は `selection_input.json` を書き直して `ai-radar select-hot` /
         `save-proposals` を再実行し、手順8のa〜c(概要の補完とレポート生成)をやり直してから、
         手順9のa(レビュー担当の起動)に戻る。
         手順8bで補完した概要の修正は、`add-summary` で同じ `hot_id` を再指定すると上書きされる。
@@ -138,8 +211,11 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 `select-hot` / `save-proposals` / `add-summary` がバリデーションエラー(終了コード1)を返した場合:
 
-1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別(`invalid_selection` / `invalid_reason` / `invalid_summary` / `missing_summary` / `invalid_input` / `invalid_proposal` など)とメッセージを確認する。
-2. 原因に応じて選抜ID・概要・`draft_proposals.json` を修正し、再実行する。
+1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別は次のとおり。
+   - `select-hot`: `deprecated_option` / `missing_input` / `invalid_input` / `invalid_assessment` / `selection_limit_exceeded` / `invalid_summary` / `missing_summary` / `write_error`
+   - `save-proposals`: `missing_input` / `invalid_input` / `invalid_proposal` / `write_error`
+   - `add-summary`: `invalid_summary` / `write_error`
+2. 原因に応じて `selection_input.json`・`draft_proposals.json`・概要を修正し、再実行する。
    - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
 3. 再実行は最大3回までとする。3回後も重要指摘が残る場合は`needs_review`として停止し、起動失敗・結果欠損は`failed`として承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
 
@@ -152,5 +228,5 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 ## 完了確認
 
 - `report` の標準出力(生成されたレポートのパス)を確認する。
-- `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。
+- `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。

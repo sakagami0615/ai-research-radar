@@ -49,6 +49,7 @@ def render_daily_report(
             ]
         )
         lines.extend([f"  - {reason}" for reason in candidate.reasons])
+        lines.extend(_assessment_section(candidate.assessment))
         lines.extend(["", "#### Article Proposals", ""])
         lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, [])))
 
@@ -388,6 +389,75 @@ def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
         )
         lines.extend(f"| {label} | {value} |" for label, value in rows)
         lines.append("")
+    return lines
+
+
+_ORDERED_MARKER = re.compile(r"^(\d+)([.)])(?=\s)")
+# Any leading character that can open a block (heading, list, thematic break, code fence,
+# setext underline) is escaped; a backslash before ASCII punctuation always renders as-is.
+_BLOCK_MARKER = re.compile(r"^([#=+*_`~-])")
+
+
+def _inline_text(value: object) -> str:
+    """Escape agent-written text for one line of a Markdown list item.
+
+    Non-strings (hand-edited records) become empty, newlines collapse to spaces,
+    and a leading block marker is escaped so it stays plain text.
+    """
+    text = value if isinstance(value, str) else ""
+    escaped = " ".join(_escape_text(text).replace("|", "\\|").split())
+    escaped = _ORDERED_MARKER.sub(r"\1\\\2", escaped, count=1)
+    return _BLOCK_MARKER.sub(r"\\\1", escaped, count=1)
+
+
+def _list_of(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _evidence_check_line(check: dict[str, Any]) -> str:
+    """One EvidenceCheck as "URL(status / kind):claim" (shared with #11's proposal evidence)."""
+    url = check.get("url")
+    link = _evidence_link(url) if isinstance(url, str) and url else "(URL未記載)"
+    claim = _inline_text(check.get("claim")) or "(主張未記載)"
+    return f"{link}({_inline_text(check.get('status'))} / {_inline_text(check.get('kind'))}):{claim}"
+
+
+def _assessment_section(assessment: object) -> list[str]:
+    """Agent assessment of a selected HOT, except assessor and assessed_at."""
+    if not isinstance(assessment, dict):
+        return []
+    lines = [f"- 判断理由: {_inline_text(assessment.get('reason')) or '(未記載)'}"]
+    relevance = assessment.get("relevance")
+    if isinstance(relevance, dict):
+        terms = ", ".join(term for term in (_inline_text(item) for item in _list_of(relevance.get("matched_terms"))) if term)
+        lines.append(
+            f"- 関連性: {_inline_text(relevance.get('status'))}"
+            f"(方法: {_inline_text(relevance.get('method'))} / 一致語: {terms or 'なし'})"
+        )
+        relevance_reason = _inline_text(relevance.get("reason"))
+        if relevance_reason:
+            lines.append(f"  - {relevance_reason}")
+    else:
+        lines.append("- 関連性: 記録なし")
+    lines.extend(
+        [
+            f"- 新規性: {_inline_text(assessment.get('novelty')) or '(未記載)'}",
+            f"- 重要性: {_inline_text(assessment.get('importance')) or '(未記載)'}",
+            f"- 読者への影響: {_inline_text(assessment.get('reader_impact')) or '(未記載)'}",
+        ]
+    )
+    evidence = [item for item in _list_of(assessment.get("evidence")) if isinstance(item, dict)]
+    if evidence:
+        lines.append("- 根拠:")
+        lines.extend(f"  - {_evidence_check_line(item)}" for item in evidence)
+    else:
+        lines.append("- 根拠: なし")
+    unknowns = [text for text in (_inline_text(item) for item in _list_of(assessment.get("unknowns"))) if text]
+    if unknowns:
+        lines.append("- 未確認事項:")
+        lines.extend(f"  - {text}" for text in unknowns)
+    else:
+        lines.append("- 未確認事項: なし")
     return lines
 
 

@@ -87,7 +87,9 @@ HOT scoreは以下を使う。
 
 標準では、スコアが `minimum_score` 以上のEventを候補にする。公式重大イベントは低スコアでも候補化できる。
 
-`hot_limit` は選抜数を制限する。候補自体は保持し、`selected` でレポート対象かどうかを表す。
+`hot_limit` は選抜数を制限する。候補自体は保持し、`selected` でレポート対象かどうかを表す。`hot_limit` は決定論経路(`ai-radar daily`)の選抜数である。Agent経路では `select-hot` が `data/runs/<date>/selection_input.json` の評価レコードで選抜し(03章「SelectionInput」参照)、上限は `select-hot --limit`(既定2件、最大5件)である。
+
+選抜HOTのレポート表示では、Agent経路で保存された評価レコード(`assessment`)を評価ブロックとして出す(03章「Daily Markdown Report」の `## 選抜HOT` 参照)。評価レコードのない決定論経路・旧データはReasonsだけを表示する。
 
 ## 日次ダイジェスト
 
