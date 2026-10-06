@@ -187,3 +187,27 @@ def test_invalidate_proposals_result_resets_recorded_or_missing_value():
     assert recorded["stage_results"]["save-proposals"] == expected
     assert missing["stage_results"]["save-proposals"] == expected
     assert INVALIDATED_REASON == "選抜の再実行により無効"
+
+
+def test_load_run_state_raises_run_state_error_when_json_is_not_an_object(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    path = run_state_path(data_dir, DATE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(RunStateError):
+        load_run_state(data_dir, DATE)
+
+
+def test_load_run_state_fills_both_stages_when_stages_completed_is_not_a_list(tmp_path: Path):
+    data_dir = _saved(tmp_path, {"run_id": "r", "stages_completed": "select-hot"})
+
+    results = load_run_state(data_dir, DATE)["stage_results"]
+
+    assert results == {"select-hot": NOT_RUN, "save-proposals": NOT_RUN}
+
+
+def test_load_run_state_missing_file_returns_initial_results_even_without_fill(tmp_path: Path):
+    state = load_run_state(tmp_path / "data", DATE, fill_stage_results=False)
+
+    assert state["stage_results"] == {"select-hot": NOT_RUN, "save-proposals": NOT_RUN}

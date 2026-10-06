@@ -75,6 +75,8 @@ def load_run_state(data_dir: Path, date: str, *, fill_stage_results: bool = True
             state = json.load(handle)
         except json.JSONDecodeError as exc:
             raise RunStateError(f"{path} is corrupt or truncated: {exc}") from exc
+    if not isinstance(state, dict):
+        raise RunStateError(f"{path} is not a JSON object")
     if fill_stage_results:
         _fill_stage_results(state)
     return state
