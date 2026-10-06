@@ -5,6 +5,8 @@ from ai_research_radar.cli.main import main
 from ai_research_radar.schemas.models import HotCandidate
 from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
 
+DATE = "2026-09-25"
+
 
 def _write_selected_candidate(data_dir: Path) -> None:
     write_jsonl(
@@ -154,9 +156,6 @@ def test_cli_save_proposals_rejects_malformed_json_input(tmp_path: Path):
     assert any(error["source"] == "save-proposals" for error in state["errors"])
 
 
-DATE = "2026-09-25"
-
-
 def _write_unselected_candidate(data_dir: Path) -> None:
     _write_selected_candidate(data_dir)
     path = data_dir / "runs" / DATE / "hot_candidates.jsonl"
@@ -239,3 +238,13 @@ def test_non_object_element_is_recorded_as_invalid_proposal(tmp_path: Path):
     assert _run_with_records(tmp_path, data_dir, [1]) == 1
 
     assert _result(data_dir)["reason"] == "invalid_proposal: proposal[0] must be an object"
+
+
+def test_write_failure_is_recorded_as_write_error(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+    (data_dir / "runs" / DATE / "article_proposals.jsonl").mkdir()
+
+    assert _run_with_records(tmp_path, data_dir, [_valid_proposal("hot:event:tool-a")]) == 1
+
+    assert _result(data_dir)["reason"].startswith("write_error: failed to write article proposals")
