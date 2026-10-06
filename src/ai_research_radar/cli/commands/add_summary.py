@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from ai_research_radar.cli.commands.run_state import (
@@ -22,13 +23,17 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(COMMAND_NAME)
     parser.add_argument("--date", required=True)
     parser.add_argument("--data-dir", default="data")
-    parser.add_argument("--summary", action="append", default=[])
+    # Checked by run() so that a missing --input is recorded as invalid_summary instead of argparse exit 2.
+    parser.add_argument("--input", default=None)
+    # Removed option, accepted only to return a migration error (deprecated_option).
+    parser.add_argument("--summary", action="append", default=None)
 
 
 def run(args: argparse.Namespace) -> int:
-    """Save summaries for displayed notable items whose candidate has none (e.g. from a past day).
+    """Save summaries for displayed notable items and model releases that have none.
 
-    Not a pipeline stage: it only adds data for the report, so it does not mark
+    The input is a JSON object of hot_id or model release key to summary. Not a
+    pipeline stage: it only adds data for the report, so it does not mark
     stages_completed.
     """
     data_dir = Path(args.data_dir)
@@ -37,16 +42,37 @@ def run(args: argparse.Namespace) -> int:
     state = load_run_state(data_dir, date)
     reset_errors_for(state, [COMMAND_NAME])
 
-    if not args.summary:
-        return _fail(data_dir, date, state, "invalid_summary", "no --summary given")
-    known_ids = summarizable_keys(build_daily_digest(data_dir, date))
+    if args.summary is not None:
+        example = data_dir / "runs" / date / "summary_input.json"
+        message = (
+            f"--summary は廃止しました。{example} などに "
+            '{"<hot_id または key>": "概要"} 形式のJSONを書き、'
+            f"`ai-radar add-summary --date {date} --input <ファイル>` を実行してください"
+        )
+        return _fail(data_dir, date, state, "deprecated_option", message)
+    if not args.input:
+        return _fail(data_dir, date, state, "invalid_summary", "no --input given")
 
+    input_path = Path(args.input)
+    if not input_path.exists():
+        return _fail(data_dir, date, state, "missing_input", f"missing input file: {input_path}")
+    try:
+        entries = json.loads(input_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return _fail(data_dir, date, state, "invalid_input", f"input file is not valid JSON: {exc}")
+    if not isinstance(entries, dict):
+        return _fail(data_dir, date, state, "invalid_input", "input file must contain a JSON object of key to summary")
+    if not entries:
+        return _fail(data_dir, date, state, "invalid_summary", "input file has no summaries")
+
+    known_keys = summarizable_keys(build_daily_digest(data_dir, date))
     summaries: dict[str, str] = {}
-    for entry in args.summary:
-        hot_id, separator, text = entry.partition("=")
-        if not separator or hot_id not in known_ids or not text.strip():
-            return _fail(data_dir, date, state, "invalid_summary", f"invalid summary entry: {entry}")
-        summaries[hot_id] = text.strip()
+    for key, text in entries.items():
+        if key not in known_keys:
+            return _fail(data_dir, date, state, "invalid_summary", f"not a displayed item that takes a summary: {key}")
+        if not isinstance(text, str) or not text.strip():
+            return _fail(data_dir, date, state, "invalid_summary", f"empty or non-string summary: {key}")
+        summaries[key] = text.strip()
 
     try:
         save_digest_summaries(data_dir, date, summaries)
