@@ -101,6 +101,17 @@ class ArticleProposal:
     quality: dict[str, Any] = field(default_factory=dict)
 
 
+STAGE_RESULT_STATUSES = frozenset({"completed", "deferred", "not_run", "failed"})
+NOT_RUN_REASON = "未実行"
+
+
+def valid_stage_result(value: object) -> dict[str, Any] | None:
+    """stage_results の1ステージ分の記録。dictでない・status が4値以外なら None(表示は「記録なし」)。"""
+    if isinstance(value, dict) and isinstance(value.get("status"), str) and value["status"] in STAGE_RESULT_STATUSES:
+        return value
+    return None
+
+
 @dataclass(frozen=True)
 class RunMetadata:
     run_id: str
@@ -116,6 +127,7 @@ class RunMetadata:
     report_paths: list[str]
     schema_version: int = 1
     metadata: dict[str, Any] = field(default_factory=dict)
+    stage_results: dict[str, Any] = field(default_factory=dict)
 
 
 def to_json_dict(value: Any) -> dict[str, Any]:

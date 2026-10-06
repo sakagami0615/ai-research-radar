@@ -181,3 +181,42 @@ def test_decode_hot_reads_summary_and_defaults_to_empty_for_legacy_records():
 
     assert decode_hot(asdict(candidate)).summary == "概要"
     assert decode_hot(legacy).summary == ""
+
+
+from ai_research_radar.schemas.decoders import decode_run
+from ai_research_radar.schemas.models import valid_stage_result
+
+
+def _run_record(**overrides) -> dict:
+    record = to_json_dict(
+        RunMetadata(
+            run_id="r", started_at=datetime(2026, 10, 4, tzinfo=timezone.utc), finished_at=None, mode="agent",
+            since="2026-10-03", until="2026-10-04", sources=[], input_counts={}, output_counts={}, errors=[], report_paths=[],
+        )
+    )
+    record.pop("stage_results")
+    record.update(overrides)
+    return record
+
+
+def test_run_metadata_defaults_stage_results_to_empty_dict():
+    assert decode_run(_run_record()).stage_results == {}
+
+
+def test_decode_run_reads_stage_results():
+    results = {"select-hot": {"status": "deferred", "reason": "r", "selected_count": 0}}
+
+    assert decode_run(_run_record(stage_results=results)).stage_results == results
+
+
+def test_decode_run_treats_non_dict_stage_results_as_empty():
+    assert decode_run(_run_record(stage_results=None)).stage_results == {}
+    assert decode_run(_run_record(stage_results=["x"])).stage_results == {}
+
+
+def test_valid_stage_result_accepts_only_known_status_dicts():
+    assert valid_stage_result({"status": "failed", "reason": "x"}) == {"status": "failed", "reason": "x"}
+    assert valid_stage_result({"status": "weird"}) is None
+    assert valid_stage_result({"status": ["completed"]}) is None
+    assert valid_stage_result("completed") is None
+    assert valid_stage_result(None) is None
