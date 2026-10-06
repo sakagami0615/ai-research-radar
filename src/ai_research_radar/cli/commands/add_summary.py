@@ -59,7 +59,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         entries = json.loads(input_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return _fail(data_dir, date, state, "invalid_input", f"input file is not valid JSON: {exc}")
+        return _fail(data_dir, date, state, "invalid_input", f"cannot read input file {input_path}: {exc}")
     if not isinstance(entries, dict):
         return _fail(data_dir, date, state, "invalid_input", "input file must contain a JSON object of key to summary")
     if not entries:
