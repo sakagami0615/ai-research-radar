@@ -150,7 +150,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
        `<http_status>` には取得時に表示したステータスを書く(`000` は `-`)。`<true|false>` は下の `content_verified` の定義に従う。`note` に `'` を含めない(含む場合は空白に置き換える)。
 
      - 手順4〜9で行ったURLの取得は、成功・失敗・bot対策ページを問わず、1回につき1行を追記する。根拠の確認、概要を書くための確認、手順5の警告対応、手順8bの概要補完、手順9の修正ループでの再取得を含む。既存の行は上書きしない。
-     - `url`: 要求したURL(リダイレクト後の最終URLではない。`EvidenceCheck` の `url` と同じ値)。
+     - `url`: 要求したURL(リダイレクト後の最終URLではない。根拠に使う場合は `EvidenceCheck` の `url` と同じ値)。
      - `http_status`: HTTPステータスコード。接続失敗(`curl` の出力が `000`)や、使ったツールがステータスを返さない場合は `-`。
      - `fetched_at`: 取得直後に `date -u +%Y-%m-%dT%H:%M:%S+00:00` で得た値。根拠に使う場合は、`EvidenceCheck` の `checked_at` と同じ値を書く。
      - `content_verified`: 本文そのもの(bot対策ページやエラーページではない内容)を取得して読めたら `true`、できなければ `false`。版が対象と一致したかは問わない(版の不一致は根拠の `status` で表す)。

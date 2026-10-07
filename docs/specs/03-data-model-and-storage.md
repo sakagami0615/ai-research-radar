@@ -37,7 +37,7 @@ reports/
   daily/<date>.md
 ```
 
-`runs/<date>/evidence_fetch_log.tsv` は、実行Agentが根拠のURLを取得した記録(ヘッダー付きTSV。形式は09章 §5.1と `agent-daily-run` Skillの手順4)。CLIは読み書きしない。
+`runs/<date>/evidence_fetch_log.tsv` は、実行Agentが手順4〜9で取得したURLの記録(根拠の確認のほか、注目候補・新モデルリリースの概要補完での取得も含む。ヘッダー付きTSV。形式は09章 §5.1と `agent-daily-run` Skillの手順4)。CLIは読み書きしない。
 
 ## RawItem
 
