@@ -29,6 +29,7 @@ Popularity、Momentum、Credibility、Cross-source Confidenceから日次の選�
 - 選抜には関連性、新規性、重要性、読者影響の説明と確認済み一次Evidenceを付ける。取得不能・未確認は保留とし、単一公式発表は発表事実の範囲に限定する。
 - 判断は `selection_input.json` の評価レコード(`Assessment`)として記録する(書式は [skills/agent-daily-run/SKILL.md](../agent-daily-run/SKILL.md) の手順4)。
 - `screened_ids` は「内容を確認した候補」の一覧である。確認した候補だけを入れ、確認していない候補は `screened_ids` にも評価レコードにも入れない(除外済み `rejected` として書かない)。
+- PyPIのJSON APIで取得したメタデータは、配布元である公式レジストリの一次情報(`primary`)として扱う。HTTP 200でも内容を確認できなかった根拠は確認済みにしない(取得方法と `status` の決め方は [skills/agent-daily-run/SKILL.md](../agent-daily-run/SKILL.md) の手順4「根拠の取得」)。
 
 ## レビュー観点
 
