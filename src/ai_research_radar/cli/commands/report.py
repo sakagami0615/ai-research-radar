@@ -53,7 +53,7 @@ def run(args: argparse.Namespace) -> int:
     if args.list_missing_summaries:
         return _list_missing_summaries(data_dir, date)
 
-    state = load_run_state(data_dir, date)
+    state = load_run_state(data_dir, date, fill_stage_results=False)
     reset_errors_for(state, ["pipeline", COMMAND_NAME])
 
     stages_completed = state.get("stages_completed", [])
@@ -96,6 +96,7 @@ def run(args: argparse.Namespace) -> int:
         output_counts=dict(state.get("output_counts", {})),
         errors=list(state.get("errors", [])),
         report_paths=[],
+        stage_results=dict(state["stage_results"]) if isinstance(state.get("stage_results"), dict) else {},
     )
 
     digest = build_daily_digest(data_dir, date)

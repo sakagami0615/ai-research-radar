@@ -86,7 +86,7 @@ AgentはSource別の候補一覧・概要を確認し、研究・公式発表も
 
 独立検証がない単一の公式発表でも、確認した範囲を「発表された仕様・主張」に限定すれば選抜できる。性能や人気まで確認済みに広げない。取得失敗は存在しない証拠にしない。一次情報を確認できないものは発見候補として保留する。
 
-通常上限2件、明示指定時の上限5件。枠を埋める義務はない。0件でも選抜処理の完了、理由、確認範囲を記録する。未実行の0件と区別する。旧オプション `--select` / `--reason` / `--summary` は `deprecated_option` として移行メッセージを返し、自由文だけで選抜することはできない。0件の日の理由・確認範囲は `selection_input.json` の `selection_reason` と `apply_assessments` の集計(確認件数・未確認件数・選抜件数)として扱い、`run_state.json` への記録は #12 で行う。
+通常上限2件、明示指定時の上限5件。枠を埋める義務はない。0件でも選抜処理の完了、理由、確認範囲を記録する。未実行の0件と区別する。旧オプション `--select` / `--reason` / `--summary` は `deprecated_option` として移行メッセージを返し、自由文だけで選抜することはできない。0件の日の理由・確認範囲は `selection_input.json` の `selection_reason` と `apply_assessments` の集計(確認件数・未確認件数・選抜件数)として扱い、`run_state.json` / `run.jsonl` の `stage_results` に `deferred` として記録する(03章「RunMetadata」、#12)。
 
 ## 6. 同一成果と版・転載
 

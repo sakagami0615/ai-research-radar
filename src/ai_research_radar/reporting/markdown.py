@@ -11,7 +11,13 @@ from ai_research_radar.reporting.digest import (
     DailyDigest,
     group_model_releases,
 )
-from ai_research_radar.schemas.models import ArticleProposal, HotCandidate, RunMetadata
+from ai_research_radar.schemas.models import (
+    NOT_RUN_REASON,
+    ArticleProposal,
+    HotCandidate,
+    RunMetadata,
+    valid_stage_result,
+)
 
 
 def render_daily_report(
@@ -32,8 +38,12 @@ def render_daily_report(
     lines = [f"# AI Daily Radar {date}", ""]
     lines.extend(_data_gaps_section(run))
     lines.extend(["## 選抜HOT", ""])
-    if not selected_hot:
-        lines.extend(["本日の選抜HOTはありません。", ""])
+    lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
+    proposal_result = _stage_result(run, "save-proposals")
+    if selected_hot:
+        shown = any(proposals_by_hot.get(candidate.hot_id) for candidate in selected_hot)
+        lines.extend(_proposal_status(proposal_result, shown))
+    deferral_reason = _deferral_reason(proposal_result)
     for candidate in selected_hot:
         lines.extend(
             [
@@ -51,7 +61,7 @@ def render_daily_report(
         lines.extend([f"  - {reason}" for reason in candidate.reasons])
         lines.extend(_assessment_section(candidate.assessment))
         lines.extend(["", "#### Article Proposals", ""])
-        lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, [])))
+        lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, []), deferral_reason))
 
     lines.extend(_digest_warnings(digest))
     lines.extend(_notable_section(digest))
@@ -68,6 +78,73 @@ def render_daily_report(
     return "\n".join(lines)
 
 
+def _stage_result(run: RunMetadata, stage: str) -> dict[str, Any] | None:
+    results = run.stage_results if isinstance(run.stage_results, dict) else {}
+    return valid_stage_result(results.get(stage))
+
+
+def _stage_reason(result: dict[str, Any]) -> str:
+    reason = result.get("reason")
+    return reason if isinstance(reason, str) else ""
+
+
+def _stage_count(result: dict[str, Any], key: str) -> str:
+    value = result.get(key)
+    return str(value) if isinstance(value, int) and not isinstance(value, bool) else "?"
+
+
+def _with_reason(text: str, reason: str) -> str:
+    """Return "<text>(<reason>)。", omitting the parentheses for the default "未実行" reason."""
+    if not reason or reason == NOT_RUN_REASON:
+        return f"{text}。"
+    return f"{text}({_inline_text(reason)})。"
+
+
+def _selection_status(result: dict[str, Any] | None, has_selected: bool) -> list[str]:
+    """Status line shown under 選抜HOT so a deferred day reads differently from a skipped or failed one."""
+    if result is None:
+        return [] if has_selected else ["本日の選抜HOTはありません。", ""]
+    status = result["status"]
+    if status == "completed":
+        return [] if has_selected else ["選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。", ""]
+    if status == "deferred":
+        # The reason is followed by "。", so a trailing one written by the agent is dropped.
+        reason = _inline_text(_stage_reason(result)).rstrip("。") or "理由未記載"
+        if _stage_count(result, "candidate_count") == "0":
+            scope = "候補0件"
+        else:
+            scope = (
+                f"候補 {_stage_count(result, 'candidate_count')}件中 {_stage_count(result, 'screened_count')}件を確認、"
+                f"未確認 {_stage_count(result, 'unreviewed_count')}件"
+            )
+        return [f"本日の選抜HOTはありません(保留: {reason}。{scope})。", ""]
+    line = _with_reason("選抜は未実行" if status == "not_run" else "選抜は失敗", _stage_reason(result))
+    if has_selected:
+        line += "以下は前回成功時の結果です。"
+    return [line, ""]
+
+
+def _proposal_status(result: dict[str, Any] | None, has_proposals: bool) -> list[str]:
+    """Shown once under 選抜HOT when proposals were not saved for the current selection."""
+    if result is None or result["status"] in {"completed", "deferred"}:
+        return []
+    if result["status"] == "not_run":
+        line = _with_reason("記事企画は未実行", _stage_reason(result))
+    else:
+        line = _with_reason("記事企画の保存は失敗", _stage_reason(result))
+    if has_proposals:
+        line += "表示中の企画は前回の結果です。"
+    return [line, ""]
+
+
+def _deferral_reason(result: dict[str, Any] | None) -> str | None:
+    """Reason shown in the proposal block of a HOT without proposals, only on a deferred day."""
+    if result is None or result["status"] != "deferred":
+        return None
+    # The reason sits inside "(保留: ...)", so a trailing "。" written by the agent is dropped.
+    return _inline_text(_stage_reason(result)).rstrip("。") or "理由未記載"
+
+
 def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str]:
     rows = [
         ("Run ID", run.run_id),
@@ -75,11 +152,41 @@ def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str
         ("Sources", ", ".join(run.sources)),
         ("Input Counts", _format_counts(run.input_counts)),
         ("Output Counts", _format_counts(run.output_counts)),
+        ("Selection", _selection_summary(_stage_result(run, "select-hot"))),
+        ("Proposals", _proposals_summary(_stage_result(run, "save-proposals"))),
     ]
     lines = ["## Run Summary", "", "| 項目 | 内容 |", "| --- | --- |"]
     lines.extend(f"| {label} | {_cell(value)} |" for label, value in rows)
     lines.append("")
     return lines
+
+
+def _selection_summary(result: dict[str, Any] | None) -> str:
+    if result is None:
+        return "記録なし"
+    status = result["status"]
+    if status in {"completed", "deferred"}:
+        return (
+            f"{status}(候補{_stage_count(result, 'candidate_count')}件 / 確認{_stage_count(result, 'screened_count')}件"
+            f" / 未確認{_stage_count(result, 'unreviewed_count')}件 / 選抜{_stage_count(result, 'selected_count')}件)"
+        )
+    return _status_with_reason(result)
+
+
+def _proposals_summary(result: dict[str, Any] | None) -> str:
+    if result is None:
+        return "記録なし"
+    status = result["status"]
+    if status == "completed":
+        return f"completed(企画{_stage_count(result, 'proposal_count')}件)"
+    if status == "deferred":
+        return f"deferred(企画{_stage_count(result, 'proposal_count')}件 / 理由: {_stage_reason(result).rstrip('。') or '理由未記載'})"
+    return _status_with_reason(result)
+
+
+def _status_with_reason(result: dict[str, Any]) -> str:
+    reason = _stage_reason(result)
+    return f"{result['status']}({reason})" if reason else result["status"]
 
 
 def _format_counts(counts: dict[str, int]) -> str:
@@ -345,8 +452,10 @@ def _parse_why_now(why_now: str) -> _IdeationTrace | None:
     )
 
 
-def _article_proposals_section(proposals: list[ArticleProposal]) -> list[str]:
+def _article_proposals_section(proposals: list[ArticleProposal], deferral_reason: str | None = None) -> list[str]:
     if not proposals:
+        if deferral_reason is not None:
+            return [f"記事企画なし(保留: {deferral_reason})", ""]
         return ["記事企画なし", ""]
 
     traces = [_parse_why_now(proposal.why_now) for proposal in proposals]

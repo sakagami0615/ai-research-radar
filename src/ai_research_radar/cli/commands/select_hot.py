@@ -8,10 +8,12 @@ from typing import Any
 
 from ai_research_radar.cli.commands.run_state import (
     add_error,
+    invalidate_proposals_result,
     load_run_state,
     mark_stage_completed,
     reset_errors_for,
     save_run_state,
+    set_stage_result,
 )
 from ai_research_radar.schemas.decoders import decode_hot
 from ai_research_radar.scoring.assessments import SelectionError, apply_assessments
@@ -35,6 +37,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
 
 def _fail(state: dict[str, Any], data_dir: Path, date: str, error_type: str, message: str) -> int:
     add_error(state, COMMAND_NAME, error_type, message)
+    set_stage_result(state, COMMAND_NAME, "failed", f"{error_type}: {message}")
     save_run_state(data_dir, date, state)
     print(message)
     return 1
@@ -124,6 +127,17 @@ def run(args: argparse.Namespace) -> int:
         return _fail(state, data_dir, date, "write_error", f"failed to write hot candidates: {exc}")
 
     state["output_counts"]["selected_hot"] = summary["selected_count"]
+    set_stage_result(
+        state,
+        COMMAND_NAME,
+        "completed" if summary["selected_count"] else "deferred",
+        summary["selection_reason"],
+        candidate_count=summary["candidate_count"],
+        screened_count=summary["screened_count"],
+        unreviewed_count=summary["unreviewed_count"],
+        selected_count=summary["selected_count"],
+    )
+    invalidate_proposals_result(state)
     mark_stage_completed(state, COMMAND_NAME)
     save_run_state(data_dir, date, state)
     return 0

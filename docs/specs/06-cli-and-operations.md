@@ -37,7 +37,7 @@ ai-radar daily \
 
 ### Agent経路のサブコマンド
 
-`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。選抜・概要(05章「注目候補・新モデルリリースの概要補完」)に関わる引数は次の通り。
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。選抜・記事企画・概要(05章「注目候補・新モデルリリースの概要補完」)に関わる引数は次の通り。
 
 - `select-hot --date <date> [--input <path>] [--limit <n>]`: `selection_input.json`(03章「SelectionInput」)を読み込んで検証し、当日の `hot_candidates.jsonl` の `selected` / `assessment` / `summary` を更新する。
   - `--input` を省略した場合は `<data-dir>/runs/<date>/selection_input.json` を読む。明示したパスは、`save-proposals --input` と同じくカレントディレクトリを基準にする。
@@ -46,7 +46,7 @@ ai-radar daily \
   - `summaries` で指定しなかった候補は既存の `summary` を保持し、指定した候補は(前後の空白を除いた値で)置き換える。`summaries` がdictでない、当日の候補にない `hot_id` がある、値が空または文字列でない場合は `invalid_summary` にする。
   - 選抜した候補に概要がない(`summaries` にも既存データにもない)場合は `missing_summary` にする。選抜外の候補に概要がない場合は、終了コード0のまま `run_state.json` の `errors` に `missing_summary_warning` として件数と `hot_id` を記録する。
   - `screened_ids` に含まれない(未確認の)候補があれば、終了コード0のまま `errors` に `unreviewed_candidates` として件数と `hot_id` を記録する。
-  - 実行のはじめに `run_state.json` の `select-hot` のエラー・警告を消すため、再実行すると以前の警告は残らない。成功時は `output_counts.selected_hot` に選抜件数を記録し、`select-hot` を完了段階にする。選抜0件の日の理由・確認範囲は `selection_reason` と件数として扱い、`run_state.json` への記録は Issue #12 で行う予定である。
+  - 実行のはじめに `run_state.json` の `select-hot` のエラー・警告を消すため、再実行すると以前の警告は残らない。成功時は `output_counts.selected_hot` に選抜件数を記録し、`select-hot` を完了段階にして、`run_state.json` の `stage_results` に、選抜1件以上なら `completed`、0件なら `deferred` を、`selection_reason` と件数(候補・確認・未確認・選抜)とともに記録する。あわせて `save-proposals` の記録が初期値以外なら `not_run`(選抜の再実行により無効)に戻す。`errors` に記録して終了コード1にするエラー時は `failed` を記録する。`run_state.json` 自体が読めない場合(`RunStateError`)は `stage_results` を更新しない(03章「RunMetadata」)。
   - エラー時は `run_state.json` の `errors` に記録して終了コード1にし、`hot_candidates.jsonl` は書き換えない。エラー・警告の種別は次の通り。
 
     | 種別 | 条件 | 終了コード |
@@ -61,6 +61,7 @@ ai-radar daily \
     | `write_error` | `hot_candidates.jsonl` の書き込みに失敗した | 1 |
     | `missing_summary_warning` / `unreviewed_candidates` | 選抜外の候補に概要がない / 未確認の候補がある(警告) | 0 |
 
+- `save-proposals --date <date> --input <path>`: 記事企画のJSON配列を検証して `article_proposals.jsonl` に保存する。選抜0件の日も空の配列 `[]` で実行する(#11 完了後はオブジェクト形式)。成功時は `stage_results` に、企画1件以上なら `completed`、選抜ありで企画0件なら `deferred`、選抜0件なら `not_run`(選抜HOTなし)を `proposal_count` とともに記録し、`output_counts.article_proposals` に企画件数を記録して、`save-proposals` を完了段階にする。エラー(`missing_input` / `invalid_input` / `invalid_proposal` / `write_error`。入力がUTF-8でない場合は `invalid_input`、配列の要素がオブジェクトでない場合は `invalid_proposal`)は `errors` に記録して `failed` を記録し、終了コード1にする(`run_state.json` 自体が読めない場合は `stage_results` を更新しない)。`write_error` のメッセージは `failed to write article proposals: <例外>` である。
 - `add-summary --date <date> --input <path>`: 当日のレポートに表示する注目候補(過去日の候補など)・新モデルリリースの概要を `data/runs/<date>/digest_summaries.json` に保存する。パイプラインのステージ(`stages_completed`)としては扱わない。
   - `--input` は `{"<hot_id または key>": "概要"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/summary_input.json` に書く。新モデルリリースの `key` はクエリ文字列(`=` を含む)を持つことがあるため、コマンドライン引数ではなくファイルで渡す。
   - キーは、当日のレポートに表示される注目候補のうち候補自身が `summary` を持たないものの `hot_id`(候補自身の `summary` が優先されるため、それ以外への保存は表示に反映されない)と、表示される新モデルリリースの `key` に限る。`report --list-missing-summaries` の対象と、すでに補完済みの項目がこれに当たる。

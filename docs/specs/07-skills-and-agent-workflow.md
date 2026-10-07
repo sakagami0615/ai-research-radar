@@ -24,7 +24,7 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 
 ### agent-daily-run
 
-`ai-radar` のサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に実行し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要の作成、記事企画をAgent自身の判断で行う日次ワークフロー。cronから `claude -p` / `codex exec` で直接起動されることを想定する(ラッパースクリプトなし)。HOT最終選抜は `data/runs/<date>/selection_input.json` に評価レコードを書き、`select-hot` で検証・保存する(形式は03章「SelectionInput」参照)。対象日の判定、および`review-daily-report`を使ったレビュー・修正ループ(最大3回)もこのSkillの手順内でAgent自身が行う。判断基準は `hot-detection` / `article-ideation` を参照する。根拠のURLの取得規則(PyPIは `/project/` ページではなくJSON APIで確認し `primary` として記録する、HTTP 200でもbot対策ページなど本文を取得できなければ `unavailable` にする)と、取得ログ `data/runs/<date>/evidence_fetch_log.tsv`(列: `url` / `http_status` / `fetched_at` / `content_verified` / `note`)の形式も、このSkillの手順4で定める。注目候補・新モデルリリースの概要補完(手順8b)でのURLの取得も、この規則と取得ログに従う。
+`ai-radar` のサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に実行し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要の作成、記事企画をAgent自身の判断で行う日次ワークフロー。cronから `claude -p` / `codex exec` で直接起動されることを想定する(ラッパースクリプトなし)。HOT最終選抜は `data/runs/<date>/selection_input.json` に評価レコードを書き、`select-hot` で検証・保存する(形式は03章「SelectionInput」参照)。対象日の判定、および`review-daily-report`を使ったレビュー・修正ループ(最大3回)もこのSkillの手順内でAgent自身が行う。判断基準は `hot-detection` / `article-ideation` を参照する。根拠のURLの取得規則(PyPIは `/project/` ページではなくJSON APIで確認し `primary` として記録する、HTTP 200でもbot対策ページなど本文を取得できなければ `unavailable` にする)と、取得ログ `data/runs/<date>/evidence_fetch_log.tsv`(列: `url` / `http_status` / `fetched_at` / `content_verified` / `note`)の形式も、このSkillの手順4で定める。注目候補・新モデルリリースの概要補完(手順8b)でのURLの取得も、この規則と取得ログに従う。選抜0件の日も、空の企画 `[]` で `save-proposals` を実行する(結果は `stage_results` に保留・未実行として記録され、成功とは区別される)。
 
 ### review-daily-report
 

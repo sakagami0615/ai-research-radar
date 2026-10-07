@@ -3,13 +3,16 @@ from pathlib import Path
 import pytest
 
 from ai_research_radar.cli.commands.run_state import (
+    INVALIDATED_REASON,
     RunStateError,
     add_error,
+    invalidate_proposals_result,
     load_run_state,
     mark_stage_completed,
     reset_errors_for,
     run_state_path,
     save_run_state,
+    set_stage_result,
 )
 
 
@@ -23,6 +26,10 @@ def test_load_run_state_returns_default_when_missing(tmp_path: Path):
     assert state["output_counts"] == {}
     assert state["errors"] == []
     assert "run_id" in state
+    assert state["stage_results"] == {
+        "select-hot": {"status": "not_run", "reason": "未実行"},
+        "save-proposals": {"status": "not_run", "reason": "未実行"},
+    }
 
 
 def test_save_and_load_run_state_roundtrip(tmp_path: Path):
@@ -107,3 +114,100 @@ def test_reset_errors_for_works_on_dict_missing_key():
     reset_errors_for(state, ["arxiv"])
 
     assert state["errors"] == []
+
+
+NOT_RUN = {"status": "not_run", "reason": "未実行"}
+DATE = "2026-09-27"
+
+
+def _saved(tmp_path: Path, state: dict) -> Path:
+    data_dir = tmp_path / "data"
+    save_run_state(data_dir, DATE, state)
+    return data_dir
+
+
+def test_load_run_state_fills_old_data_only_for_stages_not_completed(tmp_path: Path):
+    data_dir = _saved(tmp_path, {"run_id": "r", "stages_completed": ["collect", "select-hot"], "errors": []})
+
+    state = load_run_state(data_dir, DATE)
+
+    assert "select-hot" not in state["stage_results"]
+    assert state["stage_results"]["save-proposals"] == NOT_RUN
+
+
+def test_load_run_state_replaces_non_dict_stage_results(tmp_path: Path):
+    data_dir = _saved(tmp_path, {"run_id": "r", "stages_completed": [], "stage_results": "broken"})
+
+    assert load_run_state(data_dir, DATE)["stage_results"] == {"select-hot": NOT_RUN, "save-proposals": NOT_RUN}
+
+
+def test_load_run_state_keeps_valid_records_and_refills_invalid_ones(tmp_path: Path):
+    completed = {"status": "completed", "reason": "r", "selected_count": 1}
+    data_dir = _saved(
+        tmp_path,
+        {"run_id": "r", "stages_completed": [], "stage_results": {"select-hot": completed, "save-proposals": {"status": "weird"}}},
+    )
+
+    results = load_run_state(data_dir, DATE)["stage_results"]
+
+    assert results == {"select-hot": completed, "save-proposals": NOT_RUN}
+
+
+def test_load_run_state_without_fill_keeps_old_data_as_is(tmp_path: Path):
+    data_dir = _saved(tmp_path, {"run_id": "r", "stages_completed": []})
+
+    assert "stage_results" not in load_run_state(data_dir, DATE, fill_stage_results=False)
+
+
+def test_set_stage_result_overwrites_whole_record_and_creates_container():
+    state: dict = {"stage_results": "broken"}
+
+    set_stage_result(state, "select-hot", "completed", "r", selected_count=1)
+    set_stage_result(state, "select-hot", "failed", "invalid_input: x")
+
+    assert state["stage_results"] == {"select-hot": {"status": "failed", "reason": "invalid_input: x"}}
+
+
+def test_invalidate_proposals_result_keeps_initial_value():
+    state = {"stage_results": {"save-proposals": dict(NOT_RUN)}}
+
+    invalidate_proposals_result(state)
+
+    assert state["stage_results"]["save-proposals"] == NOT_RUN
+
+
+def test_invalidate_proposals_result_resets_recorded_or_missing_value():
+    recorded = {"stage_results": {"save-proposals": {"status": "completed", "reason": "", "proposal_count": 2}}}
+    missing: dict = {"stage_results": {}}
+
+    invalidate_proposals_result(recorded)
+    invalidate_proposals_result(missing)
+
+    expected = {"status": "not_run", "reason": INVALIDATED_REASON}
+    assert recorded["stage_results"]["save-proposals"] == expected
+    assert missing["stage_results"]["save-proposals"] == expected
+    assert INVALIDATED_REASON == "選抜の再実行により無効"
+
+
+def test_load_run_state_raises_run_state_error_when_json_is_not_an_object(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    path = run_state_path(data_dir, DATE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(RunStateError):
+        load_run_state(data_dir, DATE)
+
+
+def test_load_run_state_fills_both_stages_when_stages_completed_is_not_a_list(tmp_path: Path):
+    data_dir = _saved(tmp_path, {"run_id": "r", "stages_completed": "select-hot"})
+
+    results = load_run_state(data_dir, DATE)["stage_results"]
+
+    assert results == {"select-hot": NOT_RUN, "save-proposals": NOT_RUN}
+
+
+def test_load_run_state_missing_file_returns_initial_results_even_without_fill(tmp_path: Path):
+    state = load_run_state(tmp_path / "data", DATE, fill_stage_results=False)
+
+    assert state["stage_results"] == {"select-hot": NOT_RUN, "save-proposals": NOT_RUN}

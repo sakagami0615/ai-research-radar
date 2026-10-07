@@ -35,4 +35,5 @@ JSONLの判断済みデータを人間が確認しやすいレポートへ変換
 - `assessment` のない旧データの選抜HOTでは、評価ブロックが出ずReasonsだけになっているか
 - Article Proposalの概要表・詳細表に表崩れがなく、Role / Critique / Debateが別行に分かれ、Evidence URLとRisksが欠落していないか
 - 外部由来のタイトルなどに含まれる `[text](url)` や `#`・`|`・改行が、意図しないリンク・見出し・表崩れにならないか(新しい表示項目を足すときはエスケープ経由で出す)
+- 選抜HOTセクションの冒頭とRun SummaryのSelection / Proposals行が `run_state.json` の `stage_results` と一致し、保留(deferred)・未実行(not_run)・失敗(failed)・記録なし(旧データ)が区別して表示されているか
 - 未確認、保留、legacy、部分失敗、取得範囲とUTC/JSTを表示し、処理エラーなしを品質承認と解釈できる文面にしない。
