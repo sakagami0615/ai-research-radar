@@ -17,6 +17,8 @@ from ai_research_radar.cli.commands.run_state import (
 )
 from ai_research_radar.config.settings import load_runtime_config, resolve_display_timezone
 from ai_research_radar.reporting.digest import (
+    ModelRelease,
+    NotableItem,
     build_daily_digest,
     missing_summaries,
     save_digest_record,
@@ -40,7 +42,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--list-missing-summaries",
         action="store_true",
-        help="print displayed notable items without a summary as JSON Lines, writing nothing",
+        help="print displayed notable items and model releases without a summary as JSON Lines, writing nothing",
     )
 
 
@@ -141,11 +143,25 @@ def _list_missing_summaries(data_dir: Path, date: str) -> int:
     for warning in digest.warnings:
         print(f"warning: {warning}", file=sys.stderr)
     for item in missing_summaries(digest):
-        record = {
-            "hot_id": item.candidate.hot_id,
-            "title": item.candidate.title,
-            "first_seen": item.first_seen,
-            "evidence_urls": list(item.candidate.evidence_urls),
-        }
-        print(json.dumps(record, ensure_ascii=False))
+        print(json.dumps(_missing_summary_record(item), ensure_ascii=False))
     return 0
+
+
+def _missing_summary_record(item: NotableItem | ModelRelease) -> dict[str, object]:
+    if isinstance(item, ModelRelease):
+        return {
+            "kind": "model_release",
+            "key": item.key,
+            "title": item.title,
+            "provider": item.provider,
+            "channel": item.channel,
+            "url": item.url,
+            "first_seen": item.first_seen,
+        }
+    return {
+        "kind": "notable",
+        "hot_id": item.candidate.hot_id,
+        "title": item.candidate.title,
+        "first_seen": item.first_seen,
+        "evidence_urls": list(item.candidate.evidence_urls),
+    }

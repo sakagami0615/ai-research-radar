@@ -1,8 +1,9 @@
 """Daily digest: 注目候補(選抜外) and 新モデルリリース sections of the daily report.
 
 Both sections are built deterministically from the last few days of run data
-(no Agent judgement). Items already shown in an earlier day's report are
-excluded using `data/runs/<date>/report_digest.json`.
+(no Agent judgement); only the summaries are written by the Agent
+(`data/runs/<date>/digest_summaries.json`). Items already shown in an earlier
+day's report are excluded using `data/runs/<date>/report_digest.json`.
 """
 
 from __future__ import annotations
@@ -46,6 +47,8 @@ class ModelRelease:
     first_seen: str
     # Model names introduced by an article (e.g. an Ollama blog post), if known.
     models: tuple[str, ...] = ()
+    # The summary added on the target date (digest_summaries.json); empty if none.
+    summary: str = ""
 
 
 @dataclass(frozen=True)
@@ -69,7 +72,10 @@ def build_daily_digest(data_dir: Path, date: str) -> DailyDigest:
         warnings.append(f"{data_dir / 'runs' / date / SUMMARIES_FILENAME}: {exc}")
         added = {}
     notable = [replace(item, summary=item.candidate.summary or added.get(item.candidate.hot_id, "")) for item in notable]
-    model_releases = _model_releases(data_dir, dates, shown["model_releases"], warnings)
+    model_releases = [
+        replace(release, summary=added.get(release.key, ""))
+        for release in _model_releases(data_dir, dates, shown["model_releases"], warnings)
+    ]
     return DailyDigest(
         notable=notable[:NOTABLE_LIMIT],
         notable_overflow=max(0, len(notable) - NOTABLE_LIMIT),
@@ -78,18 +84,31 @@ def build_daily_digest(data_dir: Path, date: str) -> DailyDigest:
     )
 
 
-def missing_summaries(digest: DailyDigest) -> list[NotableItem]:
-    """Displayed notable items that still have no summary (overflow items are not displayed)."""
-    return [item for item in digest.notable if not item.summary]
+def missing_summaries(digest: DailyDigest) -> list[NotableItem | ModelRelease]:
+    """Displayed items that still have no summary: notable items first, then model releases.
 
-
-def summarizable_ids(digest: DailyDigest) -> set[str]:
-    """Displayed notable items whose candidate has no summary of its own.
-
-    Only for these does a summary added on the target date show up, since the
-    candidate's own summary takes precedence.
+    Overflow items are not displayed, so they are not listed.
     """
-    return {item.candidate.hot_id for item in digest.notable if not item.candidate.summary}
+    notable = [item for item in digest.notable if not item.summary]
+    releases = [release for release in displayed_model_releases(digest) if not release.summary]
+    return [*notable, *releases]
+
+
+def summarizable_keys(digest: DailyDigest) -> set[str]:
+    """Keys whose summary added on the target date shows up in the report.
+
+    Notable items count only when the candidate has no summary of its own, since
+    that takes precedence. Model releases have no summary of their own, so every
+    displayed one counts. hot_id starts with "hot:" and a model release key is a
+    URL or a "<source>:..." signal_id, so the two never collide.
+    """
+    notable = {item.candidate.hot_id for item in digest.notable if not item.candidate.summary}
+    return notable | {release.key for release in displayed_model_releases(digest)}
+
+
+def displayed_model_releases(digest: DailyDigest) -> list[ModelRelease]:
+    """Model releases shown in the report, in display order (per-provider overflow excluded)."""
+    return [release for _, releases, _ in group_model_releases(digest.model_releases) for release in releases]
 
 
 def load_digest_summaries(data_dir: Path, date: str) -> dict[str, str]:
@@ -103,7 +122,7 @@ def load_digest_summaries(data_dir: Path, date: str) -> dict[str, str]:
 
 
 def save_digest_summaries(data_dir: Path, date: str, summaries: dict[str, str]) -> None:
-    """Merge summaries added on `date` into its digest_summaries.json (same hot_id is overwritten)."""
+    """Merge summaries added on `date` into its digest_summaries.json (the same key is overwritten)."""
     merged = {**load_digest_summaries(data_dir, date), **summaries}
     path = data_dir / "runs" / date / SUMMARIES_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,11 +137,7 @@ def save_digest_record(data_dir: Path, date: str, digest: DailyDigest) -> None:
     """
     record = {
         "notable": [item.candidate.hot_id for item in digest.notable],
-        "model_releases": [
-            release.key
-            for _, releases, _ in group_model_releases(digest.model_releases)
-            for release in releases
-        ],
+        "model_releases": [release.key for release in displayed_model_releases(digest)],
     }
     path = data_dir / "runs" / date / DIGEST_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)

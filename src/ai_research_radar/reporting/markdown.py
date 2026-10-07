@@ -286,6 +286,7 @@ def _model_release_section(digest: DailyDigest) -> list[str]:
             published = (release.published_at or "")[:10] or "不明"
             models = f" — 紹介モデル: {', '.join(_sanitize_title(model) for model in release.models)}" if release.models else ""
             lines.append(f"- {name} ({channel} / 公開日 {published}){models}")
+            lines.append(f"  - 概要: {_summary_text(release.summary)}")
         if overflow:
             lines.append(f"- ほか{overflow}件(表示上限超過)")
         lines.append("")
@@ -336,8 +337,13 @@ def _sanitize_summary(summary: str) -> str:
 
 def _summary_quote(summary: str) -> str:
     # The "**概要**:" prefix keeps the text off the line start, so it cannot become a heading or list.
-    text = " ".join(_sanitize_title(summary).split())
-    return f"> **概要**: {text or '概要未作成'}"
+    return f"> **概要**: {_summary_text(summary)}"
+
+
+def _summary_text(summary: str) -> str:
+    # Callers always put a prefix before this text, so the block-marker escaping of
+    # _inline_text is not needed; this keeps every summary escaped the same way.
+    return " ".join(_sanitize_title(summary).split()) or "概要未作成"
 
 
 def _sanitize_title(title: str) -> str:

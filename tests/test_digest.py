@@ -270,3 +270,85 @@ def test_report_summary_is_escaped_and_kept_on_one_line():
     markdown = render_daily_report("2026-09-25", [selected], [], _run(), [])
 
     assert "> **概要**: 一行目 # 見出し \\[link\\](http://x) &lt;b&gt;\\|" in markdown.splitlines()
+
+
+def test_model_release_summary_comes_from_digest_summaries_and_missing_lists_notable_first(tmp_path: Path):
+    from ai_research_radar.reporting.digest import NotableItem, missing_summaries, save_digest_summaries, summarizable_keys
+
+    _write_hot(tmp_path, "2026-09-25", [_hot("pkg", 80)])
+    _write_signals(
+        tmp_path,
+        "2026-09-25",
+        [
+            _model_signal("https://hf.co/o/done", "Org", "huggingface", "2026-09-25T02:00:00+00:00"),
+            _model_signal("https://hf.co/o/todo", "Org", "huggingface", "2026-09-25T01:00:00+00:00"),
+        ],
+    )
+    save_digest_summaries(tmp_path, "2026-09-25", {"https://hf.co/o/done": "補った概要"})
+
+    digest = build_daily_digest(tmp_path, "2026-09-25")
+
+    assert {release.key: release.summary for release in digest.model_releases} == {
+        "https://hf.co/o/done": "補った概要",
+        "https://hf.co/o/todo": "",
+    }
+    missing = missing_summaries(digest)
+    assert [type(item) for item in missing] == [NotableItem, ModelRelease]
+    assert missing[1].key == "https://hf.co/o/todo"
+    assert summarizable_keys(digest) == {"pkg", "https://hf.co/o/done", "https://hf.co/o/todo"}
+
+
+def test_model_release_summaries_only_cover_displayed_items(tmp_path: Path):
+    from ai_research_radar.reporting.digest import displayed_model_releases, missing_summaries, summarizable_keys
+
+    _write_signals(
+        tmp_path,
+        "2026-09-25",
+        [
+            _model_signal(f"https://hf.co/u/m{index:02d}", "Unsloth", "huggingface", f"2026-09-25T00:{index:02d}:00+00:00")
+            for index in range(12)
+        ],
+    )
+
+    digest = build_daily_digest(tmp_path, "2026-09-25")
+
+    displayed = [release.key for release in displayed_model_releases(digest)]
+    assert displayed == [f"https://hf.co/u/m{index:02d}" for index in range(11, 1, -1)]
+    assert [item.key for item in missing_summaries(digest)] == displayed
+    assert summarizable_keys(digest) == set(displayed)
+
+
+def test_report_shows_model_release_summary_line_after_each_item(tmp_path: Path):
+    from ai_research_radar.reporting.digest import save_digest_summaries
+
+    _write_signals(
+        tmp_path,
+        "2026-09-25",
+        [
+            _model_signal("https://hf.co/o/done", "Org", "huggingface", "2026-09-25T02:00:00+00:00"),
+            _model_signal("https://hf.co/o/todo", "Org", "huggingface", "2026-09-25T01:00:00+00:00"),
+        ],
+    )
+    save_digest_summaries(tmp_path, "2026-09-25", {"https://hf.co/o/done": "一行目\n# 見出し [link](http://x) <b>|"})
+
+    markdown = render_daily_report("2026-09-25", [], [], _run(), [], build_daily_digest(tmp_path, "2026-09-25"))
+
+    lines = markdown.splitlines()
+    done = lines.index("- [done](<https://hf.co/o/done>) (Hugging Face / 公開日 2026-09-25)")
+    assert lines[done + 1] == "  - 概要: 一行目 # 見出し \\[link\\](http://x) &lt;b&gt;\\|"
+    todo = lines.index("- [todo](<https://hf.co/o/todo>) (Hugging Face / 公開日 2026-09-25)")
+    assert lines[todo + 1] == "  - 概要: 概要未作成"
+
+
+def test_model_release_overflow_line_has_no_summary_line():
+    releases = [
+        ModelRelease(f"https://hf.co/u/m{index:02d}", "Unsloth", "huggingface", f"m{index:02d}", f"https://hf.co/u/m{index:02d}", f"2026-09-25T00:{index:02d}:00+00:00", "2026-09-25")
+        for index in range(12)
+    ]
+
+    markdown = render_daily_report("2026-09-25", [], [], _run(), [], DailyDigest(model_releases=releases))
+
+    lines = markdown.splitlines()
+    assert markdown.count("  - 概要: 概要未作成") == 10
+    overflow = lines.index("- ほか2件(表示上限超過)")
+    assert not lines[overflow + 1].startswith("  - 概要:")
