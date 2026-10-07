@@ -82,6 +82,8 @@ AgentはSource別の候補一覧・概要を確認し、研究・公式発表も
 
 選抜には上記説明と取得・内容確認できた一次根拠を必須とする。URLを書くだけでは確認済みにしない。CLIは型、空値、ID整合、状態の組み合わせを検査する。説明内容やURLの真偽はAgentと独立レビューで確認する。
 
+根拠の取得では、HTTPステータスだけで確認済みにしない。HTTP 200でもbot対策ページなどで本文を取得できなければ `unavailable`、本文は取得できたが対象の版を確認できなければ `unverified` とする。PyPIの `/project/` ページはbot対策ページを返すため、PyPI候補はJSON API(`https://pypi.org/pypi/<name>/<version>/json`、版が不明なら `https://pypi.org/pypi/<name>/json`)で `info.version` と用途を確認し、配布元である公式レジストリのメタデータとして `kind: primary` で記録する(`note` に `info.version`)。表示用の `evidence_urls` は `/project/` のままとする。取得の記録は `data/runs/<date>/evidence_fetch_log.tsv`(ヘッダー付きTSV、列 `url` / `http_status` / `fetched_at` / `content_verified` / `note`、追記のみ)に残し、`fetched_at` を `checked_at` と一致させて独立レビューが確認日時を裏付けられるようにする。CLIはこのログを検証しない(Issue #10。詳細手順は `agent-daily-run` Skillの手順4)。
+
 独立検証がない単一の公式発表でも、確認した範囲を「発表された仕様・主張」に限定すれば選抜できる。性能や人気まで確認済みに広げない。取得失敗は存在しない証拠にしない。一次情報を確認できないものは発見候補として保留する。
 
 通常上限2件、明示指定時の上限5件。枠を埋める義務はない。0件でも選抜処理の完了、理由、確認範囲を記録する。未実行の0件と区別する。旧オプション `--select` / `--reason` / `--summary` は `deprecated_option` として移行メッセージを返し、自由文だけで選抜することはできない。0件の日の理由・確認範囲は `selection_input.json` の `selection_reason` と `apply_assessments` の集計(確認件数・未確認件数・選抜件数)として扱い、`run_state.json` / `run.jsonl` の `stage_results` に `deferred` として記録する(03章「RunMetadata」、#12)。

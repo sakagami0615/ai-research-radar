@@ -25,6 +25,7 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - `data/runs/<date>/selection_input.json`(評価レコード・確認範囲 `screened_ids`・`selection_reason`)
 - `data/runs/<date>/article_proposals.jsonl`(存在する場合)
 - `data/runs/<date>/digest_summaries.json`(存在する場合。注目候補のうち過去日の候補などに当日補った概要)
+- `data/runs/<date>/evidence_fetch_log.tsv`(実行Agentが取得したURLのログ。根拠があるのにこのファイルが無い場合は、下の検証観点の不備として扱う。レビュー担当は読むだけで追記しない。レビューのために根拠のURLを取得しても記録しない)
 
 ## 検証観点
 
@@ -36,6 +37,10 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - 選抜HOTセクションに「選抜は未実行」「選抜は失敗」、または(選抜HOTがある日に)「記事企画は未実行」「記事企画の保存は失敗」が出ている場合は、保留ではなく実行・保存の漏れとして指摘する。失敗が実行Agentの再実行の上限(`agent-daily-run` の「エラー時の自己修正方針」の項目3)に達して残っている場合も指摘してよい(実行Agentは再実行せず修正不能として扱う)。
 - 選抜HOTセクションに「選抜結果が見つかりません(…)」が出ている場合(`select-hot` は `completed` なのに選抜HOTが0件)は、選抜結果の消失として指摘する。
 - 選抜HOTの評価ブロック(レポートの判断理由・根拠・未確認事項)が、根拠のURLの内容と対応しているか(必要に応じて根拠のURLを確認する)。
+- 評価レコードの各根拠について、取得ログに同じURLの行があり、そのいずれかの `fetched_at` が `checked_at` と一致するか(記録した時刻の裏付け。再取得で同じURLの行が複数あるのは正常)。
+- `checked_at` と一致した取得ログの行の `content_verified` が `false` なのに、根拠を `status: verified` としていないか(bot対策ページなど)。
+- PyPI候補の根拠が、`/project/` ページではなくJSON API(`https://pypi.org/pypi/...`)で確認されているか。`note` の `info.version` と `target_version` が対応しているか(異なるのに `verified` としていないか)。
+- 上の3点の不備(根拠があるのに取得ログが無い、`checked_at` と一致する行が無い、内容を確認できなかった取得を `verified` としている、など)は、実行Agentが取り直して直せるため、Importantとして指摘する。
 - `selection_reason` と確認範囲が妥当か(`hot_candidates.jsonl` のうち `screened_ids` にない候補は未確認であり、`unreviewed_candidates` の警告対象になる。未確認の候補が残っている場合、確認した範囲が `selection_reason` に書かれているか)。
 - 記事企画にEvidence URLなしの主張がないか。
 - 各 `article_proposals` の `evidence_links` が、対応するHOT候補(`source_hot_id` が一致するもの)の `evidence_urls` と整合しているか。

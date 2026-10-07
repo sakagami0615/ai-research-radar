@@ -30,10 +30,13 @@ data/
   runs/<date>/run.jsonl
   runs/<date>/report_digest.json
   runs/<date>/digest_summaries.json
+  runs/<date>/evidence_fetch_log.tsv
 
 reports/
   daily/<date>.md
 ```
+
+`runs/<date>/evidence_fetch_log.tsv` は、実行Agentが根拠のURLを取得した記録(ヘッダー付きTSV。形式は09章 §5.1と `agent-daily-run` Skillの手順4)。CLIは読み書きしない。
 
 ## RawItem
 
