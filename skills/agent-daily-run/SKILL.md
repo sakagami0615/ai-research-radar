@@ -181,7 +181,15 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
    選抜した候補に概要がない場合は `missing_summary` で失敗する。
 
-6. 選抜された各候補について、article-ideation Skillの企画観点に従って `ArticleProposal` 形式のJSON配列を作成し、`data/runs/<date>/draft_proposals.json` に書き出す。候補1件あたり1〜3件程度の企画に絞る(既存の決定論的Ideation実装の上限である3件を目安とし、通知疲れを避ける)。
+6. 記事企画を作成する。
+
+   選抜0件の日(手順5の `select-hot` が成功し、`hot_candidates.jsonl` に `selected: true` の候補がない日)は、企画を作らずに `data/runs/<date>/draft_proposals.json` に空の配列 `[]` を書いて手順7へ進む。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。
+
+   手順5の `select-hot` が再実行の上限に達して `failed` のまま進む場合は、企画を作らずに `draft_proposals.json` に `[]` を書いて手順7を実行する(`save-proposals` は `hot_candidates.jsonl` の選抜で照合するため、`selection_input.json` の `selected` に対する企画は `invalid_proposal` になる)。
+
+   選抜HOTがあるのに企画を作らない(`[]` を書く)場合、レポートに「記事企画なし(保留: 理由未記載)」と出てレビューで指摘されうるため、作れない理由がない限り各選抜HOTに企画を作る。
+
+   選抜された各候補について、article-ideation Skillの企画観点に従って `ArticleProposal` 形式のJSON配列を作成し、`data/runs/<date>/draft_proposals.json` に書き出す。候補1件あたり1〜3件程度の企画に絞る(既存の決定論的Ideation実装の上限である3件を目安とし、通知疲れを避ける)。
 
    `ArticleProposal` の必須フィールド: `proposal_id` / `source_hot_id` / `title_idea` / `article_type` / `target_reader` / `why_now` / `technical_angle` / `experiment_plan` / `competition` / `traffic_opportunity` / `technical_opportunity` / `unique_angle` / `evidence_links` / `risks`。
 
@@ -193,6 +201,8 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ```bash
    ai-radar save-proposals --date <date> --input data/runs/<date>/draft_proposals.json
    ```
+
+   選抜0件の日も `[]` で実行する。`run_state.json` の `stage_results` に結果(企画あり=`completed`、選抜ありで企画0件=`deferred`、選抜0件=`not_run`(選抜HOTなし))が記録される。入力は企画の配列で渡す。
 
 8. 注目候補の概要を補完してから、レポートを生成する。
 
@@ -214,6 +224,11 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
    c. レポートを生成する。
 
+      生成する前に `data/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば、そのまま生成する。`stage_results` にそのステージの記録がない場合(旧形式の `run_state.json`)も、そのまま生成する。
+      - `select-hot` が `not_run`(手順5を実行していない)の場合: `data/runs/<date>/hot_candidates.jsonl` があれば手順4〜7を1回だけ実行してから生成する。`normalize` / `score` の失敗で `hot_candidates.jsonl` がない場合は実行せずにそのまま生成する(レポートに「選抜は未実行」と出る)。
+      - `save-proposals` が `not_run`(理由: 選抜の再実行により無効、または未実行)の場合: 手順7だけを再実行してから生成する(`draft_proposals.json` がなければ先に手順6で作る)。ただし、上の項目で手順4〜7を実行した場合、または `hot_candidates.jsonl` がなくそのまま生成へ進む場合は、手順7を重ねて実行しない。手順7の再実行は1回だけとし、失敗した場合は下の `failed` の項目に従う。
+      - いずれかが `failed` の場合: 「エラー時の自己修正方針」に従って該当ステージだけを直して再実行する(回数の上限と数え方は同方針の項目3に従う)。上限に達している場合は、再実行せず `failed` を残したまま生成する(レポートに失敗として表示される)。
+
       ```bash
       ai-radar report --date <date> --reports-dir reports
       ```
@@ -233,13 +248,21 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       - 存在しない場合: 承認。品質レビューループを終了し、完了確認へ進む。
       - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
-        記事企画・概要の書き直しなど必要な修正を自分自身で行った上で、HOT選抜・概要の修正は `selection_input.json` を書き直して `ai-radar select-hot` /
-        `save-proposals` を再実行し、手順8のa〜c(概要の補完とレポート生成)をやり直してから、
-        手順9のa(レビュー担当の起動)に戻る。
-        手順8bで補完した概要の修正は、`add-summary` で同じ `hot_id` を再指定すると上書きされる。
+        記事企画・概要の書き直しなど必要な修正を自分自身で行う。修正の仕方は次のとおり。
+        - HOT選抜・概要の修正: `selection_input.json` を書き直して `ai-radar select-hot` を再実行し、
+          `select-hot` が成功したら続けて必ず手順7の `save-proposals` も再実行する(`select-hot` が成功すると、それまでの記事企画の記録は「選抜の再実行により無効」になるため。概要だけの修正でも同じ)。
+          選抜した候補が変わった場合は、`save-proposals` の前に手順6に従って `draft_proposals.json` を作り直す(選抜0件になった場合は `[]`)。
+          概要だけの修正で選抜が変わらない場合は、既存の `draft_proposals.json` のまま再実行してよい。
+          `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `[]` を書く段落は手順5での失敗だけに当てはまる)。
+        - 記事企画だけの修正: `draft_proposals.json` を書き直して手順7の `save-proposals` を再実行する。
+        - 手順8bで補完した概要の修正: `add-summary` で同じ `hot_id` を再指定する(上書きされる)。
+        - `stage_results` の `failed` が再実行の上限(「エラー時の自己修正方針」の項目3)に達したため残っていることへの指摘: 再実行せず、修正不能として扱う。
+          `review_feedback.md` に他の指摘がなければ、手順8・9aに戻らず手順10へ進む。
+
+        いずれの場合も(上の手順10へ進む場合を除く)手順8のa〜c(概要の補完とレポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
-10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合:
+10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed`)だけが残った場合:
 
     - `reports/daily/<date>.md` の冒頭に次のバナーを追記する(間に空行を1行挟んで元の内容を続ける):
 
@@ -257,8 +280,9 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - `save-proposals`: `missing_input` / `invalid_input` / `invalid_proposal` / `write_error`
    - `add-summary`: `invalid_summary` / `write_error`
 2. 原因に応じて `selection_input.json`・`draft_proposals.json`・概要を修正し、再実行する。
+   - すでに手順7(`save-proposals`)を実行した後に `select-hot` を再実行して成功した場合は、続けて手順7も再実行する(選抜が変わった場合は先に手順6で `draft_proposals.json` を作り直す)。手順5の時点(まだ手順7を実行していない)では、通常どおり手順6へ進む。
    - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
-3. 再実行は最大3回までとする。3回後も重要指摘が残る場合は`needs_review`として停止し、起動失敗・結果欠損は`failed`として承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
+3. 再実行は最大3回までとする。「3回」は、同じステージが終了コード1で失敗した後の修正再実行の回数を、その日の実行全体(手順5・7・8c・9bを通算)で数える。9bでレビュー指摘を受けて行う再実行そのものは数えない(9bの試行回数3回で別に上限がある)。ただし、その再実行が失敗した後の修正再実行は数える。上限に達したステージは `failed` を残したまま先へ進む。品質レビュー(手順9)で3回試行しても重要指摘が残る場合の扱いは手順10に従う(この3回は手順9bの試行回数であり、上の再実行回数とは別に数える)。レビュー担当の起動失敗・結果欠損は承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
 
 `normalize` / `score` が終了コード1を返した場合も、内容を確認し可能なら1回だけ修正・再実行を試みる。それでも解決しない場合は諦めて手順8に進む。
 
@@ -270,4 +294,5 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 - `report` の標準出力(生成されたレポートのパス)を確認する。
 - `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
+- `data/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8cで上限まで再実行しても直らなかったもの)。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。
