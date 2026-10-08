@@ -7,7 +7,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 目的
 
-`ai-radar` CLIのサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report`)を順に呼び出し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要、記事企画をAgent自身の判断で作り、日次レポートを完成させる。
+`ai-radar` CLIのサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report`)を順に呼び出し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要、収集Source一覧のSourceごとの「本日の傾向」、記事企画をAgent自身の判断で作り、日次レポートを完成させる。
 
 `ai-radar daily` は決定論的な一括実行コマンドであり、このSkillでは使わない。
 
@@ -149,7 +149,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
        `<http_status>` には取得時に表示したステータスを書く(`000` は `-`)。`<true|false>` は下の `content_verified` の定義に従う。`note` に `'` を含めない(含む場合は空白に置き換える)。
 
-     - 手順4〜9で行ったURLの取得は、成功・失敗・bot対策ページを問わず、1回につき1行を追記する。根拠の確認、概要を書くための確認、手順5の警告対応、手順8bの概要補完、手順9の修正ループでの再取得を含む。既存の行は上書きしない。
+     - 手順4〜9で行ったURLの取得は、成功・失敗・bot対策ページを問わず、1回につき1行を追記する。根拠の確認、概要を書くための確認、手順5の警告対応、手順8bの概要補完、手順8cで傾向を書くためのリンク先の確認、手順9の修正ループでの再取得を含む。既存の行は上書きしない。
      - `url`: 要求したURL(リダイレクト後の最終URLではない。根拠に使う場合は `EvidenceCheck` の `url` と同じ値)。
      - `http_status`: HTTPステータスコード。接続失敗(`curl` の出力が `000`)や、使ったツールがステータスを返さない場合は `-`。
      - `fetched_at`: 取得直後に `date -u +%Y-%m-%dT%H:%M:%S+00:00` で得た値。根拠に使う場合は、`EvidenceCheck` の `checked_at` と同じ値を書く。
@@ -204,7 +204,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
    選抜0件の日も `[]` で実行する。`run_state.json` の `stage_results` に結果(企画あり=`completed`、選抜ありで企画0件=`deferred`、選抜0件=`not_run`(選抜HOTなし))が記録される。入力は企画の配列で渡す。
 
-8. 注目候補・新モデルリリースの概要を補完してから、レポートを生成する。
+8. 注目候補・新モデルリリースの概要を補完し、Sourceごとの「本日の傾向」を書いてから、レポートを生成する。
 
    a. レポートに表示される注目候補・新モデルリリースのうち、概要がないもの(過去日の注目候補、当日の新モデルリリースなど)を一覧する。何も出力されなければ c へ進む。
 
@@ -238,7 +238,43 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       保存後に a を1回だけ再実行して、何も出力されないことを確認する。それでも残る項目は、推測で書かずに「概要未作成(未確認: 時間内に確認できず)」と書いて同じ方法で保存し、a を再実行せずに c へ進む。この回数は、手順9bから手順8に戻るたびに数え直す。
 
-   c. レポートを生成する。
+   c. 収集Source一覧のSourceごとに「本日の傾向」を書き、保存する。
+
+      レポート末尾の「収集Source一覧」は、各Signalのタイトル・概要を原文のまま並べる(翻訳・要約はしない)。その代わりに、各Sourceの見出し(`### <source> (N件)`)の直下に出す日本語の傾向を、収集1件以上のSourceごとに書く。
+
+      まず、見出しと同じ名前・件数でSourceの一覧を出す(`run_state.json` の `sources` にないSourceのSignalは `other`、同じ名前のSourceが実在する場合は `_other` にまとめる)。
+
+      ```bash
+      python3 skills/agent-daily-run/list_source_signals.py <date>
+      ```
+
+      続けて、件数が1件以上のSourceごとに、そのSourceの各Signalを `- タイトル | 概要(先頭200字) | URL` の形で出して読む(Source名は上の出力の見出しから `(N件)` を除いた名前)。
+
+      ```bash
+      python3 skills/agent-daily-run/list_source_signals.py <date> '<Source名>'
+      ```
+
+      - 対象: 件数が1件以上のSource。収集0件のSourceは書かない(レポートには「収集0件」と出る。0件のSourceを入力に含めると `invalid_overview` で全体が保存されない)。
+      - 内容: 2〜3行(2〜3文)、おおむね200字以内で、「どんなテーマが多いか」「目立った項目」を書く。原文が英語以外(タイ語など)であっても日本語で書く。文の間に改行は入れなくてよい(入れた改行はレポートで `<br>` として表示される)。
+      - 根拠: そのSourceの一覧(タイトル・概要)をすべて読んだうえで書く。タイトルと概要だけでは内容がわからない目立った項目は、必要ならリンク先を確認する(取得は手順4の「根拠の取得」に従い、取得ログに1行追記する)。一覧から読み取れない内容を推測で断定しない。
+
+      書いた傾向は、Source名(見出しの `(N件)` を除いた名前)をキーとするJSONオブジェクトとして `data/runs/<date>/source_overview_input.json` に書き(既存の内容は今回の分で置き換えてよい)、保存する。保存したSourceの傾向は上書きされ、入力に含めなかったSourceの保存済みの傾向は残る。
+
+      ```json
+      {"github": "エージェント実行基盤とMCP関連のリポジトリが多い。...", "arxiv": "..."}
+      ```
+
+      ```bash
+      ai-radar add-source-overview --date <date> --input data/runs/<date>/source_overview_input.json
+      ```
+
+      手順9bから戻ってきた場合は、保存済みの傾向を書き直さなくてよい(指摘されたSourceは手順9bで直す)。`data/runs/<date>/source_overviews.json` にない、収集1件以上のSourceがあれば、それだけを書いて保存する。
+
+      書くSourceが1つもない場合(収集1件以上のSourceがない日、または手順9bから戻って未保存のSourceがない場合)は、`add-source-overview` を実行せずに d へ進む(空のオブジェクト `{}` を渡すと `invalid_overview` で失敗する)。
+
+      `add-source-overview` が失敗した場合は「エラー時の自己修正方針」に従う。再実行の上限に達した場合は、保存できなかったSourceは「傾向未作成」のまま d へ進む。
+
+   d. レポートを生成する。
 
       生成する前に `data/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば、そのまま生成する。`stage_results` にそのステージの記録がない場合(旧形式の `run_state.json`)も、そのまま生成する。
       - `select-hot` が `not_run`(手順5を実行していない)の場合: `data/runs/<date>/hot_candidates.jsonl` があれば手順4〜7を1回だけ実行してから生成する。`normalize` / `score` の失敗で `hot_candidates.jsonl` がない場合は実行せずにそのまま生成する(レポートに「選抜は未実行」と出る)。
@@ -272,10 +308,11 @@ description: Use when cron等からAgentとして日次調査パイプライン�
           `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `[]` を書く段落は手順5での失敗だけに当てはまる)。
         - 記事企画だけの修正: `draft_proposals.json` を書き直して手順7の `save-proposals` を再実行する。
         - 手順8bで補完した概要の修正: `summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行する(上書きされる)。キーは `data/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。HOT選抜のやり直しなどで今はレポートに表示されていない項目のキーは書かない(1つでも含むと `invalid_summary` で全体が保存されない)。
+        - 手順8cで書いた本日の傾向の修正: `source_overview_input.json` に直すSourceと新しい傾向だけを書いて `add-source-overview --input` を再実行する(上書きされる)。Source名はレポートの見出しから `(N件)` を除いた名前(`other` / `_other` を含む)を使う。
         - `stage_results` の `failed` が再実行の上限(「エラー時の自己修正方針」の項目3)に達したため残っていることへの指摘: 再実行せず、修正不能として扱う。
           `review_feedback.md` に他の指摘がなければ、手順8・9aに戻らず手順10へ進む。
 
-        いずれの場合も(上の手順10へ進む場合を除く)手順8のa〜c(概要の補完とレポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
+        いずれの場合も(上の手順10へ進む場合を除く)手順8のa〜d(概要の補完、本日の傾向の作成、レポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
 10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed`)だけが残った場合:
@@ -289,16 +326,18 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## エラー時の自己修正方針
 
-`select-hot` / `save-proposals` / `add-summary` がバリデーションエラー(終了コード1)を返した場合:
+`select-hot` / `save-proposals` / `add-summary` / `add-source-overview` がバリデーションエラー(終了コード1)を返した場合:
 
 1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別は次のとおり。
    - `select-hot`: `deprecated_option` / `missing_input` / `invalid_input` / `invalid_assessment` / `selection_limit_exceeded` / `invalid_summary` / `missing_summary` / `write_error`
    - `save-proposals`: `missing_input` / `invalid_input` / `invalid_proposal` / `write_error`
    - `add-summary`: `deprecated_option`(`--summary` を指定した。`--input` に移る)/ `missing_input` / `invalid_input` / `invalid_summary` / `write_error`
-2. 原因に応じて `selection_input.json`・`draft_proposals.json`・`summary_input.json` を修正し、再実行する。
+   - `add-source-overview`: `invalid_input`(`--input` の指定がない、ファイルがない・JSONとして読めない、オブジェクトでない、当日の `signals.jsonl` が読めない)/ `invalid_overview`(空のオブジェクト、見出しにないSource名、空の本文、収集0件のSource)/ `write_error`
+2. 原因に応じて `selection_input.json`・`draft_proposals.json`・`summary_input.json`・`source_overview_input.json` を修正し、再実行する。
    - すでに手順7(`save-proposals`)を実行した後に `select-hot` を再実行して成功した場合は、続けて手順7も再実行する(選抜が変わった場合は先に手順6で `draft_proposals.json` を作り直す)。手順5の時点(まだ手順7を実行していない)では、通常どおり手順6へ進む。
    - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
-3. 再実行は最大3回までとする。「3回」は、同じステージが終了コード1で失敗した後の修正再実行の回数を、その日の実行全体(手順5・7・8b・8c・9bを通算)で数える。ステージではない `add-summary`(手順8b)の失敗も同じく数え、上限に達したら、保存できなかった項目は概要未作成のまま手順8cへ進む。9bでレビュー指摘を受けて行う再実行そのものは数えない(9bの試行回数3回で別に上限がある)。ただし、その再実行が失敗した後の修正再実行は数える。上限に達したステージは `failed` を残したまま先へ進む。品質レビュー(手順9)で3回試行しても重要指摘が残る場合の扱いは手順10に従う(この3回は手順9bの試行回数であり、上の再実行回数とは別に数える)。レビュー担当の起動失敗・結果欠損は承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
+   - `add-source-overview` が `write_error` で失敗し、メッセージから `data/runs/<date>/source_overviews.json` が壊れていると分かる場合は、そのファイルを `source_overviews.json.broken` に名前を変えて退避し、手順8cの最初から(収集1件以上のすべてのSourceについて)傾向を書き直して保存する。
+3. 再実行は最大3回までとする。「3回」は、同じステージが終了コード1で失敗した後の修正再実行の回数を、その日の実行全体(手順5・7・8b・8c・8d・9bを通算)で数える。ステージではない `add-summary`(手順8b)・`add-source-overview`(手順8c)の失敗も同じく数え、上限に達したら、保存できなかった項目は概要未作成・傾向未作成のまま次の手順(8bは8c、8cは8d)へ進む。9bでレビュー指摘を受けて行う再実行そのものは数えない(9bの試行回数3回で別に上限がある)。ただし、その再実行が失敗した後の修正再実行は数える。上限に達したステージは `failed` を残したまま先へ進む。品質レビュー(手順9)で3回試行しても重要指摘が残る場合の扱いは手順10に従う(この3回は手順9bの試行回数であり、上の再実行回数とは別に数える)。レビュー担当の起動失敗・結果欠損は承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
 
 `normalize` / `score` が終了コード1を返した場合も、内容を確認し可能なら1回だけ修正・再実行を試みる。それでも解決しない場合は諦めて手順8に進む。
 
@@ -310,6 +349,6 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 - `report` の標準出力(生成されたレポートのパス)を確認する。
 - `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
-- `data/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8cで上限まで再実行しても直らなかったもの)。
+- `data/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8dで上限まで再実行しても直らなかったもの)。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。
 - 手順8aで控えた新モデルリリースの対象件数が30件を超えていた場合は、その件数を完了報告に含める。

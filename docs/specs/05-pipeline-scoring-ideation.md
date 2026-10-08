@@ -125,6 +125,17 @@ HOT scoreは以下を使う。
 - 対象の件数に合計の上限は設けない。1日の新モデルリリースの対象が30件を超えたら、上限の追加や表示件数の削減を見直す(Agentが完了報告に件数を書く)。
 - 決定論経路(`ai-radar daily`)では概要を補完しないため、概要は「概要未作成」と表示される。
 
+### Sourceごとの本日の傾向
+
+日次レポート末尾の「収集Source一覧」(03章)は1日あたり数百件のSignalを原文のまま並べる。各Signalの概要は翻訳・要約せず(表は従来どおりエスケープと120文字の切り詰めだけ)、その代わりにAgentがSourceごとの「本日の傾向」を日本語で書き、各Sourceの見出しの直下に表示する。
+
+- 内容: 2〜3行、おおむね200字以内で、「どんなテーマが多いか」「目立った項目」を書く。原文が英語以外であっても日本語で書く。そのSourceの一覧(タイトル・概要・必要ならリンク先)を読んだうえで書く。文字数はCLIでは検証せず、レビュー(`review-daily-report`)で確認する。
+- 対象: レポートの見出しと同じSource(`run_state.json` の `sources` と、未登録Sourceをまとめた `other` / `_other`)のうち、当日の `data/normalized/<date>/signals.jsonl` の件数(見出しの件数)が1件以上のもの。収集0件のSourceは「収集0件」と表示し、傾向は書かない。
+- 保存: `data/runs/<date>/source_overviews.json`(03章「Source Overviews記録」)。Agent経路(`agent-daily-run`)では `report` の前に書き、`ai-radar add-source-overview --input` で保存する(06章)。
+- 表示: 傾向がないSourceは「傾向未作成」と表示する。決定論経路(`ai-radar daily`)では傾向を作成しないため、すべて「傾向未作成」になる。
+- 傾向を保存した後に `collect` / `normalize` をやり直して件数が変わっても、CLIは保存済みの傾向を無効にしない(0件になったSourceは表示時に「収集0件」になる)。
+- Agentが読むSourceごとの一覧は、`skills/agent-daily-run/list_source_signals.py` が見出しと同じまとめ方・件数で出す(`reporting/source_overview.py` の `group_signals_by_source` と同じ規則。テストで一致を確認する)。
+
 ### 新モデルリリース
 
 - 入力: 各日の `data/normalized/<date>/signals.jsonl`

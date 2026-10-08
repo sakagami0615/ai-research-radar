@@ -25,6 +25,8 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - `data/runs/<date>/selection_input.json`(評価レコード・確認範囲 `screened_ids`・`selection_reason`)
 - `data/runs/<date>/article_proposals.jsonl`(存在する場合)
 - `data/runs/<date>/digest_summaries.json`(存在する場合。注目候補のうち過去日の候補などに当日補った概要と、新モデルリリースの概要。キーは注目候補が `hot_id`、新モデルリリースが正規化済みURL)
+- `data/runs/<date>/source_overviews.json`(存在する場合。収集Source一覧の各見出しの直下に出す、Sourceごとの「本日の傾向」。キーは見出しのSource名(`other` / `_other` を含む))
+- `data/normalized/<date>/signals.jsonl`(収集Source一覧の元データ。本日の傾向が一覧と食い違っていないかを確かめるときに読む。`python3 skills/agent-daily-run/list_source_signals.py <date> '<Source名>'` でSourceごとに出せる)
 - `data/runs/<date>/evidence_fetch_log.tsv`(実行Agentが取得したURLのログ。根拠があるのにこのファイルが無い場合は、下の検証観点の不備として扱う。レビュー担当は読むだけで追記しない。レビューのために根拠のURLを取得しても記録しない)
 
 ## 検証観点
@@ -55,6 +57,12 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
   - 確認できていない項目(規模・ライセンスなど)を推測で書いていないか。一次情報を取得できなかった場合に「一次情報未確認」と明記されているか。
   - 「概要未作成」のまま残っている項目がないか(情報取得失敗・未確認の理由が書かれている場合は除く)。
   - 指摘するときは、項目のタイトルとURLを書く。
+- 収集Source一覧のSourceごとの「本日の傾向」(各Sourceの見出し `### <source> (N件)` の直下の行)について:
+  - 傾向の内容が、そのSourceの一覧(タイトル・概要)と食い違っていないか(一覧にないテーマや項目を書いていないか、件数の多いテーマを取り違えていないか)。
+  - 日本語で書かれているか(原文が英語以外のSourceも含む)。
+  - おおむね200字以内(2〜3行)に収まっているか。大きく超えている場合だけ指摘する。
+  - 収集1件以上のSourceに「傾向未作成」が残っていないか。収集0件のSourceの「収集0件」は正常であり指摘しない。`data/runs/<date>/run_state.json` の `errors` に `add-source-overview` のエラーが残っている場合は、実行Agentが再実行の上限(`agent-daily-run` の「エラー時の自己修正方針」の項目3)に達して保存できなかったものとして扱い、「傾向未作成」を指摘しない(指摘しても実行Agentは直せず、修正ループが解消されないまま終わるため)。
+  - 傾向は実行Agentが `source_overview_input.json` に書いて `add-source-overview --input` を再実行すれば直せるため、指摘対象にする。指摘するときは、Source名(見出しから `(N件)` を除いた名前)を書く。収集Source一覧の表(各Signalのタイトル・概要の原文)はCLIが決定論的に生成するため、表の内容そのものは指摘対象にしない。
 
 レポートの「注目候補(選抜外)」「新モデルリリース」セクションはCLIが決定論的に生成するものであり、実行Agentには修正手段がない。このため、これらのセクションの内容そのもの(どの項目が載るか、並び順、スコアなど)を `review_feedback.md` の指摘対象にしない(指摘すると修正ループが解消されないまま3回で終わる)。ただし、概要のうち当日に書かれたものは実行Agentが修正できるため、上記の概要の観点で指摘対象にする。
 

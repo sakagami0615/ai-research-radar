@@ -1145,3 +1145,80 @@ def test_run_summary_drops_trailing_period_of_deferred_proposal_reason():
     summary = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED, deferred), []))
 
     assert "| Proposals | deferred(企画0件 / 理由: 環境なし) |" in summary
+
+
+def _overview_run(sources: list[str]) -> RunMetadata:
+    return replace(_run_with_single_github_source(), sources=sources)
+
+
+def _appendix(markdown: str) -> str:
+    return markdown[markdown.index("## 収集Source一覧") :]
+
+
+def _signal(source: str, title: str = "Repo") -> dict:
+    return {"source": source, "title": title, "url": f"https://example.com/{title}", "summary": "desc"}
+
+
+def test_source_appendix_shows_overview_directly_under_heading_outside_details():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overviews={"github": "エージェント系のリポジトリが多い。"},
+    )
+
+    assert "### github (1件)\n\nエージェント系のリポジトリが多い。\n\n<details>" in _appendix(markdown)
+
+
+def test_source_appendix_shows_placeholder_without_overview_and_zero_items_for_empty_source():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github", "arxiv"]), [_signal("github")],
+        source_overviews={"arxiv": "0件なのに書かれた傾向"},
+    )
+
+    appendix = _appendix(markdown)
+    assert "### github (1件)\n\n傾向未作成\n\n<details>" in appendix
+    assert "### arxiv (0件)\n\n収集0件\n\n<details>" in appendix
+    assert "0件なのに書かれた傾向" not in appendix
+    assert "該当Signalなし" in appendix
+
+
+def test_source_appendix_shows_overview_for_other_heading():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["other"]), [_signal("other"), _signal("hackernews", "HN")],
+        source_overviews={"other": "実在するotherの傾向", "_other": "未登録Sourceの傾向"},
+    )
+
+    appendix = _appendix(markdown)
+    assert "### other (1件)\n\n実在するotherの傾向\n\n<details>" in appendix
+    assert "### _other (1件)\n\n未登録Sourceの傾向\n\n<details>" in appendix
+
+
+def test_source_appendix_overview_is_escaped_with_line_breaks_and_not_truncated():
+    text = "# 見出しではない\r\n2行目 | <b>a\\b</b>\n" + "あ" * 200
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overviews={"github": f"  {text}  "},
+    )
+
+    expected = "\\# 見出しではない<br>2行目 \\| &lt;b&gt;a\\\\b&lt;/b&gt;<br>" + "あ" * 200
+    assert f"### github (1件)\n\n{expected}\n\n<details>" in _appendix(markdown)
+
+
+def test_source_appendix_overview_escapes_leading_ordered_list_marker():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overviews={"github": "1. 最初の傾向"},
+    )
+
+    assert "\n1\\. 最初の傾向\n" in _appendix(markdown)
+
+
+def test_source_appendix_shows_warning_when_overviews_could_not_be_read():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overview_warning="data/runs/2026-09-25/source_overviews.json: broken | x",
+    )
+
+    appendix = _appendix(markdown)
+    assert "> ⚠️ 次のファイルを読めなかったため、本日の傾向を表示していません。" in appendix
+    assert "> - data/runs/2026-09-25/source_overviews.json: broken \\| x" in appendix
+    assert "### github (1件)\n\n傾向未作成" in appendix

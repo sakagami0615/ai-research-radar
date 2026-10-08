@@ -37,7 +37,7 @@ ai-radar daily \
 
 ### Agent経路のサブコマンド
 
-`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。選抜・記事企画・概要(05章「注目候補・新モデルリリースの概要補完」)に関わる引数は次の通り。
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` を使う。選抜・記事企画・概要(05章「注目候補・新モデルリリースの概要補完」)・Sourceごとの本日の傾向(05章「Sourceごとの本日の傾向」)に関わる引数は次の通り。
 
 - `select-hot --date <date> [--input <path>] [--limit <n>]`: `selection_input.json`(03章「SelectionInput」)を読み込んで検証し、当日の `hot_candidates.jsonl` の `selected` / `assessment` / `summary` を更新する。
   - `--input` を省略した場合は `<data-dir>/runs/<date>/selection_input.json` を読む。明示したパスは、`save-proposals --input` と同じくカレントディレクトリを基準にする。
@@ -77,6 +77,20 @@ ai-radar daily \
     | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない | 1 |
     | `write_error` | `digest_summaries.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) | 1 |
 
+- `add-source-overview --date <date> --input <path>`: 収集Source一覧の各見出しに出す「本日の傾向」を `data/runs/<date>/source_overviews.json` に保存する(03章「Source Overviews記録」)。パイプラインのステージ(`stages_completed`)としては扱わない(`add-summary` と同じ)。
+  - `--input` は `{"<source名>": "本文"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/source_overview_input.json` に書く。
+  - Source名は、当日の `run_state.json` の `sources` にあるもの、または `sources` にないSourceのSignalをまとめた見出し(`other`。同じ名前のSourceが実在する場合は `_other`)に限る。レポートの見出しと同じ名前・同じ件数で判定する(`other` / `_other` は該当するSignalがあるときだけ受け付ける)。
+  - そのSourceの当日の件数(`data/normalized/<date>/signals.jsonl` の件数。レポートの見出しの件数と同じ)が0件なら受け付けない。
+  - 値は前後の空白を除いて保存し、同じSourceは上書きする。文字数は検証しない(レビューで確認する)。
+  - 実行のはじめに `run_state.json` の `add-source-overview` のエラーを消す。入力のすべての項目を検証してから保存するため、1つでも不正な項目があれば何も保存しない。
+  - エラー時は `run_state.json` の `errors` に記録して終了コード1にし、`source_overviews.json` は書き換えない。エラーの種別は次の通り。
+
+    | 種別 | 条件 | 終了コード |
+    | --- | --- | --- |
+    | `invalid_input` | `--input` の指定がない、ファイルがない・読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない。当日の `signals.jsonl` が読めない | 1 |
+    | `invalid_overview` | 中身が空のオブジェクト、レポートの見出しにないSource名、本文が文字列でない・空、そのSourceの当日の件数が0件 | 1 |
+    | `write_error` | `source_overviews.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) | 1 |
+
 - `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(05章「注目候補・新モデルリリースの概要補完」参照)。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
 
 ## 設定ファイル
@@ -96,7 +110,7 @@ CLI引数は設定ファイルより優先される。
 
 ## cron想定
 
-推奨はcronから `claude -p` / `codex exec` を直接起動するAI Agent(Claude Code / Codex)経由の実行である(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` の実行、概要の作成・補完、対象日の判定、レビュー・修正ループまでAgent自身が判断して行う。
+推奨はcronから `claude -p` / `codex exec` を直接起動するAI Agent(Claude Code / Codex)経由の実行である(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` の実行、概要の作成・補完、Sourceごとの本日の傾向の作成、対象日の判定、レビュー・修正ループまでAgent自身が判断して行う。
 
 `ai-radar`/`claude`/`codex` はいずれもPATH依存のコマンドであり、cronの実行環境には通常PATHが通っていないため、crontabファイル先頭に `PATH=` 行が必要になる。同日の多重実行(ログが混ざる)を防ぐため `flock -n` で排他制御し、レポート未生成時にcronの失敗通知が機能するよう末尾で `test -f` による確認を行う。
 
@@ -125,7 +139,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 1. CLIが終了コード0で終わるか確認する。
 2. `data/runs/<date>/run.jsonl` を確認する。
 3. `errors` にSource失敗がないか確認する。
-4. `reports/daily/<date>.md` を確認する。選抜HOTの下に「注目候補(選抜外)」「新モデルリリース」が直近3日分の未掲載項目として出る。選抜HOTと注目候補には各項目の見出し直後に、新モデルリリースには各項目の次の行に、日本語の概要が出る(Agent経路のみ。決定論経路では「概要未作成」)。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。
+4. `reports/daily/<date>.md` を確認する。選抜HOTの下に「注目候補(選抜外)」「新モデルリリース」が直近3日分の未掲載項目として出る。選抜HOTと注目候補には各項目の見出し直後に、新モデルリリースには各項目の次の行に、日本語の概要が出る(Agent経路のみ。決定論経路では「概要未作成」)。末尾の「収集Source一覧」で、選抜HOTだけでなく当日収集した全Sourceの生一覧(Sourceごとの件数、タイトル、URL、概要)も確認できる。各Sourceの見出しの直下には、Sourceごとの「本日の傾向」が日本語で出る(Agent経路のみ。決定論経路では「傾向未作成」。収集0件のSourceは「収集0件」)。
 5. HOT候補のEvidence URLを確認する。
 
 ## 外部ネットワーク制約

@@ -454,3 +454,51 @@ def test_cli_report_writes_not_run_stage_results_for_new_date(tmp_path: Path):
         "select-hot": {"status": "not_run", "reason": "未実行"},
         "save-proposals": {"status": "not_run", "reason": "未実行"},
     }
+
+
+def _write_source_overview_run(data_dir: Path, date: str) -> None:
+    from ai_research_radar.storage.jsonl import write_jsonl
+
+    save_run_state(
+        data_dir,
+        date,
+        {
+            "run_id": f"{date}T00:00:00+00:00",
+            "since": date,
+            "until": date,
+            "sources": ["github", "arxiv"],
+            "stages_completed": [],
+            "input_counts": {"github": 1},
+            "output_counts": {},
+            "errors": [],
+        },
+    )
+    write_jsonl(
+        data_dir / "normalized" / date / "signals.jsonl",
+        [{"source": "github", "title": "Repo", "url": "https://example.com/repo", "summary": "desc"}],
+    )
+
+
+def test_cli_report_shows_source_overviews_saved_by_add_source_overview(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_source_overview_run(data_dir, "2026-10-04")
+    overview_input = tmp_path / "source_overview_input.json"
+    overview_input.write_text(json.dumps({"github": "エージェント系が多い。"}, ensure_ascii=False), encoding="utf-8")
+    assert main(["add-source-overview", "--date", "2026-10-04", "--data-dir", str(data_dir), "--input", str(overview_input)]) == 0
+
+    _, report_text = _report(tmp_path, "2026-10-04")
+
+    assert "### github (1件)\n\nエージェント系が多い。\n\n<details>" in report_text
+    assert "### arxiv (0件)\n\n収集0件\n\n<details>" in report_text
+
+
+def test_cli_report_warns_and_shows_placeholder_when_source_overviews_are_broken(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_source_overview_run(data_dir, "2026-10-04")
+    (data_dir / "runs" / "2026-10-04" / "source_overviews.json").write_text("{broken", encoding="utf-8")
+
+    _, report_text = _report(tmp_path, "2026-10-04")
+
+    assert "> ⚠️ 次のファイルを読めなかったため、本日の傾向を表示していません。" in report_text
+    assert "source_overviews.json" in report_text
+    assert "### github (1件)\n\n傾向未作成\n\n<details>" in report_text

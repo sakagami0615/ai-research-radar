@@ -31,6 +31,8 @@ data/
   runs/<date>/run.jsonl
   runs/<date>/report_digest.json
   runs/<date>/digest_summaries.json
+  runs/<date>/source_overview_input.json
+  runs/<date>/source_overviews.json
   runs/<date>/evidence_fetch_log.tsv
 
 reports/
@@ -318,7 +320,20 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
   - Selectionは `<status>(候補m件 / 確認n件 / 未確認k件 / 選抜s件)`(completed / deferred)または `<status>(<理由>)`(not_run / failed)。Proposalsは `completed(企画n件)`、`deferred(企画n件 / 理由: <理由、空なら理由未記載>)`、`<status>(<理由>)`(理由が空なら `<status>` のみ)。deferredの理由は選抜HOTの節と同じく末尾の「。」を除いて表示する。記録なし(旧データ・決定論経路)は「記録なし」。件数が整数でなければ `?` と出す。
   - セルの値は記事企画の詳細表と同じエスケープ(`|`・`<>`・`[]` など)を行い、空の値は `-` にする。
 - `## Errors`: RunMetadataのerrors
-- `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない)。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。リンク先URLは `\`・`<>`・`|`・改行をパーセントエンコードする。
+- `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない。該当するSignalがなければ見出しを出さない)。各見出し(`### <source> (N件)`)の直下、`<details>` の外に、Sourceごとの「本日の傾向」を1行で出す(下の「Source Overviews記録」参照)。収集0件のSourceは傾向の代わりに「収集0件」、傾向が未作成のSourceは「傾向未作成」と出す。傾向の本文は表の概要列と同じくバックスラッシュ・`<>`・`|` をエスケープするが、120文字の切り詰めはせず、改行(CRLF・CRを含む)は `<br>` に変換し、前後の空白を除く。行頭に置くため、先頭の1文字が `#` `=` `+` `*` `_` `` ` `` `~` `-` の場合と `数字.` / `数字)` + 空白で始まる場合は `_inline_text` と同じ規則でエスケープする。`source_overviews.json` を読めない(JSONとして壊れている、オブジェクトでない)場合はレポート生成を止めず、全Sourceを「傾向未作成」とし、節の冒頭に読めなかったファイルとエラーを警告として出す。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。リンク先URLは `\`・`<>`・`|`・改行をパーセントエンコードする。
+
+## Source Overviews記録
+
+`data/runs/<date>/source_overviews.json` は、収集Source一覧の各見出しに出す「本日の傾向」を記録する。Agent経路で実行Agentが書き、`ai-radar add-source-overview` で保存する(06章)。決定論経路(`ai-radar daily`)では作成しない。
+
+```json
+{"github": "エージェント実行基盤とMCP関連のリポジトリが多い。...", "other": "..."}
+```
+
+- キーはレポートの見出しと同じSource名(`RunMetadata.sources` の値、または未登録Sourceをまとめた `other` / `_other`)。値は傾向の本文(2〜3行、おおむね200字以内の日本語。文字数はCLIでは検証しない)。
+- 同じSourceを再度追加した場合は上書きし、それ以外は保持する。
+- 読み込み時、空や文字列でない値は未作成として扱う。収集0件のSourceの値は表示しない(「収集0件」と出す)。
+- `data/runs/<date>/source_overview_input.json` は、Agentが `add-source-overview --input` に渡すために書く入力ファイル(同じ形式)で、CLIは `--input` で指定されたときだけ読む。
 
 ## Report Digest記録
 
