@@ -247,7 +247,8 @@ HOT候補から生成される記事企画案。
 - トップレベルのキーは `schema_version` / `proposals` / `deferral_reason` だけ(それ以外のキーは `invalid_input`)。`schema_version` は整数の `2`、`proposals` はリスト。
 - `deferral_reason` は、選抜HOT(`hot_candidates.jsonl` の `selected: true`)が1件以上あり、`proposals` が0件のときだけ必須(空白以外を含む文字列)。前後の空白を除いて `stage_results["save-proposals"].reason` に記録する。企画が1件以上ある日、または選抜HOTが0件の日にキーがあれば(値によらず)`invalid_input`。
 - 選抜HOTが0件の日は `{"schema_version": 2, "proposals": []}` を渡す。
-- 旧形式など v2 でない入力(トップレベルが配列、トップレベルの `schema_version` が整数の `2` でない(キーがない場合を含む)、`proposals` 内のオブジェクトの `schema_version` が整数の `2` でない(キーがない場合を含む))は、ほかの検証より先に `deprecated_input` として、v2 形式への移行を案内するメッセージで失敗する。
+- 旧形式など v2 でない入力(トップレベルが配列、トップレベルの `schema_version` が整数の `2` でない(キーがない場合を含む)、`proposals` 内のオブジェクトの `schema_version` が整数の `2` でない(キーがない場合を含む))は、ファイルの有無と JSON として読めるかの確認の後、ほかの検証より先に `deprecated_input` として、v2 形式への移行を案内するメッセージで失敗する。
+- 判定の順序とエラーの種別(壊れた `hot_candidates.jsonl` の `corrupt_input` を含む)は06章の `save-proposals` の表を参照。
 - 各企画は `validate_proposals` で次を検証する(誤りは `invalid_proposal`、メッセージは `proposal[<番号>] ...`)。
   - 上記の14項目(`REQUIRED_FIELDS`)がそろうこと。`experiment_plan` / `risks` / `evidence_links` は文字列のリスト(空リスト可)、それ以外は空白以外を含む文字列。
   - `proposal_id` が入力内で重複しないこと。
@@ -319,7 +320,9 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - `## データ欠落`(収集に完全失敗したSourceがある場合のみ出力)
 - `## 選抜HOT`: `selected=True` のHotCandidateと、それに紐づくArticleProposal
   - 見出しの直後に、`stage_results` の `select-hot` に応じた状態を1行出す。記録なし(旧データ)は従来どおり、選抜0件のときだけ「本日の選抜HOTはありません。」。`completed` は状態行を出さず選抜HOTを列挙する(選抜HOTが0件なら「選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。」)。`deferred` は「本日の選抜HOTはありません(保留: <selection_reason>。候補 m件中 n件を確認、未確認 k件)。」(`selection_reason` の末尾の「。」は除いて表示し、理由が空なら「理由未記載」とする)(候補0件の日は「…(保留: <selection_reason>。候補0件)。」)。`not_run` / `failed` は「選抜は未実行(<理由>)。」/「選抜は失敗(<理由>)。」とし(理由が空または「未実行」なら括弧を省く。次の記事企画の行も同じ)、選抜HOTが残っていれば「以下は前回成功時の結果です。」を続けて列挙する。
+  - 当日の `hot_candidates.jsonl` が読めなかった場合(`report` が `corrupt_input` を記録した場合。06章)は、上の状態行(「選抜結果が見つかりません(…)」や旧データの「本日の選抜HOTはありません。」を含む)を出さず、「hot_candidates.jsonl を読めなかったため表示できません(Errors を参照)。」に置き換える。候補は空として扱うため、選抜HOTと記事企画は出ない。
   - 選抜HOTが1件以上あり、`save-proposals` が `not_run` / `failed` のときは、続けて「記事企画は未実行(<理由>)。」/「記事企画の保存は失敗(<理由>)。」を1回出す(企画が残っていれば「表示中の企画は前回の結果です。」を続ける)。`save-proposals` が `deferred` のときは、企画0件のHOTの企画欄を「記事企画なし(保留: <理由、空なら理由未記載>)」にする(理由の末尾の「。」は除く)。`completed` と記録なしのときは従来どおり「記事企画なし」。
+  - 当日の `article_proposals.jsonl` が読めなかった場合は、各選抜HOTの企画欄に「記事企画なし」「記事企画なし(保留: …)」の代わりに「article_proposals.jsonl を読めなかったため表示できません(Errors を参照)。」を出す。上の「記事企画は未実行」「記事企画の保存は失敗」の行は `stage_results` のとおり出す。
   - 理由などAgentが書いた文字列は `_inline_text` を通す。
   - 各HOTの既存の行(HOT Score / Topic / Source Families / Evidence / Reasons)の後、`#### Article Proposals` の前に、`assessment` がある場合だけ評価ブロックを出す(`_assessment_section`)。項目は 判断理由 / 関連性(`<status>(方法: <method> / 一致語: <matched_terms をカンマ区切り、空なら「なし」>)`、`relevance.reason` が空でなければ子項目に出す) / 新規性 / 重要性 / 読者への影響 / 根拠 / 未確認事項。`assessment` が `null` の旧データ(決定論経路を含む)は評価ブロックを出さず、従来どおりReasonsだけを表示する。
     - 評価担当(`assessor`)・判断日時(`assessed_at`)は表示しない。`decision` は選抜HOTでは常に `selected` のため表示しない。
@@ -344,6 +347,7 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
   - セルの値は記事企画の詳細表と同じエスケープ(`|`・`<>`・`[]` など)を行い、空の値は `-` にする。
 - `## Errors`: RunMetadataのerrors
 - `## 収集Source一覧`: 当日の正規化・重複排除後のSignal(`data/normalized/<date>/signals.jsonl` と同じデータ、Event/Topic集約より前の粒度)をSourceごとに`<details>`で折りたたんだMarkdown表として一覧化したもの。`RunMetadata.sources` の順序で見出しを出し、収集0件のSourceも `(0件)` として明示する。`RunMetadata.sources` に含まれないSourceのSignalは末尾の `other` 見出しに集約する(ただし `other` という名前のSourceが実在する場合は `_other` に退避し、実データと混同しない)。表の概要列は元データの `summary` をそのまま使うが、表崩れ防止のためバックスラッシュエスケープ・改行除去・`|`エスケープ・120文字切り詰めを行う。リンク先URLは `\`・`<>`・`|`・改行をパーセントエンコードする。
+  - 当日の `data/normalized/<date>/signals.jsonl` が読めなかった場合(UTF-8・JSON・オブジェクトとして読めない場合)は、説明文の直後に「signals.jsonl を読めなかったため表示できません(Errors を参照)。」と出し、Sourceごとの見出し・表は出さない(読めていないのに `(0件)` と出すと本当の0件と区別できないため)。
 
 ## Report Digest記録
 

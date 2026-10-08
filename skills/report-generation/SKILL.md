@@ -38,4 +38,5 @@ JSONLの判断済みデータを人間が確認しやすいレポートへ変換
 - 旧形式の企画(`schema_version: 1`。過去日の保存データと決定論経路 `ai-radar daily` の企画)では、`quality` の行の代わりに「品質評価 | 旧形式のため未評価」の1行が出ているか
 - 外部由来のタイトルなどに含まれる `[text](url)` や `#`・`|`・改行が、意図しないリンク・見出し・表崩れにならないか(新しい表示項目を足すときはエスケープ経由で出す)
 - 選抜HOTセクションの冒頭とRun SummaryのSelection / Proposals行が `run_state.json` の `stage_results` と一致し、保留(deferred)・未実行(not_run)・失敗(failed)・記録なし(旧データ)が区別して表示されているか
+- 当日の `hot_candidates.jsonl` / `article_proposals.jsonl` / `signals.jsonl` が読めなかった場合(`errors` に `source: report` の `corrupt_input`)、該当セクション(選抜HOTの冒頭 / 各選抜HOTの企画欄 / 収集Source一覧)に「<ファイル名> を読めなかったため表示できません(Errors を参照)。」が出て、本当の0件(「選抜結果が見つかりません」「記事企画なし」「(0件)」など)と区別されているか。このとき選抜HOTの冒頭は `stage_results` による状態行ではなく注記になる(Run SummaryのSelection行は `stage_results` のまま)
 - 未確認、保留、legacy、部分失敗、取得範囲とUTC/JSTを表示し、処理エラーなしを品質承認と解釈できる文面にしない。

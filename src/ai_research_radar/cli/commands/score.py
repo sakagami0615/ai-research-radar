@@ -13,7 +13,7 @@ from ai_research_radar.cli.commands.run_state import (
 from ai_research_radar.config.settings import load_scoring_config
 from ai_research_radar.schemas.models import event_from_dict
 from ai_research_radar.scoring.hot import compute_hot_candidates
-from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
+from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, write_jsonl
 
 COMMAND_NAME = "score"
 
@@ -44,7 +44,13 @@ def run(args: argparse.Namespace) -> int:
     minimum_score = float(hot_selection.get("minimum_score", 75.0))
     weights = dict(scoring.get("hot_score", {}))
 
-    events = [event_from_dict(record) for record in read_jsonl(events_path)]
+    try:
+        events = read_decoded_jsonl(events_path, event_from_dict)
+    except JsonlReadError as exc:
+        add_error(state, "score", "corrupt_input", str(exc))
+        save_run_state(data_dir, date, state)
+        print(f"cannot read events: {exc}")
+        return 1
     candidates = compute_hot_candidates(events, minimum_score=minimum_score, weights=weights)
 
     try:

@@ -37,7 +37,18 @@ ai-radar daily \
 
 ### Agent経路のサブコマンド
 
-`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。選抜・記事企画・概要(05章「注目候補・新モデルリリースの概要補完」)に関わる引数は次の通り。
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `report` を使う。各サブコマンドの引数とエラーは次の通り(選抜・記事企画・概要については05章「注目候補・新モデルリリースの概要補完」も参照)。
+
+前のステージが出力したjsonlが壊れている場合の扱いは、`normalize` / `score` / `select-hot` / `save-proposals` / `report` で共通である(Issue #18)。
+
+- エラー種別は `corrupt_input`。Agent自身が書いた入力(`selection_input.json` / `draft_proposals.json` / CLI引数)の不正である `invalid_input`(入力を書き直せば直る)と区別し、`corrupt_input` は前のステージを再実行すれば直るものに使う。
+- 対象: UTF-8として読めないファイル、JSONとして読めない行、オブジェクトでない行、デコーダ(`decode_signal` / `decode_event` / `decode_hot` / `decode_proposal`)が出す `KeyError`(必須キーの欠落)・`TypeError` / `ValueError`(`QualityValidationError` を含む。デコーダが検出できる範囲の型の不正)、ファイルを開けない・読めない(`OSError`)。デコーダが検出できない値の不正(例: `raw_metrics` の値が文字列)は対象外。
+- 読み込みは `storage/jsonl.py` の `read_decoded_jsonl(path, decoder)`(デコーダを通さない場合は `read_jsonl(path)`)で行い、上の失敗はすべて `JsonlReadError` になる。メッセージは `<path>:<行番号>: <内容>`(例: `data/runs/2026-10-06/hot_candidates.jsonl:3: missing key 'hot_id'`)。行番号が分からない場合(`OSError`)は `<path>: <内容>`。必須キーの欠落は `missing key '<key>'`、デコーダのそれ以外の失敗は `invalid record: <例外>`、UTF-8の失敗は `invalid UTF-8: <理由>` とする。
+- 各コマンドの記録の仕方は下の各項目のとおり。`report` 以外は終了コード1にし、出力ファイルは書き換えない。
+- CLIのコマンドを追加・変更して前のステージのjsonlを読むときも、`read_jsonl` の結果を個別にデコードせず `read_decoded_jsonl` を使い(`report` の `signals.jsonl` のようにデコーダを通さないファイルは `read_jsonl` のままでよい)、どちらの場合も `JsonlReadError` を捕まえて `corrupt_input` として記録する。捕まえないとトレースバックで終わり、`run_state.json` に何も残らない(Issue #18 の不具合)。
+
+- `normalize --date <date>`: `data/collected/<date>/signals.jsonl` を `canonical_signal_from_dict` で読む。ファイルがなければ `missing_input`、読めなければ `corrupt_input` を `errors`(`source: normalize`)に記録して終了コード1にする。出力の書き込みに失敗した場合は `write_error`。`stage_results` の対象外である。
+- `score --date <date>`: `data/events/<date>/events.jsonl` を `event_from_dict` で読む。エラーの種別と記録は `normalize` と同じ(`missing_input` / `corrupt_input` / `write_error`、`source: score`)。
 
 - `select-hot --date <date> [--input <path>] [--limit <n>]`: `selection_input.json`(03章「SelectionInput」)を読み込んで検証し、当日の `hot_candidates.jsonl` の `selected` / `assessment` / `summary` を更新する。
   - `--input` を省略した場合は `<data-dir>/runs/<date>/selection_input.json` を読む。明示したパスは、`save-proposals --input` と同じくカレントディレクトリを基準にする。
@@ -54,6 +65,7 @@ ai-radar daily \
     | `deprecated_option` | 旧オプション `--select` / `--reason` / `--summary` を指定した | 1 |
     | `missing_input` | `hot_candidates.jsonl` または `selection_input.json` がない | 1 |
     | `invalid_input` | `--limit` が整数でない・範囲外、`selection_input.json` がJSONとして読めない、トップレベルの構造が不正 | 1 |
+    | `corrupt_input` | `hot_candidates.jsonl` が読めない(UTF-8でない、JSONとして読めない行・オブジェクトでない行がある、`decode_hot` でデコードできない) | 1 |
     | `invalid_assessment` | 選抜理由が空、ID の重複・不整合、評価レコードの内容が不正、選抜に `verified` かつ `primary` の根拠がない | 1 |
     | `selection_limit_exceeded` | 選抜件数が `--limit` を超える | 1 |
     | `invalid_summary` | `summaries` が不正 | 1 |
@@ -61,7 +73,7 @@ ai-radar daily \
     | `write_error` | `hot_candidates.jsonl` の書き込みに失敗した | 1 |
     | `missing_summary_warning` / `unreviewed_candidates` | 選抜外の候補に概要がない / 未確認の候補がある(警告) | 0 |
 
-- `save-proposals --date <date> --input <path>`: 記事企画(v2)を検証して `article_proposals.jsonl` に保存する。入力の形式と検証内容は03章「save-proposals の入力(v2)」を参照。
+- `save-proposals --date <date> --input <path>`: 記事企画(v2)を検証して `article_proposals.jsonl` に保存する。入力の形式と検証内容は03章「save-proposals の入力(v2)」を参照。`hot_candidates.jsonl` は `decode_hot` で読み、`selected` の候補と企画を照合する。
   - `--input` は `{"schema_version": 2, "proposals": [...], "deferral_reason": "..."}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/draft_proposals.json` に書く。選抜0件の日も `{"schema_version": 2, "proposals": []}` で実行する。
   - 保留理由 `deferral_reason` をCLI引数にしないのは、長い日本語をシェル引数で渡すことによるエスケープ事故を避けるため(選抜HOTの概要を `selection_input.json`、注目候補などの概要を `add-summary --input` のファイルで渡すのと同じ考え方)。
   - 成功時は `stage_results` に、企画1件以上なら `completed`、選抜ありで企画0件なら `deferred`(理由は `deferral_reason`)、選抜0件なら `not_run`(選抜HOTなし)を `proposal_count` とともに記録し、`output_counts.article_proposals` に企画件数を記録して、`save-proposals` を完了段階にする。
@@ -72,7 +84,9 @@ ai-radar daily \
     | `missing_input` | `hot_candidates.jsonl` または `--input` のファイルがない | 1 |
     | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない | 1 |
     | `deprecated_input` | 旧形式の入力(トップレベルが配列、トップレベルまたは企画の `schema_version` が `2` でない・ない)。v2 形式への移行を案内する | 1 |
-    | `invalid_input` | トップレベルがオブジェクトでない、未知のキーがある、`proposals` がない・リストでない、`deferral_reason` の欠落(選抜ありで企画0件なのにない・空・文字列でない)・余分(企画がある日・選抜0件の日にある) | 1 |
+    | `invalid_input` | トップレベルがオブジェクトでない、未知のキーがある、`proposals` がない・リストでない | 1 |
+    | `corrupt_input` | `hot_candidates.jsonl` が読めない(UTF-8でない、JSONとして読めない行・オブジェクトでない行がある、`decode_hot` でデコードできない) | 1 |
+    | `invalid_input` | `deferral_reason` の欠落(選抜ありで企画0件なのにない・空・文字列でない)・余分(企画がある日・選抜0件の日にある) | 1 |
     | `invalid_proposal` | 企画の内容が不正(`proposals` の要素がオブジェクトでない、必須項目の欠落・型の不正、`quality` の欠落・不正、選抜していないHOTへの企画、元の根拠URLを含まない、役割(`claim`)のない追加URL、HOTあたり4件以上、`proposal_id` の重複) | 1 |
     | `write_error` | `article_proposals.jsonl` の書き込みに失敗した(メッセージは `failed to write article proposals: <例外>`) | 1 |
 
@@ -93,6 +107,11 @@ ai-radar daily \
     | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない | 1 |
     | `write_error` | `digest_summaries.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) | 1 |
 
+- `report --date <date>`: 当日の `hot_candidates.jsonl`(`decode_hot`)/ `article_proposals.jsonl`(`decode_proposal`)/ `data/normalized/<date>/signals.jsonl`(デコーダを通さない。表示は生のdictを `.get()` で読むため、UTF-8・JSON・オブジェクトとして読めない場合だけが対象)を読み、日次レポートと `run.jsonl` を生成する。
+  - 実行のはじめに `errors` の `source: pipeline` / `report` を消して記録し直す。前のステージが完了していなければ `missing_stage`(`source: pipeline`)を記録する。
+  - 上の3ファイルのいずれかが読めない場合は、そのファイルを欠けたデータ(空)として扱い、`corrupt_input`(`source: report`)を記録してレポートを生成する。該当するセクションの先頭に「<ファイル名> を読めなかったため表示できません(Errors を参照)。」と注記し、本当の0件と区別する(表示の詳細は03章「Daily Markdown Report」)。終了コードは、レポートを書けた場合は0のまま(`missing_stage` と同じ扱い)。ファイルを直して再実行すれば記録は消える。どのステージの出力が壊れているかはメッセージのパスで分かる。
+  - レポートまたは `report_digest.json` の書き込みに失敗した場合は `report_write_error`(`source: report`)を記録し、終了コード1にする。
+  - 直近3日分を集約する注目候補・新モデルリリース(05章「日次ダイジェスト」)は、読めない日を飛ばして警告に残す。当日の `hot_candidates.jsonl` が壊れている場合は、この警告と上の注記の両方に出る。
 - `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(05章「注目候補・新モデルリリースの概要補完」参照)。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
 
 ## 設定ファイル

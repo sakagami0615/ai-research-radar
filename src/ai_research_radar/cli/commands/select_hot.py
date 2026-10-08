@@ -17,7 +17,7 @@ from ai_research_radar.cli.commands.run_state import (
 )
 from ai_research_radar.schemas.decoders import decode_hot
 from ai_research_radar.scoring.assessments import SelectionError, apply_assessments
-from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
+from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, write_jsonl
 
 COMMAND_NAME = "select-hot"
 
@@ -86,7 +86,10 @@ def run(args: argparse.Namespace) -> int:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         return _fail(state, data_dir, date, "invalid_input", f"cannot read selection input {input_path}: {exc}")
 
-    candidates = [decode_hot(record) for record in read_jsonl(hot_path)]
+    try:
+        candidates = read_decoded_jsonl(hot_path, decode_hot)
+    except JsonlReadError as exc:
+        return _fail(state, data_dir, date, "corrupt_input", str(exc))
     try:
         updated, summary = apply_assessments(candidates, selection, limit=limit)
     except SelectionError as exc:

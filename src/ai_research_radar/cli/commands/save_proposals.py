@@ -16,7 +16,7 @@ from ai_research_radar.cli.commands.run_state import (
 from ai_research_radar.ideation.validation import REQUIRED_FIELDS, validate_proposals
 from ai_research_radar.schemas.decoders import decode_hot
 from ai_research_radar.schemas.models import ArticleProposal
-from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
+from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, write_jsonl
 
 COMMAND_NAME = "save-proposals"
 NO_SELECTION_REASON = "選抜HOTなし"
@@ -115,7 +115,10 @@ def run(args: argparse.Namespace) -> int:
     if structure_error:
         return _fail(state, data_dir, date, "invalid_input", structure_error)
 
-    candidates = [decode_hot(record) for record in read_jsonl(hot_path)]
+    try:
+        candidates = read_decoded_jsonl(hot_path, decode_hot)
+    except JsonlReadError as exc:
+        return _fail(state, data_dir, date, "corrupt_input", str(exc))
     has_selection = any(candidate.selected for candidate in candidates)
     deferral_error = _deferral_error(payload, has_selection)
     if deferral_error:
