@@ -211,7 +211,7 @@ Eventから生成されるHOT候補。
 - `evidence`: `EvidenceCheck` のリスト
 - `unknowns`: リスト
 
-現在 `save-proposals` はこの契約を使っておらず、独自の必須項目チェックで企画を保存する。`save-proposals` への結線は Issue #11 で行う予定である。
+`save-proposals` は、v2 の企画ごとに `validate_proposals`(`ideation/validation.py`)の中でこの契約を検証する(Issue #11。次節「ArticleProposal」参照)。
 
 ## ArticleProposal
 
@@ -233,8 +233,31 @@ HOT候補から生成される記事企画案。
 - `unique_angle`
 - `evidence_links`
 - `risks`
+- `schema_version`: v2 の企画は `2`。旧形式(Issue #11 より前の保存データと、決定論経路 `ai-radar daily` が作る企画)は `1`(キーがない旧データも `1` として読む)
+- `quality`: v2 の企画の品質記録(`ProposalQuality`)。旧形式は空のdict
 
-MVPでは外部LLMを使わず、決定論的なRole生成、Critique、Debate代替で作成する。
+決定論経路(`ai-radar daily`)はMVPのまま外部LLMを使わず、決定論的なRole生成、Critique、Debate代替で v1 の企画を作成する。Agent経路(`agent-daily-run`)の企画は `save-proposals` で v2 として保存する。
+
+### save-proposals の入力(v2)
+
+```json
+{"schema_version": 2, "proposals": [ /* v2 の ArticleProposal */ ], "deferral_reason": "選抜HOTがあるのに企画が0件の場合の理由"}
+```
+
+- トップレベルのキーは `schema_version` / `proposals` / `deferral_reason` だけ(それ以外のキーは `invalid_input`)。`schema_version` は整数の `2`、`proposals` はリスト。
+- `deferral_reason` は、選抜HOT(`hot_candidates.jsonl` の `selected: true`)が1件以上あり、`proposals` が0件のときだけ必須(空白以外を含む文字列)。前後の空白を除いて `stage_results["save-proposals"].reason` に記録する。企画が1件以上ある日、または選抜HOTが0件の日にキーがあれば(値によらず)`invalid_input`。
+- 選抜HOTが0件の日は `{"schema_version": 2, "proposals": []}` を渡す。
+- 旧形式など v2 でない入力(トップレベルが配列、トップレベルの `schema_version` が整数の `2` でない(キーがない場合を含む)、`proposals` 内のオブジェクトの `schema_version` が整数の `2` でない(キーがない場合を含む))は、ほかの検証より先に `deprecated_input` として、v2 形式への移行を案内するメッセージで失敗する。
+- 各企画は `validate_proposals` で次を検証する(誤りは `invalid_proposal`、メッセージは `proposal[<番号>] ...`)。
+  - 上記の14項目(`REQUIRED_FIELDS`)がそろうこと。`experiment_plan` / `risks` / `evidence_links` は文字列のリスト(空リスト可)、それ以外は空白以外を含む文字列。
+  - `proposal_id` が入力内で重複しないこと。
+  - `source_hot_id` が当日の HOT候補にあり、選抜済み(`selected: true`)であること。
+  - `quality` が `ProposalQuality` の契約(`validate_proposal_quality`。`quality.evidence` の各要素は `EvidenceCheck`)を満たすこと。
+  - `evidence_links` の各要素が http(s) のURL(ホスト部があること)で、元のHOT候補の `evidence_urls` を1件以上含むこと。
+  - 元のHOT候補の `evidence_urls` にない `evidence_links`(比較対象などのために追加したURL)は、`quality.evidence` に同じURLのエントリがあり、その `claim` が空白以外を含むこと(`claim` に役割を書く。例: 「比較対象 X の仕様」)。
+  - 1つのHOTあたり3件まで。
+- 保存するのは14項目と `schema_version`(`2`)・`quality` だけで、それ以外のキーは保存しない。
+- 保存済みの旧 `article_proposals.jsonl`(v1)は `decode_proposal` で引き続き読み込める(読み込み時は検証しない)。
 
 ## RunMetadata
 
@@ -275,7 +298,7 @@ MVPでは外部LLMを使わず、決定論的なRole生成、Critique、Debate�
 | select-hot | 成功・選抜1件以上 | `completed` | `selection_reason` |
 | select-hot | 成功・選抜0件(候補0件の日を含む) | `deferred` | `selection_reason` |
 | save-proposals | 成功・企画1件以上 | `completed` | 空 |
-| save-proposals | 成功・選抜1件以上・企画0件 | `deferred` | 入力の `deferral_reason`(#11 完了までは空) |
+| save-proposals | 成功・選抜1件以上・企画0件 | `deferred` | 入力の `deferral_reason`(前後の空白を除く) |
 | save-proposals | 成功・選抜0件 | `not_run` | 選抜HOTなし |
 | いずれも | 未実行 | `not_run` | 未実行 |
 | いずれも | 終了コード1で失敗(`errors` に記録したエラー) | `failed` | エラーの種別と内容 |
@@ -300,15 +323,17 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
   - 理由などAgentが書いた文字列は `_inline_text` を通す。
   - 各HOTの既存の行(HOT Score / Topic / Source Families / Evidence / Reasons)の後、`#### Article Proposals` の前に、`assessment` がある場合だけ評価ブロックを出す(`_assessment_section`)。項目は 判断理由 / 関連性(`<status>(方法: <method> / 一致語: <matched_terms をカンマ区切り、空なら「なし」>)`、`relevance.reason` が空でなければ子項目に出す) / 新規性 / 重要性 / 読者への影響 / 根拠 / 未確認事項。`assessment` が `null` の旧データ(決定論経路を含む)は評価ブロックを出さず、従来どおりReasonsだけを表示する。
     - 評価担当(`assessor`)・判断日時(`assessed_at`)は表示しない。`decision` は選抜HOTでは常に `selected` のため表示しない。
-    - 根拠は1件1行で `[URL](<URL>)(<status> / <kind>):<claim>` 形式にする(`_evidence_check_line`。#11 の企画の根拠でも使う予定)。`checked_at` / `target_version` / `note` は表示しない。`claim` が空なら「(主張未記載)」、URLが空なら「(URL未記載)」と出す。根拠が0件なら「- 根拠: なし」、未確認事項が0件なら「- 未確認事項: なし」の1行にする。
+    - 根拠は1件1行で `[URL](<URL>)(<status> / <kind>):<claim>` 形式にする(`_evidence_check_line`。記事企画の「確認した根拠」行でも使う)。`checked_at` / `target_version` / `note` は表示しない。`claim` が空なら「(主張未記載)」、URLが空なら「(URL未記載)」と出す。根拠が0件なら「- 根拠: なし」、未確認事項が0件なら「- 未確認事項: なし」の1行にする。
     - 判断理由・新規性・重要性・読者への影響が空なら「(未記載)」と出す。
     - 表示する文字列は `_inline_text` を通す。バックスラッシュ・`[]`・`<>`・`|` をエスケープし、改行と連続する空白を1つの空白に畳む。さらに、先頭の1文字が `#` `=` `+` `*` `_` `` ` `` `~` `-` のいずれかなら常にバックスラッシュでエスケープし、`数字.` / `数字)` + 空白で始まる場合は `1\.` のように記号側をエスケープする(見出し・リスト・区切り線・コードフェンス・setext下線として解釈されるのを防ぐ)。
     - `decode_hot` は `assessment` を検証せずに読むため、表示側は防御的に読む。`assessment` がdictでなければブロックを出さない。`relevance` がdictでなければ「- 関連性: 記録なし」と出す。`evidence` / `unknowns` / `matched_terms` がリストでなければ空として扱い、dictでない根拠の要素は飛ばす。文字列であるべき項目が文字列でなければ空として扱う。
   - 各HOTの見出し直後に `> **概要**: <summary>` の引用ブロックを出す。概要が空の場合は `> **概要**: 概要未作成` と出す。概要はバックスラッシュ・`[]`・`<>`・`|` をエスケープし、改行を空白にする(先頭に `**概要**:` を付けるので、概要の先頭文字が見出し・リスト記号として解釈されることはない)。注目候補の概要も同じ表示・エスケープにする。
   - 各HOTの `#### Article Proposals` には、まず概要表(`# | 企画タイトル | Type | Role | Critique`)を出し、続けて企画ごとに `##### <番号>. <title_idea>` 見出しと2列の詳細表(`項目 | 内容`)を出す。詳細表の行は Type / Target Reader / Role / Critique Score / Critique Notes / Debate / Why Now / Technical Angle / Experiment Plan / Unique Angle / Competition / Traffic Opportunity / Technical Opportunity / Risks / Evidence。企画が0件の場合は `記事企画なし` と出す。
+  - Evidence行の後に、`schema_version` が2以上の企画は `quality` の全項目を行として出す(`_quality_rows`、Issue #11): 検証の問い(`question`)/ 既存との差分(`difference`)/ 比較対象と版(`<baseline>(版: <baseline_version>)`)/ 測定方法(`measurement`)/ 入力・環境(`inputs_and_environment`)/ 工数と前提(`<effort>(前提: <effort_assumptions>)`)/ 成功条件(`success_condition`)/ 中止条件(`stop_condition`)/ 指標(`metrics`。`・` 付きの `<br>` 区切り)/ 未確認事項(`unknowns`。同じ形式で、0件なら「なし」)/ 確認した根拠(`evidence`。1件1行を `<br>` でつなぎ、各行は選抜HOTの根拠と同じ `_evidence_check_line` の「URL(status / kind):claim」形式。0件なら「なし」)。値は他のセルと同じエスケープをする。保存データは読み込み時に検証しないため防御的に読み、文字列であるべき値が文字列でなければ空(`-`)、リストであるべき値がリストでなければ空として扱い、dictでない根拠の要素は飛ばす。
+  - `schema_version` が1の企画(Issue #11 より前の保存データと、決定論経路 `ai-radar daily` が作る企画)は、`quality` の行の代わりに `| 品質評価 | 旧形式のため未評価 |` の1行を出す(09章 §10「未評価であることを明示」)。
   - `why_now` が決定論的Ideation(`ideation/proposals.py`)の定型文に全体一致する場合だけ、レンダラーが Role / Critique Score / Critique Notes / Debate に分解して表示し、Why Now行は出さない(先頭のHOT score / reasonsは同じHOTセクションに表示済みのため再表示しない)。一致しない自由記述(Agent作成の企画など)は分解せず、Why Now行に全文を出し、概要表のRole / Critiqueは `-` にする。スキーマと保存データは変更しない。
   - 分解した場合、`risks` のうち表示済みのCritique Notes / Debateと完全一致する要素(`軽量Critique: <note>` / `Debate: <debate>`)は重複として除外する。すべて除外された場合は `Critique Notes / Debateと同じ内容` と出す。
-  - 表崩れと意図しないリンクを防ぐため、セルの値はバックスラッシュ・`[]`・`|`・`<>`をエスケープしたうえで改行を `<br>` に置換し、リストは `<br>` 区切り(Experiment Planは番号付き、Critique Notes / Risksは `・` 付き)にする。`save-proposals` はリスト型を検証しないため、リスト項目に文字列が入っていた場合は1要素として扱う。空の値は `-` にする。見出しはバックスラッシュ・`[]`・`<>`をエスケープし、改行を空白にし、末尾の `#` はATX見出しの閉じ記号にならないようエスケープする。Debateは最大3要素(Advocate / Critic / Editor)に分割し、却下候補のタイトルに `; ` が含まれても分割しない。Evidenceは全URLを `[URL](<URL>)` 形式のリンクで出し、リンク先の `\`・`<>`・`|`・改行はパーセントエンコードする(リンク先のエンコードは収集Source一覧と共通の `_sanitize_url`)。本文中の素のURLは、GFMの自動リンクとして表示されることを許容する。
+  - 表崩れと意図しないリンクを防ぐため、セルの値はバックスラッシュ・`[]`・`|`・`<>`をエスケープしたうえで改行を `<br>` に置換し、リストは `<br>` 区切り(Experiment Planは番号付き、Critique Notes / Risksは `・` 付き)にする。`save-proposals` がリスト型を検証する前(Issue #11 より前)の保存データにはリスト項目に文字列が入っていることがあるため、その場合は1要素として扱う。空の値は `-` にする。見出しはバックスラッシュ・`[]`・`<>`をエスケープし、改行を空白にし、末尾の `#` はATX見出しの閉じ記号にならないようエスケープする。Debateは最大3要素(Advocate / Critic / Editor)に分割し、却下候補のタイトルに `; ` が含まれても分割しない。Evidenceは全URLを `[URL](<URL>)` 形式のリンクで出し、リンク先の `\`・`<>`・`|`・改行はパーセントエンコードする(リンク先のエンコードは収集Source一覧と共通の `_sanitize_url`)。本文中の素のURLは、GFMの自動リンクとして表示されることを許容する。
 - `## 注目候補(選抜外)`: 直近3日分のrunで `minimum_score` 以上だが選抜されなかったHotCandidate(05章「日次ダイジェスト」参照)。各項目の見出し直後に、選抜HOTと同じ形式で概要を出す。
 - `## 新モデルリリース`: 直近3日分のrunで `metadata.model_release` を持つSignalを提供元ごとに列挙したもの(05章「日次ダイジェスト」参照)。各項目の行の次に、字下げして `  - 概要: <概要>` を出す(概要がなければ `  - 概要: 概要未作成`)。概要は注目候補と同じエスケープをし、改行・連続する空白を1つの空白に畳む(行頭が `概要:` になるため、`_inline_text` のブロック記号のエスケープは不要)。「ほかN件」の行には概要を付けない。
 - `## Run Summary`: RunMetadataのサマリを2列の表(`項目 | 内容`)で出す。行は Run ID / Period / Sources / Input Counts / Output Counts / Selection / Proposals。

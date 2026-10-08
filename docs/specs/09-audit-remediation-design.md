@@ -188,15 +188,14 @@ Agent Skillは本来のレビュー用CLI起動、利用可能なsubagentでの�
 
 ### CLI未結線(本番パイプラインから到達不能)
 
-以下のモジュールは現在 `tests/` からのみ呼ばれ、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` のいずれのCLIサブコマンドからも呼ばれていない。本番の`ai-radar`コマンドは今も旧実装(`normalization.dedup.deduplicate_signals` / `normalization.scores.normalize_source_batch` / `pipeline.events.build_events` / `save_proposals.py`独自の`REQUIRED_FIELDS`チェック)のみで動作する。
+以下のモジュールは現在 `tests/` からのみ呼ばれ、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` のいずれのCLIサブコマンドからも呼ばれていない。本番の`ai-radar`コマンドは今も旧実装(`normalization.dedup.deduplicate_signals` / `normalization.scores.normalize_source_batch` / `pipeline.events.build_events`)のみで動作する。
 
 - 品質v2パイプライン: `normalize_quality_batch` / `deduplicate_quality_signals` / `build_quality_events` / `normalization/identity.py` / `normalization/relevance.py` / `pipeline/stages.py`(`collect_stage` / `normalize_stage` / `score_stage`)
-- `ideation/validation.py::validate_proposals`(企画のEvidence整合・HOTあたり0〜3件の検証)
 - `storage/attempts.py`(`begin_attempt` / `finish_attempt` / `invalidate_after`、再実行時の下流無効化)
 - `storage/provenance.py::capture_provenance`
 - `reporting/review.py`(`build_review_target` / `validate_review_result`)
 
-これらを結線するには、本番CLIの入出力契約変更と関連Skill・運用手順の同時更新が必要であり、別タスクとする(`apply_assessments` は Issue #7 で結線済み、`validate_proposals` は #11 で対応予定)。
+これらを結線するには、本番CLIの入出力契約変更と関連Skill・運用手順の同時更新が必要であり、別タスクとする(`apply_assessments` は Issue #7 で `select-hot` に、`validate_proposals` は Issue #11 で `save-proposals` に結線済み)。
 
 ### 上記モジュール自身に残る不整合(結線時に合わせて解消が必要)
 

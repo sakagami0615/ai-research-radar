@@ -20,7 +20,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 実行手順
 
-実行時は`SelectionInput`と`ProposalQuality`を[03章](../../docs/specs/03-data-model-and-storage.md)の共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・空の企画`[]`は未実施または保留の結果として保存し、成功したことに置き換えない。レビュー対象は`review_target.json`で固定し、レビュー担当は原成果物を編集せず`review_result.json`だけを返す。初回をattempt 1として最大3回まで修正し、起動失敗・記録なし・3回後の重要指摘は承認しない。
+実行時は`SelectionInput`と`ProposalQuality`を[03章](../../docs/specs/03-data-model-and-storage.md)の共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。レビュー対象は`review_target.json`で固定し、レビュー担当は原成果物を編集せず`review_result.json`だけを返す。初回をattempt 1として最大3回まで修正し、起動失敗・記録なし・3回後の重要指摘は承認しない。
 
 1. 対象日を判定する。`date +%F` を実行し、今日の日付(`YYYY-MM-DD`)を取得する。以降の手順ではこの日付を `<date>` として使う。`collect` の `--since` / `--until` は省略し、前回実行の終了時刻から実行時刻までを収集する(最大7日、初回も7日分)。明示的な期間で再実行する必要がある場合だけ、タイムゾーン付きISO 8601日時または日付を指定する。
 
@@ -183,18 +183,81 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 6. 記事企画を作成する。
 
-   選抜0件の日(手順5の `select-hot` が成功し、`hot_candidates.jsonl` に `selected: true` の候補がない日)は、企画を作らずに `data/runs/<date>/draft_proposals.json` に空の配列 `[]` を書いて手順7へ進む。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。
+   `data/runs/<date>/draft_proposals.json` に、次の形式(v2)のJSONオブジェクトを書く。配列(旧形式)や `schema_version` のない企画を書くと、手順7が `deprecated_input` で失敗する。
 
-   手順5の `select-hot` が再実行の上限に達して `failed` のまま進む場合は、企画を作らずに `draft_proposals.json` に `[]` を書いて手順7を実行する(`save-proposals` は `hot_candidates.jsonl` の選抜で照合するため、`selection_input.json` の `selected` に対する企画は `invalid_proposal` になる)。
+   ```json
+   {
+     "schema_version": 2,
+     "proposals": [ /* 企画(下記) */ ],
+     "deferral_reason": "選抜HOTがあるのに企画を作らない理由(その場合だけ書く)"
+   }
+   ```
 
-   選抜HOTがあるのに企画を作らない(`[]` を書く)場合、レポートに「記事企画なし(保留: 理由未記載)」と出てレビューで指摘されうるため、作れない理由がない限り各選抜HOTに企画を作る。
+   どの形にするかは、`data/runs/<date>/hot_candidates.jsonl` に `selected: true` の候補があるかで決める(`save-proposals` はこのファイルの選抜で照合する)。
 
-   選抜された各候補について、article-ideation Skillの企画観点に従って `ArticleProposal` 形式のJSON配列を作成し、`data/runs/<date>/draft_proposals.json` に書き出す。候補1件あたり1〜3件程度の企画に絞る(既存の決定論的Ideation実装の上限である3件を目安とし、通知疲れを避ける)。
+   - 選抜HOTがない日(手順5の `select-hot` が成功して選抜0件の日、または手順5の `select-hot` が再実行の上限に達して `failed` のまま進み、`hot_candidates.jsonl` に選抜がない日): 企画を作らずに `{"schema_version": 2, "proposals": []}` を書いて手順7へ進む。`deferral_reason` は書かない(書くと `invalid_input` で失敗する)。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。`select-hot` が `failed` のときは `selection_input.json` の `selected` に対して企画を作らない(`hot_candidates.jsonl` で選抜されていないため `invalid_proposal` になる)。
+   - 選抜HOTがあるのに企画を作らない日: `proposals` を `[]` にし、`deferral_reason` に作らない理由(例: 「一次情報で機能を確認できず、検証の問いを立てられないため保留」)を書く。理由はレポートに「記事企画なし(保留: <理由>)」として出る。作れない理由がない限り各選抜HOTに企画を作る。
+   - それ以外(企画を1件以上作る日): `deferral_reason` を書かない(書くと `invalid_input` で失敗する)。
 
-   `ArticleProposal` の必須フィールド: `proposal_id` / `source_hot_id` / `title_idea` / `article_type` / `target_reader` / `why_now` / `technical_angle` / `experiment_plan` / `competition` / `traffic_opportunity` / `technical_opportunity` / `unique_angle` / `evidence_links` / `risks`。
+   選抜された各候補について、article-ideation Skillの企画観点に従って企画を作り、`proposals` に入れる。候補1件あたり0〜3件とし、数を埋めず、問いや実験が同じ案は統合する(4件以上は `invalid_proposal`)。
 
-   - `source_hot_id` は手順5で選抜した `hot_id` と一致させる。
-   - `evidence_links` は空にしない(選抜候補の `evidence_urls` を引き継ぐ)。
+   各企画には次をすべて書く。
+
+   - `schema_version`: `2`(整数)
+   - 文字列(空にしない): `proposal_id`(入力内で重複させない)/ `source_hot_id` / `title_idea` / `article_type` / `target_reader` / `why_now` / `technical_angle` / `competition` / `traffic_opportunity` / `technical_opportunity` / `unique_angle`
+   - 文字列のリスト: `experiment_plan` / `risks` / `evidence_links`(文字列1つを渡さず、1件でもリストにする)
+   - `quality`: 企画の品質記録(形式は [03章「ProposalQuality」](../../docs/specs/03-data-model-and-storage.md)。書き方の観点は article-ideation Skill)
+     - 空にしない文字列: `question`(検証の問い)/ `difference`(既存手段との差分)/ `baseline`(比較対象)/ `baseline_version`(比較対象の版。版がなければ固定日や条件)/ `measurement`(測定方法)/ `inputs_and_environment`(入力・環境・手順)/ `effort`(概算工数)/ `effort_assumptions`(工数の前提)/ `success_condition`(成功条件)/ `stop_condition`(中止・保留条件)
+     - `metrics`: 測定指標(空にしない文字列のリスト、1件以上)
+     - `evidence`: 確認した根拠(`EvidenceCheck` のリスト。キーは `url` / `checked_at` / `target_version` / `status` / `kind` / `claim` / `note` の7つちょうど。書き方は手順4の評価レコードの根拠と同じで、URLを取得したら取得ログに1行追記する)
+     - `unknowns`: 未確認事項(文字列のリスト。空リスト可)
+
+   企画1件の例(比較対象のURLを1件追加した場合):
+
+   ```json
+   {
+     "schema_version": 2,
+     "proposal_id": "hot:event:example-model-release:proposal:1",
+     "source_hot_id": "hot:event:example-model-release",
+     "title_idea": "Example LLM v2.0は長文要約で前版より速くなったか",
+     "article_type": "Benchmark",
+     "target_reader": "LLMを組み込んだアプリを運用しているAIエンジニア",
+     "why_now": "APIの既定モデルがv2.0に切り替わり、既存アプリの挙動が変わるため",
+     "technical_angle": "同じ入力でv1.5とv2.0の応答時間と要約の欠落を比べる",
+     "experiment_plan": ["公開データセットから長文50件を選ぶ", "v1.5とv2.0で要約を生成する", "応答時間と欠落数を表にする"],
+     "competition": "未調査",
+     "traffic_opportunity": "未調査",
+     "technical_opportunity": "既定モデル切り替えの影響を測定値で示せる",
+     "unique_angle": "日本語の長文で測る",
+     "evidence_links": ["https://example.com/blog/model-release", "https://example.com/docs/v1.5"],
+     "risks": ["API料金がかかる"],
+     "quality": {
+       "question": "v2.0は日本語の長文要約でv1.5より速く、欠落が少ないか",
+       "difference": "公式発表は英語ベンチマークのみで、日本語長文の比較がない",
+       "baseline": "Example LLM v1.5",
+       "baseline_version": "v1.5",
+       "measurement": "50件の応答時間の中央値と、人手で数えた要約の欠落数",
+       "inputs_and_environment": "公開データセットXの長文50件、Python 3.13、APIの既定パラメータ",
+       "effort": "2日",
+       "effort_assumptions": "v1.5が引き続きAPIで指定できる",
+       "success_condition": "両版の測定値を同じ条件でそろえられる",
+       "stop_condition": "v1.5がAPIで指定できなくなった場合は保留する",
+       "metrics": ["応答時間の中央値", "要約の欠落数"],
+       "evidence": [
+         {"url": "https://example.com/blog/model-release", "checked_at": "2026-10-05T01:20:10+00:00", "target_version": "v2.0", "status": "verified", "kind": "primary", "claim": "v2.0を公開し、APIの既定モデルを切り替えた", "note": ""},
+         {"url": "https://example.com/docs/v1.5", "checked_at": "2026-10-05T01:40:02+00:00", "target_version": "v1.5", "status": "verified", "kind": "primary", "claim": "比較対象 v1.5 の仕様(指定方法と提供期限)", "note": ""}
+       ],
+       "unknowns": ["v1.5の提供終了日"]
+     }
+   }
+   ```
+
+   次の規則を守る(守らないと手順7が `invalid_proposal` で失敗する)。
+
+   - `source_hot_id` は `hot_candidates.jsonl` で `selected: true` の `hot_id` と一致させる。
+   - `evidence_links` には、元のHOT候補の `evidence_urls` を1件以上含める。各URLは `http://` または `https://` で始まる完全なURL。
+   - 比較対象などのために、元のHOT候補の `evidence_urls` にないURLを `evidence_links` に追加した場合は、同じURLの根拠を `quality.evidence` に書き、その `claim` に役割を書く(例: 「比較対象 X の仕様」)。`claim` を空にしない。
+   - 競合や読者需要(`competition` / `traffic_opportunity`)を調べていない場合は「未調査」と書く。HOT点数から一律に「High」などと推定しない。
 
 7. 記事企画を保存する。
 
@@ -202,7 +265,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar save-proposals --date <date> --input data/runs/<date>/draft_proposals.json
    ```
 
-   選抜0件の日も `[]` で実行する。`run_state.json` の `stage_results` に結果(企画あり=`completed`、選抜ありで企画0件=`deferred`、選抜0件=`not_run`(選抜HOTなし))が記録される。入力は企画の配列で渡す。
+   選抜HOTがない日も `{"schema_version": 2, "proposals": []}` で実行する。`run_state.json` の `stage_results` に結果(企画あり=`completed`、選抜ありで企画0件=`deferred`(理由は `deferral_reason`)、選抜0件=`not_run`(選抜HOTなし))が記録される。
 
 8. 注目候補・新モデルリリースの概要を補完してから、レポートを生成する。
 
@@ -267,10 +330,10 @@ description: Use when cron等からAgentとして日次調査パイプライン�
         記事企画・概要の書き直しなど必要な修正を自分自身で行う。修正の仕方は次のとおり。
         - HOT選抜・手順4で書いた概要の修正: `selection_input.json` を書き直して `ai-radar select-hot` を再実行し、
           `select-hot` が成功したら続けて必ず手順7の `save-proposals` も再実行する(`select-hot` が成功すると、それまでの記事企画の記録は「選抜の再実行により無効」になるため。概要だけの修正でも同じ)。
-          選抜した候補が変わった場合は、`save-proposals` の前に手順6に従って `draft_proposals.json` を作り直す(選抜0件になった場合は `[]`)。
+          選抜した候補が変わった場合は、`save-proposals` の前に手順6に従って `draft_proposals.json` を作り直す(選抜0件になった場合は `{"schema_version": 2, "proposals": []}` にし、`deferral_reason` を消す)。
           概要だけの修正で選抜が変わらない場合は、既存の `draft_proposals.json` のまま再実行してよい。
-          `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `[]` を書く段落は手順5での失敗だけに当てはまる)。
-        - 記事企画だけの修正: `draft_proposals.json` を書き直して手順7の `save-proposals` を再実行する。
+          `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `select-hot` が `failed` の場合の記述は手順5での失敗だけに当てはまる)。
+        - 記事企画だけの修正: `draft_proposals.json` を手順6の形式(v2)のまま書き直して手順7の `save-proposals` を再実行する。企画を0件にした・0件から作った場合は、手順6に従って `deferral_reason` を書く・消す。
         - 手順8bで補完した概要の修正: `summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行する(上書きされる)。キーは `data/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。HOT選抜のやり直しなどで今はレポートに表示されていない項目のキーは書かない(1つでも含むと `invalid_summary` で全体が保存されない)。
         - `stage_results` の `failed` が再実行の上限(「エラー時の自己修正方針」の項目3)に達したため残っていることへの指摘: 再実行せず、修正不能として扱う。
           `review_feedback.md` に他の指摘がなければ、手順8・9aに戻らず手順10へ進む。
@@ -293,7 +356,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別は次のとおり。
    - `select-hot`: `deprecated_option` / `missing_input` / `invalid_input` / `invalid_assessment` / `selection_limit_exceeded` / `invalid_summary` / `missing_summary` / `write_error`
-   - `save-proposals`: `missing_input` / `invalid_input` / `invalid_proposal` / `write_error`
+   - `save-proposals`: `missing_input` / `invalid_input`(`deferral_reason` の欠落・余分を含む)/ `deprecated_input`(配列や `schema_version` のない旧形式の入力を書いた。手順6のv2形式に書き直す)/ `invalid_proposal`(メッセージの `proposal[<番号>]` が `proposals` の何番目(0始まり)の企画かを示す)/ `write_error`
    - `add-summary`: `deprecated_option`(`--summary` を指定した。`--input` に移る)/ `missing_input` / `invalid_input` / `invalid_summary` / `write_error`
 2. 原因に応じて `selection_input.json`・`draft_proposals.json`・`summary_input.json` を修正し、再実行する。
    - すでに手順7(`save-proposals`)を実行した後に `select-hot` を再実行して成功した場合は、続けて手順7も再実行する(選抜が変わった場合は先に手順6で `draft_proposals.json` を作り直す)。手順5の時点(まだ手順7を実行していない)では、通常どおり手順6へ進む。

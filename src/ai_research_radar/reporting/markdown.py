@@ -502,9 +502,43 @@ def _article_proposals_section(proposals: list[ArticleProposal], deferral_reason
                 ("Evidence", "<br>".join(_evidence_link(url) for url in _as_list(proposal.evidence_links)) or "-"),
             ]
         )
+        rows.extend(_quality_rows(proposal))
         lines.extend(f"| {label} | {value} |" for label, value in rows)
         lines.append("")
     return lines
+
+
+def _quality_rows(proposal: ArticleProposal) -> list[tuple[str, str]]:
+    """Rows for the ProposalQuality of a v2 proposal (#11); older proposals are marked unevaluated.
+
+    Saved records are read without validation, so every value is read defensively.
+    """
+    if proposal.schema_version < 2:
+        return [("品質評価", "旧形式のため未評価")]
+    quality = proposal.quality if isinstance(proposal.quality, dict) else {}
+
+    def text(key: str) -> str:
+        value = quality.get(key)
+        return _cell(value if isinstance(value, str) else "")
+
+    def items(key: str) -> list[str]:
+        return [item for item in _list_of(quality.get(key)) if isinstance(item, str) and item.strip()]
+
+    unknowns = items("unknowns")
+    evidence = [item for item in _list_of(quality.get("evidence")) if isinstance(item, dict)]
+    return [
+        ("検証の問い", text("question")),
+        ("既存との差分", text("difference")),
+        ("比較対象と版", f"{text('baseline')}(版: {text('baseline_version')})"),
+        ("測定方法", text("measurement")),
+        ("入力・環境", text("inputs_and_environment")),
+        ("工数と前提", f"{text('effort')}(前提: {text('effort_assumptions')})"),
+        ("成功条件", text("success_condition")),
+        ("中止条件", text("stop_condition")),
+        ("指標", _bullets(items("metrics"))),
+        ("未確認事項", _bullets(unknowns) if unknowns else "なし"),
+        ("確認した根拠", "<br>".join(_evidence_check_line(item) for item in evidence) or "なし"),
+    ]
 
 
 _ORDERED_MARKER = re.compile(r"^(\d+)([.)])(?=\s)")
@@ -600,8 +634,8 @@ def _heading(text: str) -> str:
 
 
 def _as_list(items: list[str] | str) -> list[str]:
-    """save-proposals does not type-check list fields, so an agent may pass a
-    plain string; treat it as one item instead of iterating characters."""
+    """Proposals saved before save-proposals type-checked list fields (#11) may hold
+    a plain string; treat it as one item instead of iterating characters."""
     return [items] if isinstance(items, str) else list(items)
 
 

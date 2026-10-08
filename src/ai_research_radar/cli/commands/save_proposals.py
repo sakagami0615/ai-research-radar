@@ -13,28 +13,64 @@ from ai_research_radar.cli.commands.run_state import (
     save_run_state,
     set_stage_result,
 )
+from ai_research_radar.ideation.validation import REQUIRED_FIELDS, validate_proposals
+from ai_research_radar.schemas.decoders import decode_hot
 from ai_research_radar.schemas.models import ArticleProposal
 from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
 
 COMMAND_NAME = "save-proposals"
 NO_SELECTION_REASON = "選抜HOTなし"
+_ALLOWED_KEYS = frozenset({"schema_version", "proposals", "deferral_reason"})
+_MIGRATION_MESSAGE = (
+    "入力が v2 形式ではありません(旧形式など)。{\"schema_version\": 2, \"proposals\": [...], \"deferral_reason\": \"...\"} の"
+    "オブジェクト形式にし、各企画に \"schema_version\": 2 と quality を書いてください"
+    "(deferral_reason は選抜HOTがあり企画が0件のときだけ書く)"
+)
 
-REQUIRED_FIELDS = {
-    "proposal_id",
-    "source_hot_id",
-    "title_idea",
-    "article_type",
-    "target_reader",
-    "why_now",
-    "technical_angle",
-    "experiment_plan",
-    "competition",
-    "traffic_opportunity",
-    "technical_opportunity",
-    "unique_angle",
-    "evidence_links",
-    "risks",
-}
+
+def _is_v2(value: dict) -> bool:
+    version = value.get("schema_version")
+    return type(version) is int and version == 2
+
+
+def _legacy_reason(payload: object) -> str | None:
+    """旧形式(v2への移行が必要)なら理由を返す。v2の判定ができない形は invalid_input に任せる。"""
+    if isinstance(payload, list):
+        return "input is a JSON array"
+    if not isinstance(payload, dict):
+        return None
+    if not _is_v2(payload):
+        return f"top-level schema_version is not 2: {payload.get('schema_version')!r}"
+    proposals = payload.get("proposals")
+    if isinstance(proposals, list):
+        for index, record in enumerate(proposals):
+            if isinstance(record, dict) and not _is_v2(record):
+                return f"proposal[{index}] schema_version is not 2: {record.get('schema_version')!r}"
+    return None
+
+
+def _structure_error(payload: object) -> str | None:
+    if not isinstance(payload, dict):
+        return "input file must contain a JSON object"
+    unknown = sorted(set(payload) - _ALLOWED_KEYS)
+    if unknown:
+        return f"unknown top-level key(s): {', '.join(unknown)}"
+    if not isinstance(payload.get("proposals"), list):
+        return "proposals must be a list"
+    return None
+
+
+def _deferral_error(payload: dict, has_selection: bool) -> str | None:
+    """deferral_reason は「選抜HOTあり・企画0件」のときだけ必須で、それ以外は書いてはならない。"""
+    required = has_selection and not payload["proposals"]
+    if not required:
+        if "deferral_reason" in payload:
+            return "deferral_reason must not be given unless selected HOT exist and proposals is empty"
+        return None
+    reason = payload.get("deferral_reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return "deferral_reason must be a non-empty string when selected HOT exist and proposals is empty"
+    return None
 
 
 def add_subparser(subparsers: argparse._SubParsersAction) -> None:
@@ -66,35 +102,33 @@ def run(args: argparse.Namespace) -> int:
     if not input_path.exists():
         return _fail(state, data_dir, date, "missing_input", f"missing input file: {input_path}")
     try:
-        records = json.loads(input_path.read_text(encoding="utf-8"))
+        payload = json.loads(input_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         return _fail(state, data_dir, date, "invalid_input", f"input file is not valid JSON: {exc}")
     except (OSError, UnicodeDecodeError) as exc:
         return _fail(state, data_dir, date, "invalid_input", f"cannot read input file {input_path}: {exc}")
-    if not isinstance(records, list):
-        return _fail(state, data_dir, date, "invalid_input", "input file must contain a JSON array of article proposals")
 
-    selected_ids = {
-        record["hot_id"] for record in read_jsonl(hot_path) if record.get("selected") is True
-    }
+    legacy = _legacy_reason(payload)
+    if legacy:
+        return _fail(state, data_dir, date, "deprecated_input", f"{_MIGRATION_MESSAGE}: {legacy}")
+    structure_error = _structure_error(payload)
+    if structure_error:
+        return _fail(state, data_dir, date, "invalid_input", structure_error)
 
-    proposals: list[ArticleProposal] = []
-    for index, record in enumerate(records):
-        if not isinstance(record, dict):
-            return _fail(state, data_dir, date, "invalid_proposal", f"proposal[{index}] must be an object")
-        missing_fields = REQUIRED_FIELDS - set(record.keys())
-        if missing_fields:
-            return _fail(state, data_dir, date, "invalid_proposal", f"proposal[{index}] missing fields: {', '.join(sorted(missing_fields))}")
+    candidates = [decode_hot(record) for record in read_jsonl(hot_path)]
+    has_selection = any(candidate.selected for candidate in candidates)
+    deferral_error = _deferral_error(payload, has_selection)
+    if deferral_error:
+        return _fail(state, data_dir, date, "invalid_input", deferral_error)
 
-        proposal = ArticleProposal(**{key: record[key] for key in REQUIRED_FIELDS})
-
-        if not proposal.evidence_links:
-            return _fail(state, data_dir, date, "invalid_proposal", f"proposal[{index}] must include at least one evidence link")
-        if proposal.source_hot_id not in selected_ids:
-            message = f"proposal[{index}] source_hot_id is not a selected HOT candidate: {proposal.source_hot_id}"
-            return _fail(state, data_dir, date, "invalid_proposal", message)
-
-        proposals.append(proposal)
+    try:
+        records = validate_proposals(payload["proposals"], candidates)
+    except ValueError as exc:
+        return _fail(state, data_dir, date, "invalid_proposal", str(exc))
+    proposals = [
+        ArticleProposal(**{key: record[key] for key in REQUIRED_FIELDS}, schema_version=2, quality=record["quality"])
+        for record in records
+    ]
 
     proposals_path = data_dir / "runs" / date / "article_proposals.jsonl"
     try:
@@ -102,13 +136,12 @@ def run(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001
         return _fail(state, data_dir, date, "write_error", f"failed to write article proposals: {exc}")
 
-    if not selected_ids:
+    if not has_selection:
         status, reason = "not_run", NO_SELECTION_REASON
     elif proposals:
         status, reason = "completed", ""
     else:
-        # deferral_reason is added to the input by #11; until then the reason is empty.
-        status, reason = "deferred", ""
+        status, reason = "deferred", payload["deferral_reason"].strip()
     set_stage_result(state, COMMAND_NAME, status, reason, proposal_count=len(proposals))
     state["output_counts"]["article_proposals"] = len(proposals)
     mark_stage_completed(state, COMMAND_NAME)
