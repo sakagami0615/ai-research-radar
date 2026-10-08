@@ -313,6 +313,8 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       python3 skills/agent-daily-run/list_source_signals.py <date>
       ```
 
+      このスクリプトが「signals.jsonl を読めません」と出して終了コード1で終わった場合は、`data/normalized/<date>/signals.jsonl` が壊れている。ファイルを手で直したり、傾向を推測で書いたりせず、この手順cを飛ばして d へ進む(d の後の確認で `source: report` の `corrupt_input` として見つかり、「壊れた入力(`corrupt_input`)」に従って流し直す。流し直しの上限に達していれば、そのまま手順9へ進む。レポートの収集Source一覧は注記だけになり、傾向は表示されない)。
+
       続けて、件数が1件以上のSourceごとに、そのSourceの各Signalを `- タイトル | 概要(先頭200字) | URL` の形で出して読む(Source名は上の出力の見出しから `(N件)` を除いた名前)。
 
       ```bash
@@ -333,7 +335,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       ai-radar add-source-overview --date <date> --input data/runs/<date>/source_overview_input.json
       ```
 
-      手順9bから戻ってきた場合は、保存済みの傾向を書き直さなくてよい(指摘されたSourceは手順9bで直す)。`data/runs/<date>/source_overviews.json` にない、収集1件以上のSourceがあれば、それだけを書いて保存する。
+      手順9bから戻ってきた場合は、保存済みの傾向を書き直さなくてよい(指摘されたSourceは手順9bで直す)。`data/runs/<date>/source_overviews.json` にない、収集1件以上のSourceがあれば、それだけを書いて保存する。ただし、「壊れた入力(`corrupt_input`)」の流し直しで `collect` または `normalize` から流し直した後(手順9bの中で起きた場合を含む)は、Signalと件数が変わっているため、保存済みの傾向も含めて収集1件以上のすべてのSourceについて書き直して保存する。
 
       書くSourceが1つもない場合(収集1件以上のSourceがない日、または手順9bから戻って未保存のSourceがない場合)は、`add-source-overview` を実行せずに d へ進む(空のオブジェクト `{}` を渡すと `invalid_overview` で失敗する)。
 
@@ -377,7 +379,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
           `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `select-hot` が `failed` の場合の記述は手順5での失敗だけに当てはまる)。
         - 記事企画だけの修正: `draft_proposals.json` を手順6の形式(v2)のまま書き直して手順7の `save-proposals` を再実行する。企画を0件にした・0件から作った場合は、手順6に従って `deferral_reason` を書く・消す。
         - 手順8bで補完した概要の修正: `summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行する(上書きされる)。キーは `data/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。HOT選抜のやり直しなどで今はレポートに表示されていない項目のキーは書かない(1つでも含むと `invalid_summary` で全体が保存されない)。
-        - 手順8cで書いた本日の傾向の修正: `source_overview_input.json` に直すSourceと新しい傾向だけを書いて `add-source-overview --input` を再実行する(上書きされる)。Source名はレポートの見出しから `(N件)` を除いた名前(`other` / `_other` を含む)を使う。
+        - 手順8cで書いた本日の傾向の修正: `source_overview_input.json` に直すSourceと新しい傾向だけを書いて `add-source-overview --input` を再実行する(上書きされる)。Source名はレポートの見出しから `(N件)` を除いた名前(`other` / `_other` を含む)を使う。`add-source-overview` が再実行の上限(「エラー時の自己修正方針」の項目3。`corrupt_input` は同方針の「壊れた入力(`corrupt_input`)」の1回)に達して保存できず「傾向未作成」が残っていることへの指摘は、再実行せず、下の修正不能の項目と同じく扱う。
         - `stage_results` の `failed` が再実行の上限(「エラー時の自己修正方針」の項目3、`corrupt_input` の `failed` は同方針の「壊れた入力(`corrupt_input`)」の1回)に達したため残っていることへの指摘、または上限に達して残った `corrupt_input`(`source: report` の記録やレポートの「…を読めなかったため表示できません」の注記)への指摘: 再実行せず、修正不能として扱う。
           `review_feedback.md` に他の指摘がなければ、手順8・9aに戻らず手順10へ進む。他に直せる指摘があれば、それは従来どおり修正する。
 
@@ -432,7 +434,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 - `score` を再実行すると `hot_candidates.jsonl` が作り直され、選抜(`selected` / 評価レコード / 概要)が消える。このため `score` から後を流すときは、手順4〜7(候補の確認、`selection_input.json`、`select-hot`、記事企画、`save-proposals`)をやり直す。既存の `selection_input.json` は再利用してよいが(手順4で `hot_candidates.jsonl` が読めずに書いた候補0件の仮のものは再利用せず、書き直す)、作り直した候補とIDが合わずに `select-hot` が `invalid_assessment` になれば、手順4に従って書き直す(この書き直しは通常の自己修正(項目2・3)として数える)。
 - いつ気づいたかによって、流し直す範囲が変わる。
   - 初回の手順2〜7の途中(下流のステージをまだ実行していない): 再実行を始めるステージから、手順どおり先へ進む。
-  - 手順8dの後の確認、または手順8c・8d・9bの中での `select-hot` / `save-proposals` / `add-source-overview` の失敗: 表の「続けて流すステージ」をすべて流してから、手順8のa〜dをやり直す。
+  - 手順8dの後の確認、手順8c・9bの中での `add-source-overview` の失敗、または手順8d(生成前の補完実行)・9bの中での `select-hot` / `save-proposals` の失敗: 表の「続けて流すステージ」をすべて流してから、手順8のa〜dをやり直す。
 - 複数のファイルが壊れている場合は、表で最も上流のステージから1回だけ流し直す(下流のファイルも作り直される)。
 - 流し直しの途中で `collect` / `normalize` / `score` が失敗した場合(再び `corrupt_input` になるなど)は、その失敗を残したまま、残りのステージは流さずに手順8へ進む。手順4〜7の途中の `select-hot` / `save-proposals` の失敗は、手順5〜7の既存の決まりに従う(自分の入力の誤り(`invalid_assessment` など)は項目2・3で直す。`select-hot` が再び `corrupt_input` で `failed` になった場合は上限に達しているため、手順6の「再実行の上限に達して `failed` のまま進む場合」に従う。このとき手順7の `save-proposals` も同じファイルを読むため `corrupt_input` で `failed` になるが、再実行せずに手順8へ進む)。
 - `collect` から流し直した結果、`collect` の標準出力に出る日付が `<date>` と違う場合(日付をまたいだ場合)は、`<date>` のファイルは作り直されていないため、残りのステージは流さずに手順8へ進み、その旨を完了報告に書く(流し直しの1回は使い切ったものとする)。
@@ -445,5 +447,6 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 - `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
 - `data/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8dで上限まで再実行しても直らなかったもの)。
 - `errors` に `corrupt_input` が残っている場合は、完了報告に壊れたファイルのパスとメッセージを書く(「壊れた入力(`corrupt_input`)」の流し直しでも直らなかったもの)。
+- `errors` に `add-source-overview` のエラーが残っている場合、または手順8cを飛ばした場合は、「傾向未作成」のまま残ったSourceとその理由を完了報告に書く。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。
 - 手順8aで控えた新モデルリリースの対象件数が30件を超えていた場合は、その件数を完了報告に含める。

@@ -33,6 +33,20 @@ def group_signals(sources: list[str], signals: list[dict]) -> dict[str, list[dic
     return groups
 
 
+def _read_signals(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    signals = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if not isinstance(record, dict):
+            raise ValueError(f"line {line_number}: not a JSON object")
+        signals.append(record)
+    return signals
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("date")
@@ -44,11 +58,12 @@ def main(argv: list[str] | None = None) -> int:
     state = json.loads((data_dir / "runs" / args.date / "run_state.json").read_text(encoding="utf-8"))
     sources = [source for source in state.get("sources", []) if isinstance(source, str)]
     signals_path = data_dir / "normalized" / args.date / "signals.jsonl"
-    signals = []
-    if signals_path.exists():
-        for line in signals_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                signals.append(json.loads(line))
+    try:
+        signals = _read_signals(signals_path)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        # A broken pipeline output: the Skill skips step 8c and lets report record corrupt_input.
+        print(f"signals.jsonl を読めません: {signals_path}: {exc}")
+        return 1
 
     groups = group_signals(sources, signals)
     if args.source and args.source not in groups:

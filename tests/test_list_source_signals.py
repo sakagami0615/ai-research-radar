@@ -59,3 +59,15 @@ def test_skill_listing_prints_headings_or_items_of_one_source(tmp_path: Path, ca
     ]
 
     assert script.main([DATE, "unknown", "--data-dir", str(data_dir)]) == 1
+
+
+def test_skill_listing_exits_with_message_when_signals_are_unreadable(tmp_path: Path, capsys):
+    script = _load_script()
+    data_dir = _setup(tmp_path)
+    signals_path = data_dir / "normalized" / DATE / "signals.jsonl"
+
+    for content in (b'{"source": "github"}\n{broken\n', b'["not an object"]\n', b"\xff\xfe\n"):
+        signals_path.write_bytes(content)
+
+        assert script.main([DATE, "--data-dir", str(data_dir)]) == 1
+        assert "signals.jsonl を読めません" in capsys.readouterr().out

@@ -134,7 +134,7 @@ HOT scoreは以下を使う。
 - 保存: `data/runs/<date>/source_overviews.json`(03章「Source Overviews記録」)。Agent経路(`agent-daily-run`)では `report` の前に書き、`ai-radar add-source-overview --input` で保存する(06章)。
 - 表示: 傾向がないSourceは「傾向未作成」と表示する。決定論経路(`ai-radar daily`)では傾向を作成しないため、すべて「傾向未作成」になる。
 - 傾向を保存した後に `collect` / `normalize` をやり直して件数が変わっても、CLIは保存済みの傾向を無効にしない(0件になったSourceは表示時に「収集0件」になる)。
-- Agentが読むSourceごとの一覧は、`skills/agent-daily-run/list_source_signals.py` が見出しと同じまとめ方・件数で出す(`reporting/source_overview.py` の `group_signals_by_source` と同じ規則。テストで一致を確認する)。
+- Agentが読むSourceごとの一覧は、`skills/agent-daily-run/list_source_signals.py` が見出しと同じまとめ方・件数で出す(`reporting/source_overview.py` の `group_signals_by_source` と同じ規則。テストで一致を確認する)。`signals.jsonl` が読めない(UTF-8・JSON・オブジェクトとして読めない)場合は「signals.jsonl を読めません」と出して終了コード1で終わり、Agentは傾向を書かずにレポート生成へ進む(`report` が `corrupt_input` を記録し、収集Source一覧は注記だけになる。その後の流し直しは `agent-daily-run` の「壊れた入力(`corrupt_input`)」に従う)。
 
 ### 新モデルリリース
 

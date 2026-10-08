@@ -135,3 +135,12 @@ def test_add_source_overview_records_corrupt_input_when_signals_are_broken(tmp_p
         assert [error["type"] for error in _errors(data_dir)] == ["corrupt_input"]
         assert "signals.jsonl:2" in _errors(data_dir)[0]["message"]
         assert load_source_overviews(data_dir, DATE) == {}
+
+
+def test_add_source_overview_counts_signals_without_source_key_under_other(tmp_path: Path):
+    # signals.jsonl is not decoded, so a record without "source" is not corrupt_input (as in the report).
+    data_dir = _setup(tmp_path, signals=[_signal("github", "g1"), {"title": "no source"}])
+
+    assert _add(data_dir, "--input", str(_input(tmp_path, {"other": "傾向"}))) == 0
+
+    assert load_source_overviews(data_dir, DATE) == {"other": "傾向"}
