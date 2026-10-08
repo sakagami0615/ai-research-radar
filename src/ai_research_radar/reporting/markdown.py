@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 from typing import Any
@@ -29,9 +30,13 @@ def render_daily_report(
     signals: list[dict[str, Any]],
     digest: DailyDigest | None = None,
     display_timezone: tzinfo | None = None,
+    unreadable_files: Collection[str] = (),
     source_overviews: dict[str, str] | None = None,
     source_overview_warning: str | None = None,
 ) -> str:
+    """unreadable_files holds the names of the day's files that could not be read
+    (hot_candidates.jsonl / article_proposals.jsonl / signals.jsonl); their
+    sections get a note instead of reading as a real zero."""
     digest = digest or DailyDigest()
     selected_hot = [candidate for candidate in hot_candidates if candidate.selected]
     proposals_by_hot: dict[str, list[ArticleProposal]] = defaultdict(list)
@@ -41,7 +46,10 @@ def render_daily_report(
     lines = [f"# AI Daily Radar {date}", ""]
     lines.extend(_data_gaps_section(run))
     lines.extend(["## 選抜HOT", ""])
-    lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
+    if HOT_CANDIDATES_FILE in unreadable_files:
+        lines.extend([_unreadable_note(HOT_CANDIDATES_FILE), ""])
+    else:
+        lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
     proposal_result = _stage_result(run, "save-proposals")
     if selected_hot:
         shown = any(proposals_by_hot.get(candidate.hot_id) for candidate in selected_hot)
@@ -64,7 +72,10 @@ def render_daily_report(
         lines.extend([f"  - {reason}" for reason in candidate.reasons])
         lines.extend(_assessment_section(candidate.assessment))
         lines.extend(["", "#### Article Proposals", ""])
-        lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, []), deferral_reason))
+        if PROPOSALS_FILE in unreadable_files:
+            lines.extend([_unreadable_note(PROPOSALS_FILE), ""])
+        else:
+            lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, []), deferral_reason))
 
     lines.extend(_digest_warnings(digest))
     lines.extend(_notable_section(digest))
@@ -77,8 +88,21 @@ def render_daily_report(
         for error in run.errors:
             lines.append(f"- {error.get('source')}: {error.get('type')} - {error.get('message')}")
     lines.append("")
-    lines.extend(_source_appendix_section(run, signals, source_overviews or {}, source_overview_warning))
+    lines.extend(
+        _source_appendix_section(
+            run, signals, source_overviews or {}, source_overview_warning, unreadable=SIGNALS_FILE in unreadable_files
+        )
+    )
     return "\n".join(lines)
+
+
+HOT_CANDIDATES_FILE = "hot_candidates.jsonl"
+PROPOSALS_FILE = "article_proposals.jsonl"
+SIGNALS_FILE = "signals.jsonl"
+
+
+def _unreadable_note(file_name: str) -> str:
+    return f"{file_name} を読めなかったため表示できません(Errors を参照)。"
 
 
 def _stage_result(run: RunMetadata, stage: str) -> dict[str, Any] | None:
@@ -372,6 +396,7 @@ def _source_appendix_section(
     signals: list[dict[str, Any]],
     overviews: dict[str, str],
     overview_warning: str | None,
+    unreadable: bool = False,
 ) -> list[str]:
     lines = [
         "## 収集Source一覧",
@@ -380,6 +405,11 @@ def _source_appendix_section(
         "Sourceごとに一覧化したものです。",
         "",
     ]
+    if unreadable:
+        # Per-source "(0件)" headings would read as a real zero, so none are shown
+        # (nor the per-source overviews, which sit under those headings).
+        lines.extend([_unreadable_note(SIGNALS_FILE), ""])
+        return lines
     if not run.sources:
         lines.append("本日は収集Signalがありません。")
         lines.append("")
@@ -525,9 +555,43 @@ def _article_proposals_section(proposals: list[ArticleProposal], deferral_reason
                 ("Evidence", "<br>".join(_evidence_link(url) for url in _as_list(proposal.evidence_links)) or "-"),
             ]
         )
+        rows.extend(_quality_rows(proposal))
         lines.extend(f"| {label} | {value} |" for label, value in rows)
         lines.append("")
     return lines
+
+
+def _quality_rows(proposal: ArticleProposal) -> list[tuple[str, str]]:
+    """Rows for the ProposalQuality of a v2 proposal (#11); older proposals are marked unevaluated.
+
+    Saved records are read without validation, so every value is read defensively.
+    """
+    if proposal.schema_version < 2:
+        return [("品質評価", "旧形式のため未評価")]
+    quality = proposal.quality if isinstance(proposal.quality, dict) else {}
+
+    def text(key: str) -> str:
+        value = quality.get(key)
+        return _cell(value if isinstance(value, str) else "")
+
+    def items(key: str) -> list[str]:
+        return [item for item in _list_of(quality.get(key)) if isinstance(item, str) and item.strip()]
+
+    unknowns = items("unknowns")
+    evidence = [item for item in _list_of(quality.get("evidence")) if isinstance(item, dict)]
+    return [
+        ("検証の問い", text("question")),
+        ("既存との差分", text("difference")),
+        ("比較対象と版", f"{text('baseline')}(版: {text('baseline_version')})"),
+        ("測定方法", text("measurement")),
+        ("入力・環境", text("inputs_and_environment")),
+        ("工数と前提", f"{text('effort')}(前提: {text('effort_assumptions')})"),
+        ("成功条件", text("success_condition")),
+        ("中止条件", text("stop_condition")),
+        ("指標", _bullets(items("metrics"))),
+        ("未確認事項", _bullets(unknowns) if unknowns else "なし"),
+        ("確認した根拠", "<br>".join(_evidence_check_line(item) for item in evidence) or "なし"),
+    ]
 
 
 _ORDERED_MARKER = re.compile(r"^(\d+)([.)])(?=\s)")
@@ -623,8 +687,8 @@ def _heading(text: str) -> str:
 
 
 def _as_list(items: list[str] | str) -> list[str]:
-    """save-proposals does not type-check list fields, so an agent may pass a
-    plain string; treat it as one item instead of iterating characters."""
+    """Proposals saved before save-proposals type-checked list fields (#11) may hold
+    a plain string; treat it as one item instead of iterating characters."""
     return [items] if isinstance(items, str) else list(items)
 
 

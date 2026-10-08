@@ -11,7 +11,7 @@ from ai_research_radar.cli.commands.run_state import (
     save_run_state,
 )
 from ai_research_radar.reporting.source_overview import group_signals_by_source, save_source_overviews
-from ai_research_radar.storage.jsonl import read_jsonl
+from ai_research_radar.storage.jsonl import JsonlReadError, read_jsonl
 
 COMMAND_NAME = "add-source-overview"
 
@@ -55,8 +55,9 @@ def run(args: argparse.Namespace) -> int:
     signals_path = data_dir / "normalized" / date / "signals.jsonl"
     try:
         signals = read_jsonl(signals_path) if signals_path.exists() else []
-    except (OSError, ValueError) as exc:
-        return _fail(data_dir, date, state, "invalid_input", f"cannot read signals {signals_path}: {exc}")
+    except JsonlReadError as exc:
+        # A broken pipeline output, recorded like the other commands do (corrupt_input).
+        return _fail(data_dir, date, state, "corrupt_input", f"cannot read signals: {exc}")
     # The same headings and counts as the report, including the "other" heading when it has signals.
     counts = {source: len(items) for source, items in group_signals_by_source(sources, signals).items()}
 

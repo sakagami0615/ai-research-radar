@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone, tzinfo
 from pathlib import Path
+from typing import TypeVar
 
 import yaml
 
@@ -27,9 +29,11 @@ from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.reporting.source_overview import SOURCE_OVERVIEWS_FILENAME, load_source_overviews
 from ai_research_radar.schemas.decoders import decode_hot, decode_proposal
 from ai_research_radar.schemas.models import RunMetadata
-from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
+from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, read_jsonl, write_jsonl
 
 COMMAND_NAME = "report"
+
+T = TypeVar("T")
 
 _STAGE_ORDER = ["collect", "normalize", "score", "select-hot", "save-proposals"]
 
@@ -67,20 +71,25 @@ def run(args: argparse.Namespace) -> int:
                 f"{stage} was not completed before report",
             )
 
-    hot_path = data_dir / "runs" / date / "hot_candidates.jsonl"
-    hot_candidates = (
-        [decode_hot(record) for record in read_jsonl(hot_path)] if hot_path.exists() else []
-    )
+    # A broken file of the day is shown as missing data (noted in its section and
+    # recorded in errors) instead of stopping the report.
+    unreadable: set[str] = set()
 
-    proposals_path = data_dir / "runs" / date / "article_proposals.jsonl"
-    proposals = (
-        [decode_proposal(record) for record in read_jsonl(proposals_path)]
-        if proposals_path.exists()
-        else []
-    )
+    def read_or_empty(path: Path, read: Callable[[Path], list[T]]) -> list[T]:
+        if not path.exists():
+            return []
+        try:
+            return read(path)
+        except JsonlReadError as exc:
+            add_error(state, COMMAND_NAME, "corrupt_input", str(exc))
+            unreadable.add(path.name)
+            return []
 
-    signals_path = data_dir / "normalized" / date / "signals.jsonl"
-    signals = read_jsonl(signals_path) if signals_path.exists() else []
+    run_dir = data_dir / "runs" / date
+    hot_candidates = read_or_empty(run_dir / "hot_candidates.jsonl", lambda path: read_decoded_jsonl(path, decode_hot))
+    proposals = read_or_empty(run_dir / "article_proposals.jsonl", lambda path: read_decoded_jsonl(path, decode_proposal))
+    # Displayed through dict.get(), so only UTF-8 / JSON / object errors count, not missing keys.
+    signals = read_or_empty(data_dir / "normalized" / date / "signals.jsonl", read_jsonl)
 
     started_at = datetime.fromisoformat(state["run_id"])
     report_path = Path(args.reports_dir) / "daily" / f"{date}.md"
@@ -110,6 +119,7 @@ def run(args: argparse.Namespace) -> int:
         signals,
         digest,
         display_timezone=_display_timezone(Path(args.runtime_config)),
+        unreadable_files=unreadable,
         source_overviews=source_overviews,
         source_overview_warning=source_overview_warning,
     )

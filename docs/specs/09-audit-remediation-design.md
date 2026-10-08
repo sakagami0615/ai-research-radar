@@ -128,6 +128,8 @@ HOTあたり0〜3案。数を埋めず、問いや実験が同じ案は統合す
 
 段階を再実行した場合、依存する下流成果物・完了状態・レビューを無効化する。`select-hot` のやり直しで旧企画が現行結果として出ないようにする。`report` は欠損段階を明示して生成できるが、保存失敗を含め必ず成功するというSkill記述は修正する。
 
+当日の `hot_candidates.jsonl` / `article_proposals.jsonl` / `normalized/<date>/signals.jsonl` が壊れている場合も、`report` はそのファイルを欠けたデータとして扱い、`errors` に `corrupt_input`(`source: report`)を記録し、該当セクションに読めなかった旨を注記してレポートを生成する(終了コード0)。`normalize` / `score` / `select-hot` / `save-proposals` は入力のjsonlが読めない場合、`corrupt_input` を記録して終了コード1にし、出力を書き換えない(`select-hot` / `save-proposals` は `stage_results` も `failed` にする)。`corrupt_input` は前のステージの再実行で直すもので、Agentの再実行は1回までとする(06章「Agent経路のサブコマンド」、`agent-daily-run` Skill、Issue #18)。
+
 現在状態の `run_state.json`、`run.jsonl`、`review_result.json` とは別に、`data/runs/<date>/history/<attempt_id>/` に各段階実行と各レビュー試行を保存する。`attempt_id` は時刻だけに依存しない一意IDとし、段階名、親run ID、直前の試行ID、開始終了、コード版、設定、入出力ハッシュ、結果・エラーを記録する。`collect` または `daily` の新規起動は新しいrun IDを作り、後続コマンドはそのrunに属する。レビュー修正による再選抜・再生成は同じrun内の新しい試行とする。
 
 上書きされ得る入力と生成結果は、試行ディレクトリ内の `inputs/` と `outputs/` にスナップショットとして保持する。レビュー試行では評価対象と指摘・判定を同じ単位で保存し、旧指摘と旧対象を再実行後も参照できるようにする。収集試行は取得済みrawも保持する。認証情報は含めない。完了した試行は上書きせず、自動削除もしない。開始記録は処理前に作り、終了記録がない試行は中断扱いとする。履歴を保存できない場合は追跡可能な成功と報告せず、現在の成果物を上書きする前の保存失敗なら更新を中止する。
@@ -188,15 +190,14 @@ Agent Skillは本来のレビュー用CLI起動、利用可能なsubagentでの�
 
 ### CLI未結線(本番パイプラインから到達不能)
 
-以下のモジュールは現在 `tests/` からのみ呼ばれ、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` のいずれのCLIサブコマンドからも呼ばれていない。本番の`ai-radar`コマンドは今も旧実装(`normalization.dedup.deduplicate_signals` / `normalization.scores.normalize_source_batch` / `pipeline.events.build_events` / `save_proposals.py`独自の`REQUIRED_FIELDS`チェック)のみで動作する。
+以下のモジュールは現在 `tests/` からのみ呼ばれ、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `report` のいずれのCLIサブコマンドからも呼ばれていない。本番の`ai-radar`コマンドは今も旧実装(`normalization.dedup.deduplicate_signals` / `normalization.scores.normalize_source_batch` / `pipeline.events.build_events`)のみで動作する。
 
 - 品質v2パイプライン: `normalize_quality_batch` / `deduplicate_quality_signals` / `build_quality_events` / `normalization/identity.py` / `normalization/relevance.py` / `pipeline/stages.py`(`collect_stage` / `normalize_stage` / `score_stage`)
-- `ideation/validation.py::validate_proposals`(企画のEvidence整合・HOTあたり0〜3件の検証)
 - `storage/attempts.py`(`begin_attempt` / `finish_attempt` / `invalidate_after`、再実行時の下流無効化)
 - `storage/provenance.py::capture_provenance`
 - `reporting/review.py`(`build_review_target` / `validate_review_result`)
 
-これらを結線するには、本番CLIの入出力契約変更と関連Skill・運用手順の同時更新が必要であり、別タスクとする(`apply_assessments` は Issue #7 で結線済み、`validate_proposals` は #11 で対応予定)。
+これらを結線するには、本番CLIの入出力契約変更と関連Skill・運用手順の同時更新が必要であり、別タスクとする(`apply_assessments` は Issue #7 で `select-hot` に、`validate_proposals` は Issue #11 で `save-proposals` に結線済み)。
 
 ### 上記モジュール自身に残る不整合(結線時に合わせて解消が必要)
 

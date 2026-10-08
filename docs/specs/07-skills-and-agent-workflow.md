@@ -24,7 +24,7 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 
 ### agent-daily-run
 
-`ai-radar` のサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report`)を順に実行し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要の作成、収集Source一覧のSourceごとの「本日の傾向」の作成、記事企画をAgent自身の判断で行う日次ワークフロー。cronから `claude -p` / `codex exec` で直接起動されることを想定する(ラッパースクリプトなし)。HOT最終選抜は `data/runs/<date>/selection_input.json` に評価レコードを書き、`select-hot` で検証・保存する(形式は03章「SelectionInput」参照)。対象日の判定、および`review-daily-report`を使ったレビュー・修正ループ(最大3回)もこのSkillの手順内でAgent自身が行う。判断基準は `hot-detection` / `article-ideation` を参照する。根拠のURLの取得規則(PyPIは `/project/` ページではなくJSON APIで確認し `primary` として記録する、HTTP 200でもbot対策ページなど本文を取得できなければ `unavailable` にする)と、取得ログ `data/runs/<date>/evidence_fetch_log.tsv`(列: `url` / `http_status` / `fetched_at` / `content_verified` / `note`)の形式も、このSkillの手順4で定める。注目候補・新モデルリリースの概要補完(手順8b)と、Sourceごとの本日の傾向の作成(手順8c)でのURLの取得も、この規則と取得ログに従う。本日の傾向は、レポート生成(手順8d)の前に書いて `add-source-overview --input` で保存し、レビュー指摘を受けたときのやり直し(手順9b)でも手順8のa〜dをやり直す範囲に含める。選抜0件の日も、空の企画 `[]` で `save-proposals` を実行する(結果は `stage_results` に保留・未実行として記録され、成功とは区別される)。
+`ai-radar` のサブコマンド(`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report`)を順に実行し、HOT最終選抜、選抜HOT・注目候補・新モデルリリースの日本語概要の作成、収集Source一覧のSourceごとの「本日の傾向」の作成、記事企画をAgent自身の判断で行う日次ワークフロー。cronから `claude -p` / `codex exec` で直接起動されることを想定する(ラッパースクリプトなし)。HOT最終選抜は `data/runs/<date>/selection_input.json` に評価レコードを書き、`select-hot` で検証・保存する(形式は03章「SelectionInput」参照)。対象日の判定、および`review-daily-report`を使ったレビュー・修正ループ(最大3回)もこのSkillの手順内でAgent自身が行う。判断基準は `hot-detection` / `article-ideation` を参照する。根拠のURLの取得規則(PyPIは `/project/` ページではなくJSON APIで確認し `primary` として記録する、HTTP 200でもbot対策ページなど本文を取得できなければ `unavailable` にする)と、取得ログ `data/runs/<date>/evidence_fetch_log.tsv`(列: `url` / `http_status` / `fetched_at` / `content_verified` / `note`)の形式も、このSkillの手順4で定める。注目候補・新モデルリリースの概要補完(手順8b)と、Sourceごとの本日の傾向の作成(手順8c)でのURLの取得も、この規則と取得ログに従う。本日の傾向は、レポート生成(手順8d)の前に書いて `add-source-overview --input` で保存し、レビュー指摘を受けたときのやり直し(手順9b)でも手順8のa〜dをやり直す範囲に含める。記事企画は `data/runs/<date>/draft_proposals.json` に v2 の入力(`{"schema_version": 2, "proposals": [...]}`。各企画は `schema_version: 2` と `quality` を持つ。形式は03章「save-proposals の入力(v2)」参照)を書き、`save-proposals` で検証・保存する。選抜HOTがあるのに企画を作らない日は `deferral_reason` に理由を書く。選抜0件の日も、`{"schema_version": 2, "proposals": []}` で `save-proposals` を実行する(結果は `stage_results` に保留・未実行として記録され、成功とは区別される)。
 
 ### review-daily-report
 
@@ -38,7 +38,7 @@ Claude Code / Codexのどちらでも、同じ調査Workflowを参照できる�
 
 ### article-ideation
 
-選抜HOTから技術記事企画を作る観点を共有する。Evidence URLなしの主張を避ける。
+選抜HOTから技術記事企画を作る観点と、v2 の企画で書く `quality`(検証の問い・比較対象と版・測定方法・成功/中止条件・根拠など)の書き方を共有する。Evidence URLなしの主張を避け、比較対象などのために追加したURLには `quality.evidence` の `claim` に役割を書く。
 
 ### trend-analysis
 

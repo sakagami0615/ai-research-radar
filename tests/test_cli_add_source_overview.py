@@ -123,11 +123,15 @@ def test_add_source_overview_records_write_error_when_saved_overviews_are_broken
     assert saved.read_text(encoding="utf-8") == "{broken"
 
 
-def test_add_source_overview_records_invalid_input_when_signals_are_broken(tmp_path: Path):
+def test_add_source_overview_records_corrupt_input_when_signals_are_broken(tmp_path: Path):
     data_dir = _setup(tmp_path)
-    (data_dir / "normalized" / DATE / "signals.jsonl").write_text("{broken\n", encoding="utf-8")
+    signals_path = data_dir / "normalized" / DATE / "signals.jsonl"
+    # A broken pipeline output (as in #18), not a problem of the agent's input file.
+    for content in (b'{"source": "github"}\n{broken\n', b'{"source": "github"}\n\xff\xfe\n'):
+        signals_path.write_bytes(content)
 
-    assert _add(data_dir, "--input", str(_input(tmp_path, {"github": "傾向"}))) == 1
+        assert _add(data_dir, "--input", str(_input(tmp_path, {"github": "傾向"}))) == 1
 
-    assert [error["type"] for error in _errors(data_dir)] == ["invalid_input"]
-    assert load_source_overviews(data_dir, DATE) == {}
+        assert [error["type"] for error in _errors(data_dir)] == ["corrupt_input"]
+        assert "signals.jsonl:2" in _errors(data_dir)[0]["message"]
+        assert load_source_overviews(data_dir, DATE) == {}
