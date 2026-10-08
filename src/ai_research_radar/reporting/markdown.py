@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 from typing import Any
@@ -28,7 +29,11 @@ def render_daily_report(
     signals: list[dict[str, Any]],
     digest: DailyDigest | None = None,
     display_timezone: tzinfo | None = None,
+    unreadable_files: Collection[str] = (),
 ) -> str:
+    """unreadable_files holds the names of the day's files that could not be read
+    (hot_candidates.jsonl / article_proposals.jsonl / signals.jsonl); their
+    sections get a note instead of reading as a real zero."""
     digest = digest or DailyDigest()
     selected_hot = [candidate for candidate in hot_candidates if candidate.selected]
     proposals_by_hot: dict[str, list[ArticleProposal]] = defaultdict(list)
@@ -38,7 +43,10 @@ def render_daily_report(
     lines = [f"# AI Daily Radar {date}", ""]
     lines.extend(_data_gaps_section(run))
     lines.extend(["## 選抜HOT", ""])
-    lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
+    if HOT_CANDIDATES_FILE in unreadable_files:
+        lines.extend([_unreadable_note(HOT_CANDIDATES_FILE), ""])
+    else:
+        lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
     proposal_result = _stage_result(run, "save-proposals")
     if selected_hot:
         shown = any(proposals_by_hot.get(candidate.hot_id) for candidate in selected_hot)
@@ -61,7 +69,10 @@ def render_daily_report(
         lines.extend([f"  - {reason}" for reason in candidate.reasons])
         lines.extend(_assessment_section(candidate.assessment))
         lines.extend(["", "#### Article Proposals", ""])
-        lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, []), deferral_reason))
+        if PROPOSALS_FILE in unreadable_files:
+            lines.extend([_unreadable_note(PROPOSALS_FILE), ""])
+        else:
+            lines.extend(_article_proposals_section(proposals_by_hot.get(candidate.hot_id, []), deferral_reason))
 
     lines.extend(_digest_warnings(digest))
     lines.extend(_notable_section(digest))
@@ -74,8 +85,17 @@ def render_daily_report(
         for error in run.errors:
             lines.append(f"- {error.get('source')}: {error.get('type')} - {error.get('message')}")
     lines.append("")
-    lines.extend(_source_appendix_section(run, signals))
+    lines.extend(_source_appendix_section(run, signals, SIGNALS_FILE in unreadable_files))
     return "\n".join(lines)
+
+
+HOT_CANDIDATES_FILE = "hot_candidates.jsonl"
+PROPOSALS_FILE = "article_proposals.jsonl"
+SIGNALS_FILE = "signals.jsonl"
+
+
+def _unreadable_note(file_name: str) -> str:
+    return f"{file_name} を読めなかったため表示できません(Errors を参照)。"
 
 
 def _stage_result(run: RunMetadata, stage: str) -> dict[str, Any] | None:
@@ -364,7 +384,7 @@ def _sanitize_url(url: str) -> str:
     return encoded.replace("\r", "%0D").replace("\n", "%0A")
 
 
-def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) -> list[str]:
+def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]], unreadable: bool = False) -> list[str]:
     lines = [
         "## 収集Source一覧",
         "",
@@ -372,6 +392,10 @@ def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]]) ->
         "Sourceごとに一覧化したものです。",
         "",
     ]
+    if unreadable:
+        # Per-source "(0件)" headings would read as a real zero, so none are shown.
+        lines.extend([_unreadable_note(SIGNALS_FILE), ""])
+        return lines
     if not run.sources:
         lines.append("本日は収集Signalがありません。")
         lines.append("")

@@ -14,7 +14,7 @@ from ai_research_radar.normalization.dedup import deduplicate_signals
 from ai_research_radar.normalization.scores import normalize_source_batch
 from ai_research_radar.pipeline.events import build_events, cluster_topics
 from ai_research_radar.schemas.models import canonical_signal_from_dict
-from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
+from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, write_jsonl
 
 COMMAND_NAME = "normalize"
 
@@ -37,7 +37,13 @@ def run(args: argparse.Namespace) -> int:
         print(f"missing collected signals: {collected_path}")
         return 1
 
-    signals = [canonical_signal_from_dict(record) for record in read_jsonl(collected_path)]
+    try:
+        signals = read_decoded_jsonl(collected_path, canonical_signal_from_dict)
+    except JsonlReadError as exc:
+        add_error(state, "normalize", "corrupt_input", str(exc))
+        save_run_state(data_dir, date, state)
+        print(f"cannot read collected signals: {exc}")
+        return 1
 
     signals = normalize_source_batch(signals)
     deduped = deduplicate_signals(signals)

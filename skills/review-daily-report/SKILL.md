@@ -36,6 +36,7 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - 選抜0件の日は、レポートの選抜HOTセクションに保留理由と確認範囲(「本日の選抜HOTはありません(保留: …。候補 m件中 n件を確認、未確認 k件)。」。候補0件の日は「…(保留: …。候補0件)。」)が出ており、Run SummaryのSelection行と食い違っていないか。選抜0件の日は、Run SummaryのProposals行が `not_run(選抜HOTなし)` になるのが正常であり、指摘しない。
 - 選抜HOTセクションに「選抜は未実行」「選抜は失敗」、または(選抜HOTがある日に)「記事企画は未実行」「記事企画の保存は失敗」が出ている場合は、保留ではなく実行・保存の漏れとして指摘する。失敗が実行Agentの再実行の上限(`agent-daily-run` の「エラー時の自己修正方針」の項目3)に達して残っている場合も指摘してよい(実行Agentは再実行せず修正不能として扱う)。
 - 選抜HOTセクションに「選抜結果が見つかりません(…)」が出ている場合(`select-hot` は `completed` なのに選抜HOTが0件)は、選抜結果の消失として指摘する。
+- レポートに「<ファイル名> を読めなかったため表示できません(Errors を参照)。」の注記(選抜HOTセクション・各選抜HOTの企画欄・収集Source一覧)が出ている場合、または `data/runs/<date>/run_state.json` の `errors` に `source: report` の `corrupt_input` がある場合は、当日のファイル(`hot_candidates.jsonl` / `article_proposals.jsonl` / `data/normalized/<date>/signals.jsonl`)の破損として指摘してよい。ただし、実行Agentはレポート生成の直後に1回だけ前のステージから流し直す(`agent-daily-run` の「壊れた入力(`corrupt_input`)」)ため、レビューの時点で残っているものは通常その上限に達しており、実行Agentは修正不能として扱う。`select-hot` / `save-proposals` の `failed` の理由が `corrupt_input: …` の場合も同じ。
 - 選抜HOTの評価ブロック(レポートの判断理由・根拠・未確認事項)が、根拠のURLの内容と対応しているか(必要に応じて根拠のURLを確認する)。
 - 評価レコードの各根拠について、取得ログに同じURLの行があり、そのいずれかの `fetched_at` が `checked_at` と一致するか(記録した時刻の裏付け。再取得で同じURLの行が複数あるのは正常)。
 - `checked_at` と一致した取得ログの行の `content_verified` が `false` なのに、根拠を `status: verified` としていないか(bot対策ページなど)。
