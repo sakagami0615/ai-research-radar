@@ -35,9 +35,16 @@ ai-radar daily \
   --hot-limit 5
 ```
 
+### 共通の引数
+
+- `--data-dir`(全サブコマンド)/ `--reports-dir`(`daily` と `report`): 省略時は `--runtime-config`(既定 `config/runtime.yaml`)の `output.data_dir` / `output.reports_dir`、それも無ければ `data` / `reports`。引数を指定した場合は設定ファイルより優先する。
+- `--runtime-config`: `runtime.yaml` のパス。ファイルが無い・読めない場合も止めず、既定値で続ける(下の「設定ファイル」)。
+- `--date`(`collect` / `daily` 以外): 対象日(`YYYY-MM-DD`)。
+- `run_state.json` が壊れている(JSONとして読めない、オブジェクトでない)場合は、どのサブコマンドも記録できないため、標準エラーに `error: <メッセージ>` を出して終了コード1で終わる。
+
 ### Agent経路のサブコマンド
 
-`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` を使う。各サブコマンドの引数とエラーは次の通り(選抜・記事企画・概要については05章「注目候補・新モデルリリースの概要補完」、Sourceごとの本日の傾向については05章「Sourceごとの本日の傾向」も参照)。
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` / `mark-needs-review` を使う。各サブコマンドの引数とエラーは次の通り(選抜・記事企画・概要については05章「注目候補・新モデルリリースの概要補完」、Sourceごとの本日の傾向については05章「Sourceごとの本日の傾向」も参照)。
 
 前のステージが出力したjsonlが壊れている場合の扱いは、`normalize` / `score` / `select-hot` / `save-proposals` / `add-source-overview` / `report` で共通である(Issue #18)。
 
@@ -47,13 +54,12 @@ ai-radar daily \
 - 各コマンドの記録の仕方は下の各項目のとおり。`report` 以外は終了コード1にし、出力ファイルは書き換えない。
 - CLIのコマンドを追加・変更して前のステージのjsonlを読むときも、`read_jsonl` の結果を個別にデコードせず `read_decoded_jsonl` を使い(`report` の `signals.jsonl` のようにデコーダを通さないファイルは `read_jsonl` のままでよい)、どちらの場合も `JsonlReadError` を捕まえて `corrupt_input` として記録する。捕まえないとトレースバックで終わり、`run_state.json` に何も残らない(Issue #18 の不具合)。
 
-- `normalize --date <date>`: `data/collected/<date>/signals.jsonl` を `canonical_signal_from_dict` で読む。ファイルがなければ `missing_input`、読めなければ `corrupt_input` を `errors`(`source: normalize`)に記録して終了コード1にする。出力の書き込みに失敗した場合は `write_error`。`stage_results` の対象外である。
-- `score --date <date>`: `data/events/<date>/events.jsonl` を `event_from_dict` で読む。エラーの種別と記録は `normalize` と同じ(`missing_input` / `corrupt_input` / `write_error`、`source: score`)。
+- `normalize --date <date>`: `data/collected/<date>/signals.jsonl` を `decode_signal` で読む。ファイルがなければ `missing_input`、読めなければ `corrupt_input` を `errors`(`source: normalize`)に記録して終了コード1にする。出力の書き込みに失敗した場合は `write_error`。`stage_results` の対象外である。
+- `score --date <date>`: `data/events/<date>/events.jsonl` を `decode_event` で読む。エラーの種別と記録は `normalize` と同じ(`missing_input` / `corrupt_input` / `write_error`、`source: score`)。
 
 - `select-hot --date <date> [--input <path>] [--limit <n>]`: `selection_input.json`(03章「SelectionInput」)を読み込んで検証し、当日の `hot_candidates.jsonl` の `selected` / `assessment` / `summary` を更新する。
   - `--input` を省略した場合は `<data-dir>/runs/<date>/selection_input.json` を読む。明示したパスは、`save-proposals --input` と同じくカレントディレクトリを基準にする。
   - `--limit` は選抜件数の上限で、既定値は2、範囲は0〜5。整数でない値は `invalid_input` にする(argparseの終了コード2ではなく `errors` に記録する)。範囲外も `invalid_input` にする。
-  - 旧オプション `--select` / `--reason` / `--summary` は廃止した。指定すると `deprecated_option` として、`selection_input.json` に assessments / screened_ids / selection_reason / summaries を書いて `select-hot --date <date>` を実行するよう促す移行メッセージを返す。
   - `summaries` で指定しなかった候補は既存の `summary` を保持し、指定した候補は(前後の空白を除いた値で)置き換える。`summaries` がdictでない、当日の候補にない `hot_id` がある、値が空または文字列でない場合は `invalid_summary` にする。
   - 選抜した候補に概要がない(`summaries` にも既存データにもない)場合は `missing_summary` にする。選抜外の候補に概要がない場合は、終了コード0のまま `run_state.json` の `errors` に `missing_summary_warning` として件数と `hot_id` を記録する。
   - `screened_ids` に含まれない(未確認の)候補があれば、終了コード0のまま `errors` に `unreviewed_candidates` として件数と `hot_id` を記録する。
@@ -62,7 +68,6 @@ ai-radar daily \
 
     | 種別 | 条件 | 終了コード |
     | --- | --- | --- |
-    | `deprecated_option` | 旧オプション `--select` / `--reason` / `--summary` を指定した | 1 |
     | `missing_input` | `hot_candidates.jsonl` または `selection_input.json` がない | 1 |
     | `invalid_input` | `--limit` が整数でない・範囲外、`selection_input.json` がJSONとして読めない、トップレベルの構造が不正 | 1 |
     | `corrupt_input` | `hot_candidates.jsonl` が読めない(UTF-8でない、JSONとして読めない行・オブジェクトでない行がある、`decode_hot` でデコードできない) | 1 |
@@ -83,28 +88,24 @@ ai-radar daily \
     | --- | --- | --- |
     | `missing_input` | `hot_candidates.jsonl` または `--input` のファイルがない | 1 |
     | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない | 1 |
-    | `deprecated_input` | 旧形式の入力(トップレベルが配列、トップレベルまたは企画の `schema_version` が `2` でない・ない)。v2 形式への移行を案内する | 1 |
-    | `invalid_input` | トップレベルがオブジェクトでない、未知のキーがある、`proposals` がない・リストでない | 1 |
+    | `invalid_input` | トップレベルがオブジェクトでない(配列など)、未知のキーがある、`schema_version` が整数の `2` でない・ない、`proposals` がない・リストでない | 1 |
     | `corrupt_input` | `hot_candidates.jsonl` が読めない(UTF-8でない、JSONとして読めない行・オブジェクトでない行がある、`decode_hot` でデコードできない) | 1 |
     | `invalid_input` | `deferral_reason` の欠落(選抜ありで企画0件なのにない・空・文字列でない)・余分(企画がある日・選抜0件の日にある) | 1 |
-    | `invalid_proposal` | 企画の内容が不正(`proposals` の要素がオブジェクトでない、必須項目の欠落・型の不正、`quality` の欠落・不正、選抜していないHOTへの企画、元の根拠URLを含まない、役割(`claim`)のない追加URL、HOTあたり4件以上、`proposal_id` の重複) | 1 |
+    | `invalid_proposal` | 企画の内容が不正(`proposals` の要素がオブジェクトでない、企画の `schema_version` が整数の `2` でない・ない、必須項目の欠落・型の不正、`quality` の欠落・不正、選抜していないHOTへの企画、元の根拠URLを含まない、役割(`claim`)のない追加URL、HOTあたり4件以上、`proposal_id` の重複) | 1 |
     | `write_error` | `article_proposals.jsonl` の書き込みに失敗した(メッセージは `failed to write article proposals: <例外>`) | 1 |
 
-  - `deprecated_input` は入力ファイルの形式の移行エラーである(`select-hot` / `add-summary` の `deprecated_option` は廃止したCLIオプションの移行エラーで、使い分ける)。
 
 - `add-summary --date <date> --input <path>`: 当日のレポートに表示する注目候補(過去日の候補など)・新モデルリリースの概要を `data/runs/<date>/digest_summaries.json` に保存する。パイプラインのステージ(`stages_completed`)としては扱わない。
   - `--input` は `{"<hot_id または key>": "概要"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/summary_input.json` に書く。新モデルリリースの `key` はクエリ文字列(`=` を含む)を持つことがあるため、コマンドライン引数ではなくファイルで渡す。
   - キーは、当日のレポートに表示される注目候補のうち候補自身が `summary` を持たないものの `hot_id`(候補自身の `summary` が優先されるため、それ以外への保存は表示に反映されない)と、表示される新モデルリリースの `key` に限る。`report --list-missing-summaries` の対象と、すでに補完済みの項目がこれに当たる。
   - 値は前後の空白を除いて保存し、同じキーは上書きする。
-  - 旧オプション `--summary` は廃止した。指定すると `deprecated_option` として、JSONファイルに書いて `--input` で渡すよう促す移行メッセージを返す。`--summary` の判定は他の検証より先に行う。
   - エラー時は `run_state.json` の `errors` に記録して終了コード1にし、`digest_summaries.json` は書き換えない。エラーの種別は次の通り。
 
     | 種別 | 条件 | 終了コード |
     | --- | --- | --- |
-    | `deprecated_option` | 旧オプション `--summary` を指定した | 1 |
-    | `invalid_summary` | `--input` の指定がない、中身が空のオブジェクト、対象外のキーがある、値が文字列でない・空 | 1 |
+    | `invalid_input` | `--input` の指定がない、ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない | 1 |
     | `missing_input` | `--input` のファイルがない | 1 |
-    | `invalid_input` | ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない | 1 |
+    | `invalid_summary` | 中身が空のオブジェクト、対象外のキーがある、値が文字列でない・空 | 1 |
     | `write_error` | `digest_summaries.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) | 1 |
 
 - `add-source-overview --date <date> --input <path>`: 収集Source一覧の各見出しに出す「本日の傾向」を `data/runs/<date>/source_overviews.json` に保存する(03章「Source Overviews記録」)。パイプラインのステージ(`stages_completed`)としては扱わない(`add-summary` と同じ)。
@@ -117,7 +118,8 @@ ai-radar daily \
 
     | 種別 | 条件 | 終了コード |
     | --- | --- | --- |
-    | `invalid_input` | `--input` の指定がない、ファイルがない・読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない | 1 |
+    | `invalid_input` | `--input` の指定がない、ファイルが読めない・UTF-8でない・JSONとして解釈できない、トップレベルがオブジェクトでない | 1 |
+    | `missing_input` | `--input` のファイルがない | 1 |
     | `corrupt_input` | 当日の `data/normalized/<date>/signals.jsonl` が読めない(UTF-8・JSON・オブジェクトとして読めない、開けない。デコーダは通さない)。前のステージ(`normalize`)の出力の破損であり、入力ファイルを直しても解消しない | 1 |
     | `invalid_overview` | 中身が空のオブジェクト、レポートの見出しにないSource名、本文が文字列でない・空、そのSourceの当日の件数が0件 | 1 |
     | `write_error` | `source_overviews.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) | 1 |
@@ -127,26 +129,27 @@ ai-radar daily \
   - 上の3ファイルのいずれかが読めない場合は、そのファイルを欠けたデータ(空)として扱い、`corrupt_input`(`source: report`)を記録してレポートを生成する。該当するセクションの先頭に「<ファイル名> を読めなかったため表示できません(Errors を参照)。」と注記し、本当の0件と区別する(表示の詳細は03章「Daily Markdown Report」)。終了コードは、レポートを書けた場合は0のまま(`missing_stage` と同じ扱い)。ファイルを直して再実行すれば記録は消える。どのステージの出力が壊れているかはメッセージのパスで分かる。
   - レポートまたは `report_digest.json` の書き込みに失敗した場合は `report_write_error`(`source: report`)を記録し、終了コード1にする。
   - 直近3日分を集約する注目候補・新モデルリリース(05章「日次ダイジェスト」)は、読めない日を飛ばして警告に残す。当日の `hot_candidates.jsonl` が壊れている場合は、この警告と上の注記の両方に出る。
+  - `run_state.json` の `needs_review` が `true` なら、レポートの見出しの直後に要確認の警告を出す(03章「Daily Markdown Report」)。
 - `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(05章「注目候補・新モデルリリースの概要補完」参照)。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
+- `mark-needs-review --date <date>`: 品質レビューループ(`agent-daily-run` 手順9〜10)が3回で解消しなかったことを `run_state.json` に `needs_review: true` として記録する。`report` を実行するとレポートの冒頭に要確認の警告が出る(再生成しても消えない)。記録だけを行い、レポートは書き換えないため、続けて `report` を実行する。`errors` には何も記録しない。その日の `run_state.json` がない場合は(`--date` の打ち間違いで新しく作らないよう)何も書かずに終了コード1にする。`collect` は実行のはじめに `needs_review` を消す(その日の実行をやり直すため)。
 
 ## 設定ファイル
 
 設定は `config/` 配下に置く。
 
 - `sources.yaml`: Source一覧、family、adapter、keyword、RSS URL、新モデル検知の監視対象(公式feed、HF org、Ollama)など
-- `scoring.yaml`: HOT判定の重み、閾値、選抜数
+- `scoring.yaml`: HOT判定の重み(`hot_score`)、閾値と決定論経路の選抜数(`hot_selection.minimum_score` / `max_limit`)
 - `runtime.yaml`: 出力先(`output`)、レポートの表示用タイムゾーン(`runtime.timezone`、IANA名)、省略時の収集期間の上限日数(`collection.max_lookback_days`)などの実行時設定
-- `categories.yaml`: category定義の予約設定。現行MVPのPipelineはまだ読み込まず、公開SourceのカテゴリはAdapter側で付与する。
 
 CLI引数は設定ファイルより優先される。
 
-`runtime.timezone` は日次レポートのRun Summaryに出すPeriodの表示にだけ使う(期間の計算やファイル名の日付には使わない)。`ai-radar daily` と `ai-radar report` はどちらも `--runtime-config`(既定 `config/runtime.yaml`)から読み込む。`report` では、ファイルが無い・読めない、`runtime.timezone` が無い、タイムゾーン名が不正のいずれでもレポート生成を止めず、UTCで表示する(表記は `(UTC)`)。`daily` はこれまで通りruntime設定ファイルが無ければエラーになるが、`runtime.timezone` が無い・不正な場合は同じくUTCで表示する。
+`runtime.timezone` は日次レポートのRun Summaryに出すPeriodの表示にだけ使う(期間の計算やファイル名の日付には使わない)。`ai-radar daily` と `ai-radar report` はどちらも `--runtime-config`(既定 `config/runtime.yaml`)から読み込む。ファイルが無い・読めない、`runtime.timezone` が無い、タイムゾーン名が不正のいずれでも止めず、UTCで表示する(表記は `(UTC)`)。
 
-`collection.max_lookback_days` は `ai-radar daily` と `ai-radar collect` が `--runtime-config`(既定 `config/runtime.yaml`)から読み込む。正の整数でない場合は既定値7を使う。`collect` はファイルが無い・読めない場合も既定値7で続行する(`daily` はruntime設定ファイルが無ければこれまで通りエラー)。
+`collection.max_lookback_days` は `ai-radar daily` と `ai-radar collect` が `--runtime-config`(既定 `config/runtime.yaml`)から読み込む。正の整数でない場合は既定値7を使う。ファイルが無い・読めない場合も既定値7で続行する。
 
 ## cron想定
 
-推奨はcronから `claude -p` / `codex exec` を直接起動するAI Agent(Claude Code / Codex)経由の実行である(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` の実行、概要の作成・補完、Sourceごとの本日の傾向の作成、対象日の判定、レビュー・修正ループまでAgent自身が判断して行う。
+推奨はcronから `claude -p` / `codex exec` を直接起動するAI Agent(Claude Code / Codex)経由の実行である(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、`collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` / `mark-needs-review` の実行、概要の作成・補完、Sourceごとの本日の傾向の作成、対象日の判定、レビュー・修正ループまでAgent自身が判断して行う。
 
 `ai-radar`/`claude`/`codex` はいずれもPATH依存のコマンドであり、cronの実行環境には通常PATHが通っていないため、crontabファイル先頭に `PATH=` 行が必要になる。同日の多重実行(ログが混ざる)を防ぐため `flock -n` で排他制御し、レポート未生成時にcronの失敗通知が機能するよう末尾で `test -f` による確認を行う。
 
@@ -158,7 +161,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 
 - `codex` で実行する場合は `claude -p "..." --permission-mode bypassPermissions` を `codex exec "..." --sandbox workspace-write` に置き換えた別のcron行を使う(両方を同時に有効化しない)。
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
-- レポート生成後、Agent自身が別プロセスの `claude -p` / `codex exec` を起動して `skills/review-daily-report/SKILL.md` によるレビューを行わせ、指摘があれば自分自身で修正して最大3回まで再試行する(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければレポートに警告バナーを追加し `run_state.json` に `needs_review: true` を記録する。
+- レポート生成後、Agent自身が別プロセスの `claude -p` / `codex exec` を起動して `skills/review-daily-report/SKILL.md` によるレビューを行わせ、指摘があれば自分自身で修正して最大3回まで再試行する(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければ `ai-radar mark-needs-review` で `run_state.json` に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
 
 上記のレビュー起動(Agent自身が別プロセスの `claude -p` / `codex exec` を起動する手順)はcronからの起動を前提とする。対話セッション(IDE拡張のAuto Modeなど)内で `agent-daily-run` を手動実行する場合、Bash経由で `claude -p ... --permission-mode bypassPermissions` を新規起動しようとすると、そのセッション固有の権限分類器に「Create Unsafe Agents」として拒否されることがある。この場合は同一セッション内のsubagent(Agent機能)へレビューを委譲する代替手段で対応してよい。cronによる本番実行はこの制約を受けない独立プロセスであるため、設計自体は変更不要である。
 
@@ -190,4 +193,4 @@ MVPでは出力のローテーションや削除は自動化しない。cron運�
 
 ## コミット運用
 
-このプロジェクトでは、ユーザーが明示するまでコミットを作成しない。作業完了時は、変更内容、検証結果、レビュー状態を報告する。
+このプロジェクトでは、コミット・プッシュ(PR作成を含む)はユーザーに内容を伝えて承認を得てから行う。作業完了時は、変更内容、検証結果、レビュー状態を報告する。
