@@ -60,6 +60,22 @@ def load_runtime_config(path: Path) -> dict[str, Any]:
     return load_yaml_config(path)
 
 
+def load_runtime_config_or_default(path: Path) -> dict[str, Any]:
+    """runtime.yaml only holds defaults (directories, timezone, lookback days), so a
+    missing or broken file falls back to them instead of stopping a command."""
+    try:
+        return load_runtime_config(path)
+    except (OSError, ValueError, yaml.YAMLError):
+        return {}
+
+
+def resolve_output_dir(runtime: dict[str, Any], key: str, default: str) -> Path:
+    """Return `output.<key>` (data_dir / reports_dir), or `default` unless it is a non-empty string."""
+    section = runtime.get("output")
+    value = section.get(key) if isinstance(section, dict) else None
+    return Path(value) if isinstance(value, str) and value else Path(default)
+
+
 def resolve_display_timezone(runtime: dict[str, Any]) -> tzinfo:
     """Return `runtime.timezone` for displaying report times. A missing or
     invalid name falls back to UTC so a config typo never blocks the report."""

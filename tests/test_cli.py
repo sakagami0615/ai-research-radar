@@ -1,15 +1,13 @@
 from pathlib import Path
 from datetime import date
 
-import ai_research_radar.cli.main as cli_module
+import ai_research_radar.cli.commands.daily as daily_command
 from ai_research_radar.cli.main import main
 from ai_research_radar.sources.fixtures import FixtureAdapter
 
 
 def test_cli_daily_runs_with_fixture_source(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        cli_module,
-        "build_adapters",
+    monkeypatch.setattr(daily_command, "build_adapters",
         lambda configs: [
             FixtureAdapter(
                 source_name="github",
@@ -46,9 +44,7 @@ def test_cli_rejects_unknown_command():
 
 
 def test_cli_daily_writes_report_for_today_when_period_is_omitted(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        cli_module,
-        "build_adapters",
+    monkeypatch.setattr(daily_command, "build_adapters",
         lambda configs: [
             FixtureAdapter(
                 source_name="github",
@@ -75,9 +71,7 @@ def test_cli_daily_writes_report_for_today_when_period_is_omitted(tmp_path: Path
 
 
 def test_cli_daily_passes_runtime_timezone_to_report(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        cli_module,
-        "build_adapters",
+    monkeypatch.setattr(daily_command, "build_adapters",
         lambda configs: [
             FixtureAdapter(
                 source_name="github",
@@ -119,10 +113,8 @@ def test_cli_daily_resolves_default_period_from_previous_runs(tmp_path: Path, mo
         observed.update(data_dir=data_dir, max_lookback_days=max_lookback_days)
         return ("2026-09-24T00:00:00+00:00", "2026-09-25T00:00:00+00:00")
 
-    monkeypatch.setattr(cli_module, "resolve_default_period", fake_resolve)
-    monkeypatch.setattr(
-        cli_module,
-        "build_adapters",
+    monkeypatch.setattr("ai_research_radar.periods.resolve_default_period", fake_resolve)
+    monkeypatch.setattr(daily_command, "build_adapters",
         lambda configs: [
             FixtureAdapter(
                 source_name="github",

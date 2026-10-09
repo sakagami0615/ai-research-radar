@@ -5,14 +5,13 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from ai_research_radar.schemas.models import NOT_RUN_REASON, valid_stage_result
+from ai_research_radar.storage.files import atomic_write_text
 
 
 class RunStateError(ValueError):
@@ -70,11 +69,10 @@ def load_run_state(data_dir: Path, date: str, *, fill_stage_results: bool = True
         }
         _fill_stage_results(state)
         return state
-    with path.open("r", encoding="utf-8") as handle:
-        try:
-            state = json.load(handle)
-        except json.JSONDecodeError as exc:
-            raise RunStateError(f"{path} is corrupt or truncated: {exc}") from exc
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RunStateError(f"{path} is corrupt or unreadable: {exc}") from exc
     if not isinstance(state, dict):
         raise RunStateError(f"{path} is not a JSON object")
     if fill_stage_results:
@@ -83,16 +81,7 @@ def load_run_state(data_dir: Path, date: str, *, fill_stage_results: bool = True
 
 
 def save_run_state(data_dir: Path, date: str, state: dict[str, Any]) -> None:
-    path = run_state_path(data_dir, date)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w", dir=path.parent, delete=False, encoding="utf-8"
-    ) as handle:
-        json.dump(state, handle, ensure_ascii=False, sort_keys=True, indent=2)
-        handle.flush()
-        os.fsync(handle.fileno())
-        tmp_path = handle.name
-    os.replace(tmp_path, path)
+    atomic_write_text(run_state_path(data_dir, date), json.dumps(state, ensure_ascii=False, sort_keys=True, indent=2))
 
 
 def mark_stage_completed(state: dict[str, Any], stage: str) -> None:

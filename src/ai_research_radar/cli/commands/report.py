@@ -5,19 +5,17 @@ import json
 import sys
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime, timezone, tzinfo
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypeVar
 
-import yaml
-
-from ai_research_radar.cli.commands.run_state import (
-    add_error,
-    load_run_state,
-    reset_errors_for,
-    save_run_state,
+from ai_research_radar.cli.commands.common import (
+    add_runtime_arguments,
+    data_dir as resolve_data_dir,
+    reports_dir as resolve_reports_dir,
+    runtime_config,
 )
-from ai_research_radar.config.settings import load_runtime_config, resolve_display_timezone
+from ai_research_radar.config.settings import resolve_display_timezone
 from ai_research_radar.reporting.digest import (
     ModelRelease,
     NotableItem,
@@ -29,7 +27,9 @@ from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.reporting.source_overview import SOURCE_OVERVIEWS_FILENAME, load_source_overviews
 from ai_research_radar.schemas.decoders import decode_hot, decode_proposal
 from ai_research_radar.schemas.models import RunMetadata
+from ai_research_radar.storage.files import atomic_write_text
 from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, read_jsonl, write_jsonl
+from ai_research_radar.storage.run_state import add_error, load_run_state, reset_errors_for, save_run_state
 
 COMMAND_NAME = "report"
 
@@ -41,18 +41,17 @@ _STAGE_ORDER = ["collect", "normalize", "score", "select-hot", "save-proposals"]
 def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(COMMAND_NAME)
     parser.add_argument("--date", required=True)
-    parser.add_argument("--data-dir", default="data")
-    parser.add_argument("--reports-dir", default="reports")
-    parser.add_argument("--runtime-config", default="config/runtime.yaml")
+    add_runtime_arguments(parser, reports_dir=True)
     parser.add_argument(
         "--list-missing-summaries",
         action="store_true",
         help="print displayed notable items and model releases without a summary as JSON Lines, writing nothing",
     )
+    parser.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> int:
-    data_dir = Path(args.data_dir)
+    data_dir = resolve_data_dir(args)
     date = args.date
 
     if args.list_missing_summaries:
@@ -92,7 +91,7 @@ def run(args: argparse.Namespace) -> int:
     signals = read_or_empty(data_dir / "normalized" / date / "signals.jsonl", read_jsonl)
 
     started_at = datetime.fromisoformat(state["run_id"])
-    report_path = Path(args.reports_dir) / "daily" / f"{date}.md"
+    report_path = resolve_reports_dir(args) / "daily" / f"{date}.md"
 
     run_without_report = RunMetadata(
         run_id=state["run_id"],
@@ -118,17 +117,16 @@ def run(args: argparse.Namespace) -> int:
         run_without_report,
         signals,
         digest,
-        display_timezone=_display_timezone(Path(args.runtime_config)),
+        display_timezone=resolve_display_timezone(runtime_config(args)),
         unreadable_files=unreadable,
         source_overviews=source_overviews,
         source_overview_warning=source_overview_warning,
     )
 
     try:
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(markdown, encoding="utf-8")
+        atomic_write_text(report_path, markdown)
         save_digest_record(data_dir, date, digest)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         add_error(state, "report", "report_write_error", str(exc))
         save_run_state(data_dir, date, state)
         run_with_error = replace(run_without_report, errors=list(state["errors"]))
@@ -149,16 +147,6 @@ def _load_source_overviews(data_dir: Path, date: str) -> tuple[dict[str, str], s
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         path = data_dir / "runs" / date / SOURCE_OVERVIEWS_FILENAME
         return {}, f"{path}: {exc}"
-
-
-def _display_timezone(runtime_config: Path) -> tzinfo:
-    """The timezone only affects how the period is displayed, so an unreadable
-    runtime config falls back to UTC instead of blocking the report."""
-    try:
-        runtime = load_runtime_config(runtime_config)
-    except (OSError, ValueError, yaml.YAMLError):
-        return timezone.utc
-    return resolve_display_timezone(runtime)
 
 
 def _list_missing_summaries(data_dir: Path, date: str) -> int:

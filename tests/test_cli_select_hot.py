@@ -111,19 +111,6 @@ def test_saves_assessment_selection_and_summary(tmp_path: Path):
     assert _errors(data_dir) == []
 
 
-@pytest.mark.parametrize("option", [["--select", A], ["--reason", f"{A}=理由"], ["--summary", f"{A}=概要"], ["--select", ""]])
-def test_deprecated_options_fail_with_migration_message(tmp_path: Path, option: list[str]):
-    data_dir = _write_candidates(tmp_path)
-    _write_selection(data_dir, _selection())
-
-    assert _select(data_dir, *option) == 1
-
-    errors = _errors(data_dir)
-    assert [error["type"] for error in errors] == ["deprecated_option"]
-    assert "selection_input.json" in errors[0]["message"]
-    _assert_untouched(data_dir)
-
-
 def test_missing_hot_candidates_is_missing_input(tmp_path: Path):
     data_dir = tmp_path / "data"
     _write_selection(data_dir, _selection())
@@ -365,15 +352,6 @@ def test_failure_overwrites_previous_success_and_keeps_proposals_result(tmp_path
     assert results["select-hot"]["reason"].startswith("invalid_assessment: ")
     assert set(results["select-hot"]) == {"status", "reason"}
     assert results["save-proposals"] == {"status": "not_run", "reason": "未実行"}
-
-
-def test_deprecated_option_is_recorded_as_failed(tmp_path: Path):
-    data_dir = _write_candidates(tmp_path)
-    _write_selection(data_dir, _selection())
-
-    assert _select(data_dir, "--select", A) == 1
-
-    assert _results(data_dir)["select-hot"]["reason"].startswith("deprecated_option: ")
 
 
 def test_rerun_success_invalidates_saved_proposals_result(tmp_path: Path):

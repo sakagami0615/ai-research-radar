@@ -22,8 +22,9 @@ from ai_research_radar.schemas.models import (
     to_json_dict,
 )
 from ai_research_radar.scoring.hot import build_hot_candidates_from_events
-from ai_research_radar.sources.base import SourceAdapter, SourceError
-from ai_research_radar.sources.collection import collect_new_items
+from ai_research_radar.sources.base import SourceAdapter
+from ai_research_radar.sources.collection import collect_sources
+from ai_research_radar.storage.files import atomic_write_text
 from ai_research_radar.storage.jsonl import write_jsonl
 
 
@@ -53,55 +54,11 @@ def run_daily(
 ) -> DailyPipelineResult:
     started_at = datetime.now(timezone.utc)
     date = period_date(until)
-    raw_items: list[RawItem] = []
-    signals: list[CanonicalSignal] = []
-    errors: list[dict[str, str]] = []
-    input_counts: dict[str, int] = {}
-
-    for adapter in adapters:
-        try:
-            collected = collect_new_items(adapter, since, until, output_dir, date, use_overlap)
-        except SourceError as exc:
-            errors.append({"source": exc.source, "type": exc.error_type, "message": str(exc)})
-            continue
-        except Exception as exc:
-            errors.append(
-                {
-                    "source": adapter.source_name,
-                    "type": "unexpected_error",
-                    "message": str(exc),
-                }
-            )
-            continue
-        errors.extend(dict(error) for error in getattr(adapter, "partial_errors", []))
-
-        input_counts[adapter.source_name] = len(collected)
-        raw_items.extend(collected)
-        try:
-            write_jsonl(output_dir / "raw" / date / f"{adapter.source_name}.jsonl", collected)
-        except Exception as exc:
-            errors.append(
-                {
-                    "source": adapter.source_name,
-                    "type": "raw_write_error",
-                    "message": str(exc),
-                }
-            )
-        try:
-            normalized_items = [adapter.normalize(item) for item in collected]
-        except SourceError as exc:
-            errors.append({"source": exc.source, "type": exc.error_type, "message": str(exc)})
-            continue
-        except Exception as exc:
-            errors.append(
-                {
-                    "source": adapter.source_name,
-                    "type": "unexpected_error",
-                    "message": str(exc),
-                }
-            )
-            continue
-        signals.extend(normalized_items)
+    collection = collect_sources(adapters, since, until, output_dir, date, use_overlap)
+    raw_items = collection.raw_items
+    signals = collection.signals
+    errors = collection.errors
+    input_counts = collection.input_counts
 
     deduped_signals: list[CanonicalSignal] = []
     events: list[Event] = []
@@ -144,8 +101,8 @@ def run_daily(
     )
     try:
         digest = build_daily_digest(output_dir, date)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(
+        atomic_write_text(
+            report_path,
             render_daily_report(
                 date,
                 hot_candidates,
@@ -155,7 +112,6 @@ def run_daily(
                 digest,
                 display_timezone=display_timezone,
             ),
-            encoding="utf-8",
         )
         save_digest_record(output_dir, date, digest)
     except Exception as exc:

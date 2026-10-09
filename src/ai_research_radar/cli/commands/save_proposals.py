@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ai_research_radar.cli.commands.run_state import (
-    add_error,
+from ai_research_radar.cli.commands.common import add_runtime_arguments, data_dir as resolve_data_dir, fail
+from ai_research_radar.storage.run_state import (
     load_run_state,
     mark_stage_completed,
     reset_errors_for,
@@ -21,32 +21,6 @@ from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, 
 COMMAND_NAME = "save-proposals"
 NO_SELECTION_REASON = "選抜HOTなし"
 _ALLOWED_KEYS = frozenset({"schema_version", "proposals", "deferral_reason"})
-_MIGRATION_MESSAGE = (
-    "入力が v2 形式ではありません(旧形式など)。{\"schema_version\": 2, \"proposals\": [...], \"deferral_reason\": \"...\"} の"
-    "オブジェクト形式にし、各企画に \"schema_version\": 2 と quality を書いてください"
-    "(deferral_reason は選抜HOTがあり企画が0件のときだけ書く)"
-)
-
-
-def _is_v2(value: dict) -> bool:
-    version = value.get("schema_version")
-    return type(version) is int and version == 2
-
-
-def _legacy_reason(payload: object) -> str | None:
-    """旧形式(v2への移行が必要)なら理由を返す。v2の判定ができない形は invalid_input に任せる。"""
-    if isinstance(payload, list):
-        return "input is a JSON array"
-    if not isinstance(payload, dict):
-        return None
-    if not _is_v2(payload):
-        return f"top-level schema_version is not 2: {payload.get('schema_version')!r}"
-    proposals = payload.get("proposals")
-    if isinstance(proposals, list):
-        for index, record in enumerate(proposals):
-            if isinstance(record, dict) and not _is_v2(record):
-                return f"proposal[{index}] schema_version is not 2: {record.get('schema_version')!r}"
-    return None
 
 
 def _structure_error(payload: object) -> str | None:
@@ -55,6 +29,9 @@ def _structure_error(payload: object) -> str | None:
     unknown = sorted(set(payload) - _ALLOWED_KEYS)
     if unknown:
         return f"unknown top-level key(s): {', '.join(unknown)}"
+    version = payload.get("schema_version")
+    if type(version) is not int or version != 2:
+        return f"schema_version must be the integer 2: {version!r}"
     if not isinstance(payload.get("proposals"), list):
         return "proposals must be a list"
     return None
@@ -76,20 +53,17 @@ def _deferral_error(payload: dict, has_selection: bool) -> str | None:
 def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(COMMAND_NAME)
     parser.add_argument("--date", required=True)
-    parser.add_argument("--data-dir", default="data")
     parser.add_argument("--input", required=True)
+    add_runtime_arguments(parser)
+    parser.set_defaults(func=run)
 
 
 def _fail(state: dict[str, Any], data_dir: Path, date: str, error_type: str, message: str) -> int:
-    add_error(state, COMMAND_NAME, error_type, message)
-    set_stage_result(state, COMMAND_NAME, "failed", f"{error_type}: {message}")
-    save_run_state(data_dir, date, state)
-    print(message)
-    return 1
+    return fail(state, data_dir, date, COMMAND_NAME, error_type, message, record_stage_result=True)
 
 
 def run(args: argparse.Namespace) -> int:
-    data_dir = Path(args.data_dir)
+    data_dir = resolve_data_dir(args)
     date = args.date
     hot_path = data_dir / "runs" / date / "hot_candidates.jsonl"
     input_path = Path(args.input)
@@ -108,9 +82,6 @@ def run(args: argparse.Namespace) -> int:
     except (OSError, UnicodeDecodeError) as exc:
         return _fail(state, data_dir, date, "invalid_input", f"cannot read input file {input_path}: {exc}")
 
-    legacy = _legacy_reason(payload)
-    if legacy:
-        return _fail(state, data_dir, date, "deprecated_input", f"{_MIGRATION_MESSAGE}: {legacy}")
     structure_error = _structure_error(payload)
     if structure_error:
         return _fail(state, data_dir, date, "invalid_input", structure_error)
@@ -136,7 +107,7 @@ def run(args: argparse.Namespace) -> int:
     proposals_path = data_dir / "runs" / date / "article_proposals.jsonl"
     try:
         write_jsonl(proposals_path, proposals)
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError) as exc:  # ValueError: e.g. text that cannot be encoded
         return _fail(state, data_dir, date, "write_error", f"failed to write article proposals: {exc}")
 
     if not has_selection:

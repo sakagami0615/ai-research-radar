@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 import ai_research_radar.cli.commands.collect as collect_command
-import ai_research_radar.cli.main as cli_module
+import ai_research_radar.cli.commands.daily as daily_command
 from ai_research_radar.cli.main import main
 from ai_research_radar.config.settings import SourceConfig
 from ai_research_radar.pipeline.daily import run_daily
@@ -122,9 +122,7 @@ class OverlapFixtureAdapter(FixtureAdapter):
 def test_cli_collect_applies_overlap_only_when_period_is_omitted(tmp_path: Path, monkeypatch):
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(collect_command, "build_adapters", lambda configs: [OverlapFixtureAdapter(calls)])
-    monkeypatch.setattr(
-        collect_command,
-        "resolve_default_period",
+    monkeypatch.setattr("ai_research_radar.periods.resolve_default_period",
         lambda data_dir, max_lookback_days: ("2026-09-25T00:00:00+00:00", "2026-09-26T00:00:00+00:00"),
     )
 
@@ -146,9 +144,7 @@ def test_cli_collect_drops_items_normalized_on_earlier_dates(tmp_path: Path, mon
     first = fixture[0]
     _write_normalized(data_dir, "2026-09-25", {"signal_id": f"{first['source']}:{first['raw_id']}", "metadata": {}})
     monkeypatch.setattr(collect_command, "build_adapters", lambda configs: [OverlapFixtureAdapter([])])
-    monkeypatch.setattr(
-        collect_command,
-        "resolve_default_period",
+    monkeypatch.setattr("ai_research_radar.periods.resolve_default_period",
         lambda data_dir, max_lookback_days: ("2026-09-25T00:00:00+00:00", "2026-09-26T00:00:00+00:00"),
     )
 
@@ -176,10 +172,8 @@ def test_run_daily_applies_overlap_when_enabled(tmp_path: Path):
 
 def test_cli_daily_applies_overlap_only_when_period_is_omitted(tmp_path: Path, monkeypatch):
     calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(cli_module, "build_adapters", lambda configs: [OverlapFixtureAdapter(calls)])
-    monkeypatch.setattr(
-        cli_module,
-        "resolve_default_period",
+    monkeypatch.setattr(daily_command, "build_adapters", lambda configs: [OverlapFixtureAdapter(calls)])
+    monkeypatch.setattr("ai_research_radar.periods.resolve_default_period",
         lambda data_dir, max_lookback_days: ("2026-09-25T00:00:00+00:00", "2026-09-26T00:00:00+00:00"),
     )
     common = ["--data-dir", str(tmp_path / "data"), "--reports-dir", str(tmp_path / "reports"), "--minimum-score", "0"]
