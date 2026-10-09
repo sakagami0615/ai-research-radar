@@ -78,6 +78,14 @@ def _proposal() -> ArticleProposal:
     )
 
 
+def _quality() -> dict:
+    return {
+        "question": "q", "difference": "d", "baseline": "b", "baseline_version": "1", "measurement": "m",
+        "inputs_and_environment": "e", "effort": "1日", "effort_assumptions": "a", "success_condition": "s",
+        "stop_condition": "x", "metrics": ["m"], "evidence": [], "unknowns": [],
+    }
+
+
 # --- normalize / score -------------------------------------------------------
 
 
@@ -152,7 +160,8 @@ def test_save_proposals_records_corrupt_hot_candidates_as_failed(tmp_path: Path,
     proposals_path = run_dir / "article_proposals.jsonl"
     _write_bytes(proposals_path, b'{"previous": true}\n')
     input_path = tmp_path / "draft_proposals.json"
-    input_path.write_text("[]", encoding="utf-8")
+    # v2 input (#11): an empty proposals list, so only the broken hot_candidates.jsonl can fail.
+    input_path.write_text(json.dumps({"schema_version": 2, "proposals": []}), encoding="utf-8")
 
     assert main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)]) == 1
 
@@ -168,10 +177,37 @@ def test_save_proposals_reads_selected_ids_through_the_decoder(tmp_path: Path):
     data_dir = tmp_path / "data"
     write_jsonl(data_dir / "runs" / DATE / "hot_candidates.jsonl", [_candidate()])
     input_path = tmp_path / "draft_proposals.json"
-    input_path.write_text(json.dumps([asdict(_proposal())], ensure_ascii=False), encoding="utf-8")
+    proposal = {**asdict(_proposal()), "schema_version": 2, "quality": _quality()}
+    input_path.write_text(json.dumps({"schema_version": 2, "proposals": [proposal]}, ensure_ascii=False), encoding="utf-8")
 
     assert main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)]) == 0
     assert _state(data_dir)["stage_results"]["save-proposals"]["status"] == "completed"
+
+
+def test_save_proposals_checks_input_format_before_reading_hot_candidates(tmp_path: Path):
+    """The agent's own input is checked first (as before #11): an old-format input is
+    deprecated_input even when hot_candidates.jsonl is also broken."""
+    data_dir = tmp_path / "data"
+    _write_bytes(data_dir / "runs" / DATE / "hot_candidates.jsonl", CORRUPTIONS["bad_json"])
+    input_path = tmp_path / "draft_proposals.json"
+    input_path.write_text("[]", encoding="utf-8")
+
+    assert main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)]) == 1
+
+    assert [e["type"] for e in _state(data_dir)["errors"] if e["source"] == "save-proposals"] == ["deprecated_input"]
+
+
+def test_save_proposals_reports_corrupt_hot_candidates_before_deferral_reason(tmp_path: Path):
+    """Whether deferral_reason is required depends on the selection, so a broken
+    hot_candidates.jsonl is reported as corrupt_input, not as a deferral_reason error."""
+    data_dir = tmp_path / "data"
+    _write_bytes(data_dir / "runs" / DATE / "hot_candidates.jsonl", CORRUPTIONS["bad_json"])
+    input_path = tmp_path / "draft_proposals.json"
+    input_path.write_text(json.dumps({"schema_version": 2, "proposals": [], "deferral_reason": "保留"}), encoding="utf-8")
+
+    assert main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)]) == 1
+
+    assert [e["type"] for e in _state(data_dir)["errors"] if e["source"] == "save-proposals"] == ["corrupt_input"]
 
 
 # --- report ------------------------------------------------------------------
@@ -378,3 +414,30 @@ def test_report_shows_failed_proposals_line_and_note_together(tmp_path: Path):
     section = _section(markdown, "選抜HOT")
     assert "記事企画の保存は失敗(write_error: disk full)。" in section
     assert "article_proposals.jsonl を読めなかったため表示できません(Errors を参照)。" in section
+
+
+def test_save_proposals_reports_structure_error_before_corrupt_hot_candidates(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_bytes(data_dir / "runs" / DATE / "hot_candidates.jsonl", CORRUPTIONS["bad_json"])
+    input_path = tmp_path / "draft_proposals.json"
+    input_path.write_text(json.dumps({"schema_version": 2, "proposals": [], "extra": 1}), encoding="utf-8")
+
+    assert main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)]) == 1
+
+    assert [e["type"] for e in _state(data_dir)["errors"] if e["source"] == "save-proposals"] == ["invalid_input"]
+
+
+def test_save_proposals_with_proposals_reports_corrupt_hot_candidates(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    run_dir = data_dir / "runs" / DATE
+    _write_bytes(run_dir / "hot_candidates.jsonl", CORRUPTIONS["bad_json"])
+    proposals_path = run_dir / "article_proposals.jsonl"
+    _write_bytes(proposals_path, b'{"previous": true}\n')
+    proposal = {**asdict(_proposal()), "schema_version": 2, "quality": _quality()}
+    input_path = tmp_path / "draft_proposals.json"
+    input_path.write_text(json.dumps({"schema_version": 2, "proposals": [proposal]}, ensure_ascii=False), encoding="utf-8")
+
+    assert main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)]) == 1
+
+    assert [e["type"] for e in _state(data_dir)["errors"] if e["source"] == "save-proposals"] == ["corrupt_input"]
+    assert proposals_path.read_bytes() == b'{"previous": true}\n'

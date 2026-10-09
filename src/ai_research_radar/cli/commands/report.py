@@ -26,6 +26,7 @@ from ai_research_radar.reporting.digest import (
     save_digest_record,
 )
 from ai_research_radar.reporting.markdown import render_daily_report
+from ai_research_radar.reporting.source_overview import SOURCE_OVERVIEWS_FILENAME, load_source_overviews
 from ai_research_radar.schemas.decoders import decode_hot, decode_proposal
 from ai_research_radar.schemas.models import RunMetadata
 from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, read_jsonl, write_jsonl
@@ -109,6 +110,7 @@ def run(args: argparse.Namespace) -> int:
     )
 
     digest = build_daily_digest(data_dir, date)
+    source_overviews, source_overview_warning = _load_source_overviews(data_dir, date)
     markdown = render_daily_report(
         date,
         hot_candidates,
@@ -118,6 +120,8 @@ def run(args: argparse.Namespace) -> int:
         digest,
         display_timezone=_display_timezone(Path(args.runtime_config)),
         unreadable_files=unreadable,
+        source_overviews=source_overviews,
+        source_overview_warning=source_overview_warning,
     )
 
     try:
@@ -136,6 +140,15 @@ def run(args: argparse.Namespace) -> int:
     write_jsonl(data_dir / "runs" / date / "run.jsonl", [final_run])
     print(report_path)
     return 0
+
+
+def _load_source_overviews(data_dir: Path, date: str) -> tuple[dict[str, str], str | None]:
+    """A broken source_overviews.json only hides the overviews (with a warning in the report)."""
+    try:
+        return load_source_overviews(data_dir, date), None
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        path = data_dir / "runs" / date / SOURCE_OVERVIEWS_FILENAME
+        return {}, f"{path}: {exc}"
 
 
 def _display_timezone(runtime_config: Path) -> tzinfo:

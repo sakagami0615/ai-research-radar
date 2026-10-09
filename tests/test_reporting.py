@@ -1145,3 +1145,218 @@ def test_run_summary_drops_trailing_period_of_deferred_proposal_reason():
     summary = _run_summary(render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED, deferred), []))
 
     assert "| Proposals | deferred(企画0件 / 理由: 環境なし) |" in summary
+
+
+def _overview_run(sources: list[str]) -> RunMetadata:
+    return replace(_run_with_single_github_source(), sources=sources)
+
+
+def _appendix(markdown: str) -> str:
+    return markdown[markdown.index("## 収集Source一覧") :]
+
+
+def _signal(source: str, title: str = "Repo") -> dict:
+    return {"source": source, "title": title, "url": f"https://example.com/{title}", "summary": "desc"}
+
+
+def test_source_appendix_shows_overview_directly_under_heading_outside_details():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overviews={"github": "エージェント系のリポジトリが多い。"},
+    )
+
+    assert "### github (1件)\n\nエージェント系のリポジトリが多い。\n\n<details>" in _appendix(markdown)
+
+
+def test_source_appendix_shows_placeholder_without_overview_and_zero_items_for_empty_source():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github", "arxiv"]), [_signal("github")],
+        source_overviews={"arxiv": "0件なのに書かれた傾向"},
+    )
+
+    appendix = _appendix(markdown)
+    assert "### github (1件)\n\n傾向未作成\n\n<details>" in appendix
+    assert "### arxiv (0件)\n\n収集0件\n\n<details>" in appendix
+    assert "0件なのに書かれた傾向" not in appendix
+    assert "該当Signalなし" in appendix
+
+
+def test_source_appendix_shows_overview_for_other_heading():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["other"]), [_signal("other"), _signal("hackernews", "HN")],
+        source_overviews={"other": "実在するotherの傾向", "_other": "未登録Sourceの傾向"},
+    )
+
+    appendix = _appendix(markdown)
+    assert "### other (1件)\n\n実在するotherの傾向\n\n<details>" in appendix
+    assert "### _other (1件)\n\n未登録Sourceの傾向\n\n<details>" in appendix
+
+
+def test_source_appendix_overview_is_escaped_with_line_breaks_and_not_truncated():
+    text = "# 見出しではない\r\n2行目 | <b>a\\b</b>\n" + "あ" * 200
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overviews={"github": f"  {text}  "},
+    )
+
+    expected = "\\# 見出しではない<br>2行目 \\| &lt;b&gt;a\\\\b&lt;/b&gt;<br>" + "あ" * 200
+    assert f"### github (1件)\n\n{expected}\n\n<details>" in _appendix(markdown)
+
+
+def test_source_appendix_overview_escapes_leading_ordered_list_marker():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overviews={"github": "1. 最初の傾向"},
+    )
+
+    assert "\n1\\. 最初の傾向\n" in _appendix(markdown)
+
+
+def test_source_appendix_shows_warning_when_overviews_could_not_be_read():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [_signal("github")],
+        source_overview_warning="data/runs/2026-09-25/source_overviews.json: broken | x",
+    )
+
+    appendix = _appendix(markdown)
+    assert "> ⚠️ 次のファイルを読めなかったため、本日の傾向を表示していません。" in appendix
+    assert "> - data/runs/2026-09-25/source_overviews.json: broken \\| x" in appendix
+    assert "### github (1件)\n\n傾向未作成" in appendix
+
+
+def _proposal_quality(**overrides) -> dict:
+    quality = {
+        "question": "ガードレールは誤検知を減らすか",
+        "difference": "既存方式は事後検査のみ",
+        "baseline": "Guardrails AI",
+        "baseline_version": "0.5.0",
+        "measurement": "同じ100件の入力で誤検知数を数える",
+        "inputs_and_environment": "公開データセットX、Python 3.13",
+        "effort": "2日",
+        "effort_assumptions": "APIキーなしで動く",
+        "success_condition": "誤検知数を比較できる",
+        "stop_condition": "サンプルが動かない",
+        "metrics": ["誤検知数", "処理時間"],
+        "evidence": [
+            {
+                "url": "https://example.com/agent-runtime",
+                "checked_at": "2026-09-25T00:00:00+00:00",
+                "target_version": None,
+                "status": "verified",
+                "kind": "primary",
+                "claim": "ガードレール機能を公開した",
+                "note": "",
+            },
+            {
+                "url": "https://example.com/guardrails",
+                "checked_at": "2026-09-25T00:00:00+00:00",
+                "target_version": "0.5.0",
+                "status": "verified",
+                "kind": "independent",
+                "claim": "比較対象 Guardrails AI の仕様",
+                "note": "",
+            },
+        ],
+        "unknowns": ["大規模入力での挙動"],
+    }
+    quality.update(overrides)
+    return quality
+
+
+def _v2_proposal(**quality_overrides) -> ArticleProposal:
+    return _free_text_proposal(schema_version=2, quality=_proposal_quality(**quality_overrides))
+
+
+def test_v2_proposal_shows_every_quality_row():
+    markdown = render_daily_report("2026-09-25", [_selected_hot()], [_v2_proposal()], _run_with_single_github_source(), [])
+
+    assert "| 検証の問い | ガードレールは誤検知を減らすか |" in markdown
+    assert "| 既存との差分 | 既存方式は事後検査のみ |" in markdown
+    assert "| 比較対象と版 | Guardrails AI(版: 0.5.0) |" in markdown
+    assert "| 測定方法 | 同じ100件の入力で誤検知数を数える |" in markdown
+    assert "| 入力・環境 | 公開データセットX、Python 3.13 |" in markdown
+    assert "| 工数と前提 | 2日(前提: APIキーなしで動く) |" in markdown
+    assert "| 成功条件 | 誤検知数を比較できる |" in markdown
+    assert "| 中止条件 | サンプルが動かない |" in markdown
+    assert "| 指標 | ・誤検知数<br>・処理時間 |" in markdown
+    assert "| 未確認事項 | ・大規模入力での挙動 |" in markdown
+    assert (
+        "| 確認した根拠 | [https://example.com/agent-runtime](<https://example.com/agent-runtime>)"
+        "(verified / primary):ガードレール機能を公開した"
+        "<br>[https://example.com/guardrails](<https://example.com/guardrails>)"
+        "(verified / independent):比較対象 Guardrails AI の仕様 |"
+    ) in markdown
+    assert "品質評価" not in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def test_v2_proposal_quality_rows_follow_evidence_row():
+    markdown = render_daily_report("2026-09-25", [_selected_hot()], [_v2_proposal()], _run_with_single_github_source(), [])
+
+    assert markdown.index("| Evidence |") < markdown.index("| 検証の問い |") < markdown.index("| 確認した根拠 |")
+
+
+def test_v2_proposal_shows_none_for_empty_unknowns_and_evidence():
+    markdown = render_daily_report(
+        "2026-09-25", [_selected_hot()], [_v2_proposal(unknowns=[], evidence=[])], _run_with_single_github_source(), []
+    )
+
+    assert "| 未確認事項 | なし |" in markdown
+    assert "| 確認した根拠 | なし |" in markdown
+
+
+def test_v2_proposal_escapes_quality_text():
+    proposal = _v2_proposal(question="A | B\n<b>", metrics=["x|y"])
+
+    markdown = render_daily_report("2026-09-25", [_selected_hot()], [proposal], _run_with_single_github_source(), [])
+
+    assert "| 検証の問い | A \\| B<br>&lt;b&gt; |" in markdown
+    assert "| 指標 | ・x\\|y |" in markdown
+    assert "<b>" not in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def test_v2_proposal_reads_broken_quality_defensively():
+    proposal = _free_text_proposal(schema_version=2, quality={"question": 1, "metrics": "x", "evidence": [1, {"url": "https://e.test"}]})
+
+    markdown = render_daily_report("2026-09-25", [_selected_hot()], [proposal], _run_with_single_github_source(), [])
+
+    assert "| 検証の問い | - |" in markdown
+    assert "| 比較対象と版 | -(版: -) |" in markdown
+    assert "| 指標 | - |" in markdown
+    assert "| 確認した根拠 | [https://e.test](<https://e.test>)( / ):(主張未記載) |" in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def test_legacy_proposal_is_marked_unevaluated():
+    markdown = render_daily_report("2026-09-25", [_selected_hot()], [_free_text_proposal()], _run_with_single_github_source(), [])
+
+    assert "| 品質評価 | 旧形式のため未評価 |" in markdown
+    assert "検証の問い" not in markdown
+    _assert_tables_well_formed(markdown)
+
+
+def test_deterministic_v1_proposal_is_marked_unevaluated_and_keeps_critique_rows():
+    from ai_research_radar.ideation.proposals import generate_article_proposals
+
+    hot = _selected_hot()
+    proposal = generate_article_proposals(hot, max_proposals=1)[0]
+
+    markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
+
+    assert "| Critique Score | " in markdown
+    assert "| 品質評価 | 旧形式のため未評価 |" in markdown
+
+
+def test_source_appendix_shows_only_the_note_when_signals_are_unreadable_even_with_overviews():
+    markdown = render_daily_report(
+        "2026-09-25", [], [], _overview_run(["github"]), [],
+        unreadable_files={"signals.jsonl"},
+        source_overviews={"github": "書かれていた傾向"},
+        source_overview_warning="data/runs/2026-09-25/source_overviews.json: broken",
+    )
+
+    appendix = _appendix(markdown)
+    assert "signals.jsonl を読めなかったため表示できません(Errors を参照)。" in appendix
+    for hidden in ("### github", "書かれていた傾向", "傾向未作成", "本日の傾向を表示していません"):
+        assert hidden not in appendix

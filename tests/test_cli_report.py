@@ -111,6 +111,7 @@ def _run_full_pipeline(tmp_path: Path, monkeypatch) -> Path:
     assert main(["select-hot", "--date", "2026-09-25", "--data-dir", str(data_dir), "--limit", "5"]) == 0
 
     proposal = {
+        "schema_version": 2,
         "proposal_id": f"{first_id}:proposal:1",
         "source_hot_id": first_id,
         "title_idea": "テスト企画",
@@ -125,9 +126,24 @@ def _run_full_pipeline(tmp_path: Path, monkeypatch) -> Path:
         "unique_angle": "テスト",
         "evidence_links": candidates[0]["evidence_urls"],
         "risks": ["テスト"],
+        "quality": {
+            "question": "テストの問い",
+            "difference": "テスト",
+            "baseline": "テスト",
+            "baseline_version": "1.0",
+            "measurement": "テスト",
+            "inputs_and_environment": "テスト",
+            "effort": "1日",
+            "effort_assumptions": "テスト",
+            "success_condition": "テスト",
+            "stop_condition": "テスト",
+            "metrics": ["テスト"],
+            "evidence": [],
+            "unknowns": [],
+        },
     }
     input_path = tmp_path / "proposals.json"
-    input_path.write_text(json.dumps([proposal], ensure_ascii=False), encoding="utf-8")
+    input_path.write_text(json.dumps({"schema_version": 2, "proposals": [proposal]}, ensure_ascii=False), encoding="utf-8")
     assert (
         main(
             [
@@ -169,6 +185,8 @@ def test_cli_report_renders_markdown_after_full_pipeline(tmp_path: Path, monkeyp
     assert "AI Daily Radar 2026-09-25" in report_text
     assert "## 注目候補(選抜外)" in report_text
     assert "## 新モデルリリース" in report_text
+    assert "| 検証の問い | テストの問い |" in report_text
+    assert "旧形式のため未評価" not in report_text
     assert (data_dir / "runs" / "2026-09-25" / "report_digest.json").exists()
 
     run = read_jsonl(data_dir / "runs" / "2026-09-25" / "run.jsonl")[0]
@@ -454,3 +472,85 @@ def test_cli_report_writes_not_run_stage_results_for_new_date(tmp_path: Path):
         "select-hot": {"status": "not_run", "reason": "未実行"},
         "save-proposals": {"status": "not_run", "reason": "未実行"},
     }
+
+
+def _write_source_overview_run(data_dir: Path, date: str) -> None:
+    from ai_research_radar.storage.jsonl import write_jsonl
+
+    save_run_state(
+        data_dir,
+        date,
+        {
+            "run_id": f"{date}T00:00:00+00:00",
+            "since": date,
+            "until": date,
+            "sources": ["github", "arxiv"],
+            "stages_completed": [],
+            "input_counts": {"github": 1},
+            "output_counts": {},
+            "errors": [],
+        },
+    )
+    write_jsonl(
+        data_dir / "normalized" / date / "signals.jsonl",
+        [{"source": "github", "title": "Repo", "url": "https://example.com/repo", "summary": "desc"}],
+    )
+
+
+def test_cli_report_shows_source_overviews_saved_by_add_source_overview(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_source_overview_run(data_dir, "2026-10-04")
+    overview_input = tmp_path / "source_overview_input.json"
+    overview_input.write_text(json.dumps({"github": "エージェント系が多い。"}, ensure_ascii=False), encoding="utf-8")
+    assert main(["add-source-overview", "--date", "2026-10-04", "--data-dir", str(data_dir), "--input", str(overview_input)]) == 0
+
+    _, report_text = _report(tmp_path, "2026-10-04")
+
+    assert "### github (1件)\n\nエージェント系が多い。\n\n<details>" in report_text
+    assert "### arxiv (0件)\n\n収集0件\n\n<details>" in report_text
+
+
+def test_cli_report_warns_and_shows_placeholder_when_source_overviews_are_broken(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_source_overview_run(data_dir, "2026-10-04")
+    (data_dir / "runs" / "2026-10-04" / "source_overviews.json").write_text("{broken", encoding="utf-8")
+
+    _, report_text = _report(tmp_path, "2026-10-04")
+
+    assert "> ⚠️ 次のファイルを読めなかったため、本日の傾向を表示していません。" in report_text
+    assert "source_overviews.json" in report_text
+    assert "### github (1件)\n\n傾向未作成\n\n<details>" in report_text
+
+
+def test_cli_report_shows_only_the_note_without_overviews_when_signals_are_broken(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_source_overview_run(data_dir, "2026-10-04")
+    overview_input = tmp_path / "source_overview_input.json"
+    overview_input.write_text(json.dumps({"github": "エージェント系が多い。"}, ensure_ascii=False), encoding="utf-8")
+    assert main(["add-source-overview", "--date", "2026-10-04", "--data-dir", str(data_dir), "--input", str(overview_input)]) == 0
+    (data_dir / "normalized" / "2026-10-04" / "signals.jsonl").write_text("{broken\n", encoding="utf-8")
+
+    run, report_text = _report(tmp_path, "2026-10-04")
+
+    appendix = report_text[report_text.index("## 収集Source一覧") :]
+    assert "signals.jsonl を読めなかったため表示できません(Errors を参照)。" in appendix
+    assert "### github" not in appendix
+    assert "エージェント系が多い。" not in appendix
+    assert "傾向未作成" not in appendix
+    assert any(error["source"] == "report" and error["type"] == "corrupt_input" for error in run["errors"])
+
+
+def test_cli_report_marks_legacy_proposals_as_unevaluated(tmp_path: Path, monkeypatch):
+    reports_dir = _run_full_pipeline(tmp_path, monkeypatch)
+    data_dir = tmp_path / "data"
+    proposals_path = data_dir / "runs" / "2026-09-25" / "article_proposals.jsonl"
+    # A proposal saved before #11 (no schema_version / quality) must still be readable.
+    legacy = read_jsonl(proposals_path)[0]
+    del legacy["schema_version"], legacy["quality"]
+    proposals_path.write_text(json.dumps(legacy, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    assert main(["report", "--date", "2026-09-25", "--data-dir", str(data_dir), "--reports-dir", str(reports_dir)]) == 0
+
+    report_text = (reports_dir / "daily" / "2026-09-25.md").read_text(encoding="utf-8")
+    assert "| 品質評価 | 旧形式のため未評価 |" in report_text
+    assert "検証の問い" not in report_text
