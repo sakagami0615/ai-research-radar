@@ -588,7 +588,7 @@ def test_article_proposals_escape_pipes_newlines_and_html_in_cells_and_headings(
 
     markdown = render_daily_report("2026-09-25", [hot], [proposal], _run_with_single_github_source(), [])
 
-    assert "##### 1. A | B &lt;script&gt;x&lt;/script&gt;" in markdown
+    assert "##### 1. A \\| B &lt;script&gt;x&lt;/script&gt;" in markdown
     assert "| 1 | A \\| B<br>&lt;script&gt;x&lt;/script&gt; |" in markdown
     assert "| Why Now | line1<br>line2 \\| &lt;b&gt; |" in markdown
     assert "| Risks | ・r1 \\| r2 |" in markdown
