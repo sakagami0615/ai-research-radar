@@ -20,7 +20,9 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 実行手順
 
-実行時は`SelectionInput`と`ProposalQuality`を[03章](../../docs/specs/03-data-model-and-storage.md)の共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。レビュー対象は`review_target.json`で固定し、レビュー担当は原成果物を編集せず`review_result.json`だけを返す。初回をattempt 1として最大3回まで修正し、起動失敗・記録なし・3回後の重要指摘は承認しない。
+実行時は`SelectionInput`と`ProposalQuality`を[03章](../../docs/specs/03-data-model-and-storage.md)の共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。品質レビューは別プロセスのレビュー担当に任せ、`data/runs/<date>/review_feedback.md` の有無だけで承認・要修正を判定する(手順9)。初回を1回目として最大3回まで修正し、レビュー担当の起動失敗や3回後に残った指摘を承認扱いにしない。
+
+コマンドが失敗したとき、ファイルが壊れていたとき、レビューで指摘を受けたときの対応は [recovery.md](recovery.md) にまとめている。**どのコマンドでも終了コード1で終わったとき、または `run_state.json` の `errors` を見てコマンドの再実行を考えたときは、再実行する前に必ず recovery.md を読む**(再実行の回数の上限と、再実行してはいけない場合が書いてある)。各手順で「recovery.md の〜」とある場合も同じ。
 
 1. 対象日を判定する。`date +%F` を実行し、今日の日付(`YYYY-MM-DD`)を取得する。以降の手順ではこの日付を `<date>` として使う。`collect` の `--since` / `--until` は省略し、前回実行の終了時刻から実行時刻までを収集する(最大7日、初回も7日分)。明示的な期間で再実行する必要がある場合だけ、タイムゾーン付きISO 8601日時または日付を指定する。
 
@@ -30,11 +32,15 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
    `--since` / `--until` は省略する(省略時は前回実行から引き継いだ期間。詳細は `docs/specs/06-cli-and-operations.md`)。
 
+   `collect` は特定のSourceの取得に失敗しても終了コード0で終わり、`run_state.json` の `errors` にそのSourceのエラーを残す。この場合は再実行せずに手順2へ進む(recovery.md の「エラー時の自己修正方針」)。
+
 2. 正規化する。
 
    ```bash
    ai-radar normalize --date <date>
    ```
+
+   失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
 
 3. HOTスコアを計算する(まだ選抜はしない)。
 
@@ -42,9 +48,11 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar score --date <date> --scoring-config config/scoring.yaml
    ```
 
+   失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
+
 4. `data/runs/<date>/hot_candidates.jsonl` を読み、hot-detection Skillの判断方針に従って候補を確認し、判断を `data/runs/<date>/selection_input.json` に書く。
 
-   `hot_candidates.jsonl` 自体が壊れていて読めない場合は、自分で直さず、候補0件の内容(下記)で `selection_input.json` を書いて手順5を実行する。`select-hot` が `corrupt_input` を記録するので、「エラー時の自己修正方針」の「壊れた入力(`corrupt_input`)」に従う。このとき書いた候補0件の `selection_input.json` は仮のものなので、流し直しで作り直した候補に対しては再利用せず、手順4に従って書き直す。
+   `hot_candidates.jsonl` 自体が壊れていて読めない場合は、自分で直さず、候補0件の内容(下記)で `selection_input.json` を書いて手順5を実行する。`select-hot` が `corrupt_input` を記録するので、recovery.md の「壊れた入力(`corrupt_input`)」に従う。このとき書いた候補0件の `selection_input.json` は仮のものなので、流し直しで作り直した候補に対しては再利用せず、手順4に従って書き直す。
 
    例(候補を1件確認して選抜した場合。`hot_id` は `hot_candidates.jsonl` の値をそのまま使う):
 
@@ -170,9 +178,11 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar select-hot --date <date>
    ```
 
+   失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
+
    `data/runs/<date>/selection_input.json` を読み、評価レコードと概要を `hot_candidates.jsonl` に保存する。3件以上選抜する理由があるときだけ `--limit <n>`(最大5)を付ける(例: `ai-radar select-hot --date <date> --limit 3`)。
 
-   `--select` / `--reason` / `--summary` は廃止され、指定すると `deprecated_option` で失敗する。選抜・理由・概要はすべて `selection_input.json` に書く。
+   選抜・理由・概要はすべて `selection_input.json` に書く(`select-hot` に選抜を指定する引数はない)。
 
    `selection_input.json` はその日の判断の全体を表す。`select-hot` は実行のたびに、このファイルの内容で全候補の `selected` と評価レコードを置き換える(評価レコードがない候補は未選抜・未評価に戻る)。再実行するときは、既存の評価レコードを残したまま追加・修正する。評価を書き直した場合は、`assessed_at` を取り直す。
 
@@ -185,7 +195,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 6. 記事企画を作成する。
 
-   `data/runs/<date>/draft_proposals.json` に、次の形式(v2)のJSONオブジェクトを書く。配列(旧形式)や `schema_version` のない企画を書くと、手順7が `deprecated_input` で失敗する。
+   `data/runs/<date>/draft_proposals.json` に、次の形式(v2)のJSONオブジェクトを書く。配列や、トップレベルに `schema_version: 2` がない入力は手順7が `invalid_input` で、`schema_version: 2` のない企画は `invalid_proposal` で失敗する。
 
    ```json
    {
@@ -195,9 +205,9 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    }
    ```
 
-   どの形にするかは、`data/runs/<date>/hot_candidates.jsonl` に `selected: true` の候補があるかで決める(`save-proposals` はこのファイルの選抜で照合する)。`hot_candidates.jsonl` が壊れていて読めない場合(`select-hot` が `corrupt_input` で `failed` のまま進む場合)は、選抜HOTがない日として扱う(手順7の `save-proposals` も `corrupt_input` で `failed` になるが、「壊れた入力(`corrupt_input`)」の決まりに従う)。
+   どの形にするかは、`data/runs/<date>/hot_candidates.jsonl` に `selected: true` の候補があるかで決める(`save-proposals` はこのファイルの選抜で照合する)。`hot_candidates.jsonl` が壊れていて読めない場合(`select-hot` が `corrupt_input` で `failed` のまま進む場合)は、選抜HOTがない日として扱う(手順7の `save-proposals` も `corrupt_input` で `failed` になるが、recovery.md の「壊れた入力(`corrupt_input`)」の決まりに従う)。
 
-   - 選抜HOTがない日(手順5の `select-hot` が成功して選抜0件の日、または手順5の `select-hot` が再実行の上限(`corrupt_input` の場合は「壊れた入力(`corrupt_input`)」の流し直しの1回)に達して `failed` のまま進み、`hot_candidates.jsonl` に選抜がない日): 企画を作らずに `{"schema_version": 2, "proposals": []}` を書いて手順7へ進む。`deferral_reason` は書かない(書くと `invalid_input` で失敗する)。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。`select-hot` が `failed` のときは `selection_input.json` の `selected` に対して企画を作らない(`hot_candidates.jsonl` で選抜されていないため `invalid_proposal` になる)。
+   - 選抜HOTがない日(手順5の `select-hot` が成功して選抜0件の日、または手順5の `select-hot` が再実行の上限(`corrupt_input` の場合は recovery.md の「壊れた入力(`corrupt_input`)」の流し直しの1回)に達して `failed` のまま進み、`hot_candidates.jsonl` に選抜がない日): 企画を作らずに `{"schema_version": 2, "proposals": []}` を書いて手順7へ進む。`deferral_reason` は書かない(書くと `invalid_input` で失敗する)。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。`select-hot` が `failed` のときは `selection_input.json` の `selected` に対して企画を作らない(`hot_candidates.jsonl` で選抜されていないため `invalid_proposal` になる)。
    - 選抜HOTがあるのに企画を作らない日: `proposals` を `[]` にし、`deferral_reason` に作らない理由(例: 「一次情報で機能を確認できず、検証の問いを立てられないため保留」)を書く。理由はレポートに「記事企画なし(保留: <理由>)」として出る。作れない理由がない限り各選抜HOTに企画を作る。
    - それ以外(企画を1件以上作る日): `deferral_reason` を書かない(書くと `invalid_input` で失敗する)。
 
@@ -267,6 +277,8 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar save-proposals --date <date> --input data/runs/<date>/draft_proposals.json
    ```
 
+   失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
+
    選抜HOTがない日も `{"schema_version": 2, "proposals": []}` で実行する。`run_state.json` の `stage_results` に結果(企画あり=`completed`、選抜ありで企画0件=`deferred`(理由は `deferral_reason`)、選抜0件=`not_run`(選抜HOTなし))が記録される。
 
 8. 注目候補・新モデルリリースの概要を補完し、Sourceごとの「本日の傾向」を書いてから、レポートを生成する。
@@ -301,7 +313,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       ai-radar add-summary --date <date> --input data/runs/<date>/summary_input.json
       ```
 
-      保存後に a を1回だけ再実行して、何も出力されないことを確認する。それでも残る項目は、推測で書かずに「概要未作成(未確認: 時間内に確認できず)」と書いて同じ方法で保存し、a を再実行せずに c へ進む。この回数は、手順9bから手順8に戻るたびと、「壊れた入力(`corrupt_input`)」の流し直しで手順8に戻ったときに数え直す。
+      保存後に a を1回だけ再実行して、何も出力されないことを確認する。それでも残る項目は、推測で書かずに「概要未作成(未確認: 時間内に確認できず)」と書いて同じ方法で保存し、a を再実行せずに c へ進む。この回数は、手順9bから手順8に戻るたびと、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しで手順8に戻ったときに数え直す。
 
    c. 収集Source一覧のSourceごとに「本日の傾向」を書き、保存する。
 
@@ -313,7 +325,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       python3 skills/agent-daily-run/list_source_signals.py <date>
       ```
 
-      このスクリプトが「signals.jsonl を読めません」と出して終了コード1で終わった場合は、`data/normalized/<date>/signals.jsonl` が壊れている。ファイルを手で直したり、傾向を推測で書いたりせず、この手順cを飛ばして d へ進む(d の後の確認で `source: report` の `corrupt_input` として見つかり、「壊れた入力(`corrupt_input`)」に従って流し直す。流し直しの上限に達していれば、そのまま手順9へ進む。レポートの収集Source一覧は注記だけになり、傾向は表示されない)。
+      このスクリプトが「signals.jsonl を読めません」と出して終了コード1で終わった場合は、`data/normalized/<date>/signals.jsonl` が壊れている。ファイルを手で直したり、傾向を推測で書いたりせず、この手順cを飛ばして d へ進む(d の後の確認で `source: report` の `corrupt_input` として見つかり、recovery.md の「壊れた入力(`corrupt_input`)」に従って流し直す。流し直しの上限に達していれば、そのまま手順9へ進む。レポートの収集Source一覧は注記だけになり、傾向は表示されない)。
 
       続けて、件数が1件以上のSourceごとに、そのSourceの各Signalを `- タイトル | 概要(先頭200字) | URL` の形で出して読む(Source名は上の出力の見出しから `(N件)` を除いた名前)。
 
@@ -335,25 +347,22 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       ai-radar add-source-overview --date <date> --input data/runs/<date>/source_overview_input.json
       ```
 
-      手順9bから戻ってきた場合は、保存済みの傾向を書き直さなくてよい(指摘されたSourceは手順9bで直す)。`data/runs/<date>/source_overviews.json` にない、収集1件以上のSourceがあれば、それだけを書いて保存する。ただし、「壊れた入力(`corrupt_input`)」の流し直しで `collect` または `normalize` から流し直した後(手順9bの中で起きた場合を含む)は、Signalと件数が変わっているため、保存済みの傾向も含めて収集1件以上のすべてのSourceについて書き直して保存する。
+      手順9bから戻ってきた場合は、保存済みの傾向を書き直さなくてよい(指摘されたSourceは手順9bで直す)。`data/runs/<date>/source_overviews.json` にない、収集1件以上のSourceがあれば、それだけを書いて保存する。ただし、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しで `collect` または `normalize` から流し直した後(手順9bの中で起きた場合を含む)は、Signalと件数が変わっているため、保存済みの傾向も含めて収集1件以上のすべてのSourceについて書き直して保存する。
 
       書くSourceが1つもない場合(収集1件以上のSourceがない日、または手順9bから戻って未保存のSourceがない場合)は、`add-source-overview` を実行せずに d へ進む(空のオブジェクト `{}` を渡すと `invalid_overview` で失敗する)。
 
-      `add-source-overview` が失敗した場合は「エラー時の自己修正方針」に従う(`corrupt_input` は同方針の「壊れた入力(`corrupt_input`)」に従う)。再実行・流し直しの上限に達した場合は、保存できなかったSourceは「傾向未作成」のまま d へ進む。
+      `add-source-overview` が失敗した場合は recovery.md の「エラー時の自己修正方針」に従う(`corrupt_input` は同じファイルの「壊れた入力(`corrupt_input`)」に従う)。再実行・流し直しの上限に達した場合は、保存できなかったSourceは「傾向未作成」のまま d へ進む。
 
    d. レポートを生成する。
 
-      生成する前に `data/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば、そのまま生成する。`stage_results` にそのステージの記録がない場合(旧形式の `run_state.json`)も、そのまま生成する。
-      - `select-hot` が `not_run`(手順5を実行していない)の場合: `data/runs/<date>/hot_candidates.jsonl` があれば手順4〜7を1回だけ実行してから生成する。`normalize` / `score` の失敗で `hot_candidates.jsonl` がない場合は実行せずにそのまま生成する(レポートに「選抜は未実行」と出る)。
-      - `save-proposals` が `not_run`(理由: 選抜の再実行により無効、または未実行)の場合: 手順7だけを再実行してから生成する(`draft_proposals.json` がなければ先に手順6で作る)。ただし、上の項目で手順4〜7を実行した場合、または `hot_candidates.jsonl` がなくそのまま生成へ進む場合は、手順7を重ねて実行しない。手順7の再実行は1回だけとし、失敗した場合は下の `failed` の項目に従う。
-      - いずれかが `failed` の場合: 「エラー時の自己修正方針」に従って該当ステージだけを直して再実行する(回数の上限と数え方は同方針の項目3に従う)。上限に達している場合は、再実行せず `failed` を残したまま生成する(レポートに失敗として表示される)。ただし、理由が `corrupt_input: ...` の `failed` は、項目3ではなく同方針の「壊れた入力(`corrupt_input`)」に従う(流し直しは1回まで。上限に達していれば `failed` を残したまま生成する)。
+      生成する前に `data/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば(記録がない旧形式の `run_state.json` も)、そのまま生成する。それ以外の場合は、[recovery.md](recovery.md) の「レポート生成前の補完実行」に従ってから生成する。
 
       ```bash
       ai-radar report --date <date> --reports-dir reports
       ```
 
       生成した後、`data/runs/<date>/run_state.json` の `errors` に `source: report` かつ `type: corrupt_input` の記録があるか確認する。`report` は当日の `hot_candidates.jsonl` / `article_proposals.jsonl` / `data/normalized/<date>/signals.jsonl` が壊れていても、終了コード0でレポートを生成する(該当セクションに「<ファイル名> を読めなかったため表示できません(Errors を参照)。」と出る)ため、終了コードだけでは気づけない。`report` は実行のたびに自分の記録(`source: report`)を消して記録し直すため、ここで見える記録は直前の `report` の実行で見つかったものである。
-      - 記録があり、「壊れた入力(`corrupt_input`)」の流し直しをまだ行っていない場合: 同方針に従って流し直し(手順8のa〜dのやり直しを含む)、この確認をもう一度行う。
+      - 記録があり、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しをまだ行っていない場合: それに従って流し直し(手順8のa〜dのやり直しを含む)、この確認をもう一度行う。
       - 記録があり、流し直しを行った後の場合(上限到達): 何もせず、記録を残したまま手順9へ進む。
 
 9. `report` 完了後、成果物の質を別セッションのAgentにレビューさせる。
@@ -371,82 +380,29 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       - 存在しない場合: 承認。品質レビューループを終了し、完了確認へ進む。
       - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
-        記事企画・概要の書き直しなど必要な修正を自分自身で行う。修正の仕方は次のとおり。
-        - HOT選抜・手順4で書いた概要の修正: `selection_input.json` を書き直して `ai-radar select-hot` を再実行し、
-          `select-hot` が成功したら続けて必ず手順7の `save-proposals` も再実行する(`select-hot` が成功すると、それまでの記事企画の記録は「選抜の再実行により無効」になるため。概要だけの修正でも同じ)。
-          選抜した候補が変わった場合は、`save-proposals` の前に手順6に従って `draft_proposals.json` を作り直す(選抜0件になった場合は `{"schema_version": 2, "proposals": []}` にし、`deferral_reason` を消す)。
-          概要だけの修正で選抜が変わらない場合は、既存の `draft_proposals.json` のまま再実行してよい。
-          `select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため。手順6の `select-hot` が `failed` の場合の記述は手順5での失敗だけに当てはまる)。
-        - 記事企画だけの修正: `draft_proposals.json` を手順6の形式(v2)のまま書き直して手順7の `save-proposals` を再実行する。企画を0件にした・0件から作った場合は、手順6に従って `deferral_reason` を書く・消す。
-        - 手順8bで補完した概要の修正: `summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行する(上書きされる)。キーは `data/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。HOT選抜のやり直しなどで今はレポートに表示されていない項目のキーは書かない(1つでも含むと `invalid_summary` で全体が保存されない)。
-        - 手順8cで書いた本日の傾向の修正: `source_overview_input.json` に直すSourceと新しい傾向だけを書いて `add-source-overview --input` を再実行する(上書きされる)。Source名はレポートの見出しから `(N件)` を除いた名前(`other` / `_other` を含む)を使う。`add-source-overview` が再実行の上限(「エラー時の自己修正方針」の項目3。`corrupt_input` は同方針の「壊れた入力(`corrupt_input`)」の1回)に達して保存できず「傾向未作成」が残っていることへの指摘は、再実行せず、下の修正不能の項目と同じく扱う。
-        - `stage_results` の `failed` が再実行の上限(「エラー時の自己修正方針」の項目3、`corrupt_input` の `failed` は同方針の「壊れた入力(`corrupt_input`)」の1回)に達したため残っていることへの指摘、または上限に達して残った `corrupt_input`(`source: report` の記録やレポートの「…を読めなかったため表示できません」の注記)への指摘: 再実行せず、修正不能として扱う。
-          `review_feedback.md` に他の指摘がなければ、手順8・9aに戻らず手順10へ進む。他に直せる指摘があれば、それは従来どおり修正する。
+        記事企画・概要の書き直しなど必要な修正を自分自身で行う。修正の仕方は [recovery.md](recovery.md) の「レビュー指摘の直し方」に従う。
 
-        いずれの場合も(上の手順10へ進む場合を除く)手順8のa〜d(概要の補完、本日の傾向の作成、レポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
+        recovery.md で手順10へ進むとされた場合を除き、手順8のa〜d(概要の補完、本日の傾向の作成、レポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
-10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input`)だけが残った場合:
+10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input`)だけが残った場合は、未解消であることを記録し、レポートを生成し直す。
 
-    - `reports/daily/<date>.md` の冒頭に次のバナーを追記する(間に空行を1行挟んで元の内容を続ける):
+    ```bash
+    ai-radar mark-needs-review --date <date>
+    ```
 
-      ```
-      > ⚠️ **要確認**: 自動レビューで解消できなかった指摘があります。`data/runs/<date>/review_feedback.md` を確認してください。
-      ```
-    - `data/runs/<date>/run_state.json` を読み、`needs_review: true` を追加して書き戻す(既存のキー順・インデント幅など、このパイプラインの他の箇所での `run_state.json` の書式と揃えること)。
+    ```bash
+    ai-radar report --date <date> --reports-dir reports
+    ```
 
-## エラー時の自己修正方針
-
-`select-hot` / `save-proposals` / `add-summary` / `add-source-overview` がバリデーションエラー(終了コード1)を返した場合:
-
-1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別は次のとおり。
-   - `select-hot`: `deprecated_option` / `missing_input` / `invalid_input` / `corrupt_input` / `invalid_assessment` / `selection_limit_exceeded` / `invalid_summary` / `missing_summary` / `write_error`
-   - `save-proposals`: `missing_input` / `invalid_input`(`deferral_reason` の欠落・余分を含む)/ `deprecated_input`(配列や `schema_version` のない旧形式の入力を書いた。手順6のv2形式に書き直す)/ `corrupt_input` / `invalid_proposal`(メッセージの `proposal[<番号>]` が `proposals` の何番目(0始まり)の企画かを示す)/ `write_error`
-   - `add-summary`: `deprecated_option`(`--summary` を指定した。`--input` に移る)/ `missing_input` / `invalid_input` / `invalid_summary` / `write_error`
-   - `add-source-overview`: `invalid_input`(`--input` の指定がない、ファイルがない・JSONとして読めない、オブジェクトでない)/ `corrupt_input`(当日の `data/normalized/<date>/signals.jsonl` が読めない)/ `invalid_overview`(空のオブジェクト、見出しにないSource名、空の本文、収集0件のSource)/ `write_error`
-   - `select-hot` / `save-proposals` / `add-source-overview` の `corrupt_input` は自分が書いた入力ではなく、前のステージが出力したjsonl(`select-hot` / `save-proposals` は `hot_candidates.jsonl`、`add-source-overview` は `data/normalized/<date>/signals.jsonl`)の破損である。項目2・3ではなく、下の「壊れた入力(`corrupt_input`)」に従う。
-2. 原因に応じて `selection_input.json`・`draft_proposals.json`・`summary_input.json`・`source_overview_input.json` を修正し、再実行する。
-   - すでに手順7(`save-proposals`)を実行した後に `select-hot` を再実行して成功した場合は、続けて手順7も再実行する(選抜が変わった場合は先に手順6で `draft_proposals.json` を作り直す)。手順5の時点(まだ手順7を実行していない)では、通常どおり手順6へ進む。
-   - `add-summary` が `write_error` で失敗し、メッセージから `data/runs/<date>/digest_summaries.json` が壊れていると分かる場合は、そのファイルを `digest_summaries.json.broken` に名前を変えて退避し、手順8aからやり直す(退避したファイルの概要は失われるため、一覧に出た項目の概要を書き直す)。
-   - `add-source-overview` が `write_error` で失敗し、メッセージから `data/runs/<date>/source_overviews.json` が壊れていると分かる場合は、そのファイルを `source_overviews.json.broken` に名前を変えて退避し、手順8cの最初から(収集1件以上のすべてのSourceについて)傾向を書き直して保存する。
-3. 再実行は最大3回までとする(`corrupt_input` を除く。`corrupt_input` は下の「壊れた入力(`corrupt_input`)」の1回の上限に従い、この3回には数えない)。「3回」は、同じステージが終了コード1で失敗した後の修正再実行の回数を、その日の実行全体(手順5・7・8b・8c・8d・9bを通算)で数える。ステージではない `add-summary`(手順8b)・`add-source-overview`(手順8c)の失敗も同じく数え、上限に達したら、保存できなかった項目は概要未作成・傾向未作成のまま次の手順(8bは8c、8cは8d)へ進む。9bでレビュー指摘を受けて行う再実行そのものは数えない(9bの試行回数3回で別に上限がある)。ただし、その再実行が失敗した後の修正再実行は数える。上限に達したステージは `failed` を残したまま先へ進む。品質レビュー(手順9)で3回試行しても重要指摘が残る場合の扱いは手順10に従う(この3回は手順9bの試行回数であり、上の再実行回数とは別に数える)。レビュー担当の起動失敗・結果欠損は承認しない。未完了ステージを`missing_stage`として記録しても、保存失敗を成功扱いしない。
-
-`normalize` / `score` が終了コード1を返した場合も、内容を確認し可能なら1回だけ修正・再実行を試みる。それでも解決しない場合は諦めて手順8に進む。`errors` の種別が `corrupt_input` の場合は、下の「壊れた入力(`corrupt_input`)」に従う。
-
-`collect` はSource単位の失敗を継続処理する設計であり、`run_state.json` の `errors` にSource単位のエラー(例: 特定Sourceの HTTP エラー)が記録されていても、`collect` コマンド自体は正常に終了コード0を返す。この場合は**再実行しない**。個別Sourceのエラーは正常な運用結果であり、他のSourceの収集結果はそのまま後続手順(`normalize`以降)に使ってよい。`collect` を再実行してよいのは、コマンド自体が終了コード1を返した場合(`invalid`な引数など、通常は発生しない)と、下の「壊れた入力(`corrupt_input`)」で `data/collected/<date>/signals.jsonl` が壊れていた場合のみである。
-
-「エラー時の自己修正方針」が扱うのは構文・スキーマレベルの自己修正のみである。選抜内容や記事企画の「質」の妥当性を判断する別Agentによるレビュー・修正は、手順9〜10(品質レビューループ)で扱う。
-
-### 壊れた入力(`corrupt_input`)
-
-`corrupt_input` は、前のステージが出力したjsonlが壊れている(UTF-8として読めない、JSONとして読めない行・オブジェクトでない行がある、必須キーが欠けているなど)ことを表す。自分が書いた入力(`selection_input.json` / `draft_proposals.json` / `source_overview_input.json`)の不正である `invalid_input` とは違い、入力を書き直しても直らない。前のステージを再実行して、壊れたファイルを作り直す。
-
-- 気づく場面: `normalize` / `score` / `select-hot` / `save-proposals` / `add-source-overview` が終了コード1で `corrupt_input` を記録した場合、または手順8dの後の確認で `source: report` の `corrupt_input` が見つかった場合(`report` は終了コード0のまま)。
-- 壊れたファイルは、`errors` のメッセージの先頭のパス(`<path>:<行番号>: <内容>` または `<path>: <内容>`)で分かる。壊れたファイルを手で直したり削除したりせず、次の表の「再実行を始めるステージ」から流し直す。
-
-  | 壊れたファイル | 再実行を始めるステージ | 続けて流すステージ |
-  | --- | --- | --- |
-  | `data/collected/<date>/signals.jsonl` | `collect`(手順1と同じコマンド。`--since` / `--until` は省略してよい(当日の記録は前回実行として使わないため、同じ期間を取り直し、当日のファイルは上書きされる)。上の「`collect` は再実行しない」の段落の例外として認める) | `normalize` → `score` → 手順4〜7 → 手順8 |
-  | `data/normalized/<date>/signals.jsonl`、`data/events/<date>/events.jsonl` | `normalize`(手順2) | `score` → 手順4〜7 → 手順8 |
-  | `data/runs/<date>/hot_candidates.jsonl` | `score`(手順3) | 手順4〜7 → 手順8 |
-  | `data/runs/<date>/article_proposals.jsonl` | `save-proposals`(手順7。既存の `draft_proposals.json` のまま) | 手順8 |
-
-- `score` を再実行すると `hot_candidates.jsonl` が作り直され、選抜(`selected` / 評価レコード / 概要)が消える。このため `score` から後を流すときは、手順4〜7(候補の確認、`selection_input.json`、`select-hot`、記事企画、`save-proposals`)をやり直す。既存の `selection_input.json` は再利用してよいが(手順4で `hot_candidates.jsonl` が読めずに書いた候補0件の仮のものは再利用せず、書き直す)、作り直した候補とIDが合わずに `select-hot` が `invalid_assessment` になれば、手順4に従って書き直す(この書き直しは通常の自己修正(項目2・3)として数える)。
-- いつ気づいたかによって、流し直す範囲が変わる。
-  - 初回の手順2〜7の途中(下流のステージをまだ実行していない): 再実行を始めるステージから、手順どおり先へ進む。
-  - 手順8dの後の確認、手順8c・9bの中での `add-source-overview` の失敗、または手順8d(生成前の補完実行)・9bの中での `select-hot` / `save-proposals` の失敗: 表の「続けて流すステージ」をすべて流してから、手順8のa〜dをやり直す。
-- 複数のファイルが壊れている場合は、表で最も上流のステージから1回だけ流し直す(下流のファイルも作り直される)。
-- 流し直しの途中で `collect` / `normalize` / `score` が失敗した場合(再び `corrupt_input` になるなど)は、その失敗を残したまま、残りのステージは流さずに手順8へ進む。手順4〜7の途中の `select-hot` / `save-proposals` の失敗は、手順5〜7の既存の決まりに従う(自分の入力の誤り(`invalid_assessment` など)は項目2・3で直す。`select-hot` が再び `corrupt_input` で `failed` になった場合は上限に達しているため、手順6の「再実行の上限に達して `failed` のまま進む場合」に従う。このとき手順7の `save-proposals` も同じファイルを読むため `corrupt_input` で `failed` になるが、再実行せずに手順8へ進む)。
-- `collect` から流し直した結果、`collect` の標準出力に出る日付が `<date>` と違う場合(日付をまたいだ場合)は、`<date>` のファイルは作り直されていないため、残りのステージは流さずに手順8へ進み、その旨を完了報告に書く(流し直しの1回は使い切ったものとする)。
-- 上限: 流し直しは、その日の実行全体で **1回まで** とする(`normalize` / `score` の1回の決まりに揃える)。項目3の3回には数えない。流し直した後も `corrupt_input` が残る場合は、破損が繰り返す環境の問題の可能性が高いため、それ以上流し直さない。ステージの失敗(`failed`)や `report` の記録を残したまま先へ進み、レポートを生成する。
-- 上限に達して残った `corrupt_input` は修正不能として扱う。手順9bでレビューの指摘を受けても流し直さない(手順9bの修正不能の項目に従う)。完了報告に、壊れたファイルのパスとメッセージを書く。
+    `mark-needs-review` は `run_state.json` に `needs_review: true` を記録する。`report` はこれを読み、レポートの冒頭に「⚠️ 要確認」の警告と `review_feedback.md` の場所を出す。レポートや `run_state.json` を手で編集しない。
 
 ## 完了確認
 
 - `report` の標準出力(生成されたレポートのパス)を確認する。
 - `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
 - `data/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8dで上限まで再実行しても直らなかったもの)。
-- `errors` に `corrupt_input` が残っている場合は、完了報告に壊れたファイルのパスとメッセージを書く(「壊れた入力(`corrupt_input`)」の流し直しでも直らなかったもの)。
+- `errors` に `corrupt_input` が残っている場合は、完了報告に壊れたファイルのパスとメッセージを書く(recovery.md の「壊れた入力(`corrupt_input`)」の流し直しでも直らなかったもの)。
 - `errors` に `add-source-overview` のエラーが残っている場合、または手順8cを飛ばした場合は、「傾向未作成」のまま残ったSourceとその理由を完了報告に書く。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。
 - 手順8aで控えた新モデルリリースの対象件数が30件を超えていた場合は、その件数を完了報告に含める。

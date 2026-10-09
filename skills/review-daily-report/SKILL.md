@@ -36,9 +36,9 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - Source Familyが単一に偏ったまま選抜していないか(cross-source確認なし)。
 - 選抜0件の場合、その判断が妥当か(見落としがないか)も確認する。
 - 選抜0件の日は、レポートの選抜HOTセクションに保留理由と確認範囲(「本日の選抜HOTはありません(保留: …。候補 m件中 n件を確認、未確認 k件)。」。候補0件の日は「…(保留: …。候補0件)。」)が出ており、Run SummaryのSelection行と食い違っていないか。選抜0件の日は、Run SummaryのProposals行が `not_run(選抜HOTなし)` になるのが正常であり、指摘しない。
-- 選抜HOTセクションに「選抜は未実行」「選抜は失敗」、または(選抜HOTがある日に)「記事企画は未実行」「記事企画の保存は失敗」が出ている場合は、保留ではなく実行・保存の漏れとして指摘する。失敗が実行Agentの再実行の上限(`agent-daily-run` の「エラー時の自己修正方針」の項目3)に達して残っている場合も指摘してよい(実行Agentは再実行せず修正不能として扱う)。
+- 選抜HOTセクションに「選抜は未実行」「選抜は失敗」、または(選抜HOTがある日に)「記事企画は未実行」「記事企画の保存は失敗」が出ている場合は、保留ではなく実行・保存の漏れとして指摘する。失敗が実行Agentの再実行の上限(`agent-daily-run` の `recovery.md`「エラー時の自己修正方針」の項目3)に達して残っている場合も指摘してよい(実行Agentは再実行せず修正不能として扱う)。
 - 選抜HOTセクションに「選抜結果が見つかりません(…)」が出ている場合(`select-hot` は `completed` なのに選抜HOTが0件)は、選抜結果の消失として指摘する。
-- レポートに「<ファイル名> を読めなかったため表示できません(Errors を参照)。」の注記(選抜HOTセクション・各選抜HOTの企画欄・収集Source一覧)が出ている場合、または `data/runs/<date>/run_state.json` の `errors` に `source: report` の `corrupt_input` がある場合は、当日のファイル(`hot_candidates.jsonl` / `article_proposals.jsonl` / `data/normalized/<date>/signals.jsonl`)の破損として指摘してよい。ただし、実行Agentはレポート生成の直後など、その日の実行で1回だけ前のステージから流し直す(`agent-daily-run` の「壊れた入力(`corrupt_input`)」)ため、レビューの時点で残っているものは通常その上限に達しており、実行Agentは修正不能として扱う。`select-hot` / `save-proposals` の `failed` の理由が `corrupt_input: …` の場合も同じ。
+- レポートに「<ファイル名> を読めなかったため表示できません(Errors を参照)。」の注記(選抜HOTセクション・各選抜HOTの企画欄・収集Source一覧)が出ている場合、または `data/runs/<date>/run_state.json` の `errors` に `source: report` の `corrupt_input` がある場合は、当日のファイル(`hot_candidates.jsonl` / `article_proposals.jsonl` / `data/normalized/<date>/signals.jsonl`)の破損として指摘してよい。ただし、実行Agentはレポート生成の直後など、その日の実行で1回だけ前のステージから流し直す(`agent-daily-run` の `recovery.md`「壊れた入力(`corrupt_input`)」)ため、レビューの時点で残っているものは通常その上限に達しており、実行Agentは修正不能として扱う。`select-hot` / `save-proposals` の `failed` の理由が `corrupt_input: …` の場合も同じ。
 - 選抜HOTの評価ブロック(レポートの判断理由・根拠・未確認事項)が、根拠のURLの内容と対応しているか(必要に応じて根拠のURLを確認する)。
 - 評価レコードの各根拠について、取得ログに同じURLの行があり、そのいずれかの `fetched_at` が `checked_at` と一致するか(記録した時刻の裏付け。再取得で同じURLの行が複数あるのは正常)。
 - `checked_at` と一致した取得ログの行の `content_verified` が `false` なのに、根拠を `status: verified` としていないか(bot対策ページなど)。
@@ -66,7 +66,7 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
   - 傾向の内容が、そのSourceの一覧(タイトル・概要)と食い違っていないか(一覧にないテーマや項目を書いていないか、件数の多いテーマを取り違えていないか)。
   - 日本語で書かれているか(原文が英語以外のSourceも含む)。
   - おおむね200字以内(2〜3行)に収まっているか。大きく超えている場合だけ指摘する。
-  - 収集1件以上のSourceに「傾向未作成」が残っていないか。収集0件のSourceの「収集0件」は正常であり指摘しない。`data/runs/<date>/run_state.json` の `errors` に `add-source-overview` のエラーが残っている場合は、実行Agentが再実行の上限(`agent-daily-run` の「エラー時の自己修正方針」の項目3、`corrupt_input` は同方針の「壊れた入力(`corrupt_input`)」の1回)に達して保存できなかったものとして扱い、「傾向未作成」を指摘しない(指摘しても実行Agentは直せず、修正ループが解消されないまま終わるため)。収集Source一覧に「signals.jsonl を読めなかったため表示できません(Errors を参照)。」の注記だけが出ている場合は、見出しと一緒に傾向も出ないのが正常であり、傾向がないことは指摘しない(破損そのものの扱いは上の注記の観点に従う)。
+  - 収集1件以上のSourceに「傾向未作成」が残っていないか。収集0件のSourceの「収集0件」は正常であり指摘しない。`data/runs/<date>/run_state.json` の `errors` に `add-source-overview` のエラーが残っている場合は、実行Agentが再実行の上限(`agent-daily-run` の `recovery.md`「エラー時の自己修正方針」の項目3、`corrupt_input` は同じファイルの「壊れた入力(`corrupt_input`)」の1回)に達して保存できなかったものとして扱い、「傾向未作成」を指摘しない(指摘しても実行Agentは直せず、修正ループが解消されないまま終わるため)。収集Source一覧に「signals.jsonl を読めなかったため表示できません(Errors を参照)。」の注記だけが出ている場合は、見出しと一緒に傾向も出ないのが正常であり、傾向がないことは指摘しない(破損そのものの扱いは上の注記の観点に従う)。
   - 傾向は実行Agentが `source_overview_input.json` に書いて `add-source-overview --input` を再実行すれば直せるため、指摘対象にする。指摘するときは、Source名(見出しから `(N件)` を除いた名前)を書く。収集Source一覧の表(各Signalのタイトル・概要の原文)はCLIが決定論的に生成するため、表の内容そのものは指摘対象にしない。
 
 レポートの「注目候補(選抜外)」「新モデルリリース」セクションはCLIが決定論的に生成するものであり、実行Agentには修正手段がない。このため、これらのセクションの内容そのもの(どの項目が載るか、並び順、スコアなど)を `review_feedback.md` の指摘対象にしない(指摘すると修正ループが解消されないまま3回で終わる)。ただし、概要のうち当日に書かれたものは実行Agentが修正できるため、上記の概要の観点で指摘対象にする。
@@ -84,4 +84,4 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 
 `review_feedback.md` の存在有無だけが、`agent-daily-run` Skillを実行しているAgentにとっての「承認/要修正」の判定基準になる。この基準を厳密に守ること。
 
-新経路では`ReviewResult`を検証し、対象hash不一致は`stale`、起動失敗や結果欠損は`failed`とする。`approved`にCritical/Important指摘を含めない。原成果物を修正せず、結果JSONとfeedbackだけを出力する。
+レビュー担当は原成果物(レポート・jsonl・入力ファイル)を編集しない。書くのは `review_feedback.md` だけであり、それ以外の結果ファイル(JSONなど)は作らない。
