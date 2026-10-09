@@ -3,7 +3,6 @@ output:
   reports_dir: reports
 runtime:
   timezone: Asia/Tokyo
-  continue_on_source_error: true
 collection:
   # --since/--until省略時、前回実行のuntilから引き継ぐ上限日数(初回もこの日数分を集める)
   max_lookback_days: 7

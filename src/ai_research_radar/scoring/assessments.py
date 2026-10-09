@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from ai_research_radar.schemas.models import Event, HotCandidate
+from ai_research_radar.schemas.models import HotCandidate
 from ai_research_radar.schemas.quality import QualityValidationError, validate_assessment
 
 _ALLOWED_KEYS = frozenset({"assessments", "screened_ids", "selection_reason", "summaries"})
@@ -16,14 +16,6 @@ class SelectionError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
-
-
-def compute_discovery_candidates(events: list[Event]) -> list[HotCandidate]:
-    result = []
-    for event in events:
-        priority = float(event.quality.get("priority", 0)) if event.quality else 0.0
-        result.append(HotCandidate(f"hot:{event.event_id}", event.title, event.event_id.removeprefix("event:"), priority, ["discovery candidate; human/agent assessment required"], list(event.evidence), list(event.source_families), list(event.signals), False, 2, {**event.quality, "candidate_status": "discovery"}, None))
-    return result
 
 
 def _check_structure(selection: object) -> dict[str, Any]:

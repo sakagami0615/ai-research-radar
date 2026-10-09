@@ -41,32 +41,6 @@ class ProposalQuality(TypedDict):
     unknowns: list[str]
 
 
-class MetricRecord(TypedDict, total=False):
-    name: str
-    value: float | None
-    unit: str
-    observed_at: str
-    status: Literal["observed", "missing", "invalid"]
-    delta: float | None
-    interval_hours: float | None
-    previous_observed_at: str | None
-
-
-class SignalQuality(TypedDict, total=False):
-    relevance: RelevanceRecord
-    updated_at: str | None
-    period_basis: Literal["published_at", "updated_at"]
-    metrics: list[MetricRecord]
-    freshness_score: float | None
-    popularity_rank: float | None
-    rank_population: int
-    rank_all_zero: bool
-    priority: float
-    diagnostics: list[str]
-    identity: dict[str, Any]
-    source_kind: str
-
-
 class Assessment(TypedDict):
     hot_id: str
     decision: Literal["selected", "deferred", "rejected"]
@@ -86,17 +60,6 @@ class SelectionInput(TypedDict):
     screened_ids: list[str]
     selection_reason: str
     summaries: NotRequired[dict[str, str]]
-
-
-class ReviewResult(TypedDict):
-    status: Literal["approved", "changes_requested", "failed"]
-    run_id: str
-    reviewer: str
-    reviewer_run_id: str
-    reviewed_at: str
-    attempt_number: int
-    target_hashes: dict[str, str]
-    findings: list[dict[str, Any]]
 
 
 def _object(data: object) -> dict[str, Any]:

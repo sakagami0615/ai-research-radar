@@ -15,7 +15,6 @@ class SourceError(RuntimeError):
 class SourceAdapter(ABC):
     source_name: str
     source_family: str
-    collection_diagnostics: dict[str, object]
     # Hours re-read before `since` (see sources.collection.collect_new_items);
     # set from `overlap_hours` in sources.yaml by build_adapters.
     overlap_hours: int = 0
