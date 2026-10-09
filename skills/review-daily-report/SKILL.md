@@ -44,7 +44,11 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - 上の3点の不備(根拠があるのに取得ログが無い、`checked_at` と一致する行が無い、内容を確認できなかった取得を `verified` としている、など)は、実行Agentが取り直して直せるため、Importantとして指摘する。
 - `selection_reason` と確認範囲が妥当か(`hot_candidates.jsonl` のうち `screened_ids` にない候補は未確認であり、`unreviewed_candidates` の警告対象になる。未確認の候補が残っている場合、確認した範囲が `selection_reason` に書かれているか)。
 - 記事企画にEvidence URLなしの主張がないか。
-- 各 `article_proposals` の `evidence_links` が、対応するHOT候補(`source_hot_id` が一致するもの)の `evidence_urls` と整合しているか。
+- 各 `article_proposals` の `evidence_links` が、対応するHOT候補(`source_hot_id` が一致するもの)の `evidence_urls` と整合しているか。元のHOT候補にないURL(比較対象など)は、`quality.evidence` の `claim` に書かれた役割とURLの内容が合っているか。
+- v2の企画(`schema_version: 2`)の `quality`(レポートの詳細表の 検証の問い / 既存との差分 / 比較対象と版 / 測定方法 / 入力・環境 / 工数と前提 / 成功条件 / 中止条件 / 指標 / 未確認事項 / 確認した根拠)が、企画ごとに具体的か。題名の言い換えや定型文だけになっていないか、比較対象に版または固定日・条件があるか、確認した根拠の内容と企画の主張が対応しているか、確認していないことを未確認事項に書いているか(必要に応じて根拠のURLを確認する)。`quality.evidence` の `checked_at` と取得ログの突き合わせは、選抜HOTの評価レコードの根拠と同じ観点で確認する。
+- 競合・読者需要(`competition` / `traffic_opportunity`)を、調べた形跡がないのに「High」などと断定していないか(未調査なら「未調査」と書くのが正しい)。
+- 選抜HOTがあるのに企画が0件の場合(レポートの「記事企画なし(保留: <理由>)」、Run SummaryのProposals行の `deferred`)、その理由が妥当か。
+- 「品質評価: 旧形式のため未評価」の行は、過去日の旧形式の企画と決定論経路の企画に出る正常な表示であり、指摘しない。当日の `agent-daily-run` で保存した企画は必ずv2であり、この行は出ない。
 - 「使ってみた」だけに偏った企画になっていないか、日本語記事としての独自性があるか。
 - 選抜HOT・注目候補の概要(レポートの各項目の見出し直後の `> **概要**:`)について:
   - 概要がEvidence URLの内容と食い違っていないか(必要に応じてEvidence URLを確認する)。
