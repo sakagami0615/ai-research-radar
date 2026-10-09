@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ai_research_radar.storage.files import atomic_write_text
+
 SOURCE_OVERVIEWS_FILENAME = "source_overviews.json"
 
 
@@ -59,6 +61,4 @@ def load_source_overviews(data_dir: Path, date: str) -> dict[str, str]:
 def save_source_overviews(data_dir: Path, date: str, overviews: dict[str, str]) -> None:
     """Merge overviews into source_overviews.json (the same source is overwritten)."""
     merged = {**load_source_overviews(data_dir, date), **overviews}
-    path = data_dir / "runs" / date / SOURCE_OVERVIEWS_FILENAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(data_dir / "runs" / date / SOURCE_OVERVIEWS_FILENAME, json.dumps(merged, ensure_ascii=False, indent=2) + "\n")
