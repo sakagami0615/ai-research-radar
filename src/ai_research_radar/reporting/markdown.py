@@ -33,10 +33,14 @@ def render_daily_report(
     unreadable_files: Collection[str] = (),
     source_overviews: dict[str, str] | None = None,
     source_overview_warning: str | None = None,
+    review_feedback_path: str | None = None,
 ) -> str:
     """unreadable_files holds the names of the day's files that could not be read
     (hot_candidates.jsonl / article_proposals.jsonl / signals.jsonl); their
-    sections get a note instead of reading as a real zero."""
+    sections get a note instead of reading as a real zero.
+
+    review_feedback_path is given when the review loop ended with unresolved
+    findings (needs_review); a warning banner pointing to it opens the report."""
     digest = digest or DailyDigest()
     selected_hot = [candidate for candidate in hot_candidates if candidate.selected]
     proposals_by_hot: dict[str, list[ArticleProposal]] = defaultdict(list)
@@ -44,6 +48,8 @@ def render_daily_report(
         proposals_by_hot[proposal.source_hot_id].append(proposal)
 
     lines = [f"# AI Daily Radar {date}", ""]
+    if review_feedback_path:
+        lines.extend([_review_banner(review_feedback_path), ""])
     lines.extend(_data_gaps_section(run))
     lines.extend(["## 選抜HOT", ""])
     if HOT_CANDIDATES_FILE in unreadable_files:
@@ -99,6 +105,13 @@ def render_daily_report(
 HOT_CANDIDATES_FILE = "hot_candidates.jsonl"
 PROPOSALS_FILE = "article_proposals.jsonl"
 SIGNALS_FILE = "signals.jsonl"
+
+
+def _review_banner(review_feedback_path: str) -> str:
+    return (
+        "> ⚠️ **要確認**: 自動レビューで解消できなかった指摘があります。"
+        f"`{review_feedback_path}` を確認してください。"
+    )
 
 
 def _unreadable_note(file_name: str) -> str:

@@ -121,6 +121,7 @@ def run(args: argparse.Namespace) -> int:
         unreadable_files=unreadable,
         source_overviews=source_overviews,
         source_overview_warning=source_overview_warning,
+        review_feedback_path=_review_feedback_path(state, data_dir, date),
     )
 
     try:
@@ -147,6 +148,13 @@ def _load_source_overviews(data_dir: Path, date: str) -> tuple[dict[str, str], s
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         path = data_dir / "runs" / date / SOURCE_OVERVIEWS_FILENAME
         return {}, f"{path}: {exc}"
+
+
+def _review_feedback_path(state: dict, data_dir: Path, date: str) -> str | None:
+    """Path shown in the warning banner when `mark-needs-review` recorded needs_review."""
+    if state.get("needs_review") is not True:
+        return None
+    return str(data_dir / "runs" / date / "review_feedback.md")
 
 
 def _list_missing_summaries(data_dir: Path, date: str) -> int:
