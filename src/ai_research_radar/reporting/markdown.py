@@ -12,6 +12,7 @@ from ai_research_radar.reporting.digest import (
     DailyDigest,
     group_model_releases,
 )
+from ai_research_radar.reporting.source_overview import group_signals_by_source
 from ai_research_radar.schemas.models import (
     NOT_RUN_REASON,
     ArticleProposal,
@@ -30,6 +31,8 @@ def render_daily_report(
     digest: DailyDigest | None = None,
     display_timezone: tzinfo | None = None,
     unreadable_files: Collection[str] = (),
+    source_overviews: dict[str, str] | None = None,
+    source_overview_warning: str | None = None,
 ) -> str:
     """unreadable_files holds the names of the day's files that could not be read
     (hot_candidates.jsonl / article_proposals.jsonl / signals.jsonl); their
@@ -85,7 +88,11 @@ def render_daily_report(
         for error in run.errors:
             lines.append(f"- {error.get('source')}: {error.get('type')} - {error.get('message')}")
     lines.append("")
-    lines.extend(_source_appendix_section(run, signals, SIGNALS_FILE in unreadable_files))
+    lines.extend(
+        _source_appendix_section(
+            run, signals, source_overviews or {}, source_overview_warning, unreadable=SIGNALS_FILE in unreadable_files
+        )
+    )
     return "\n".join(lines)
 
 
@@ -384,7 +391,13 @@ def _sanitize_url(url: str) -> str:
     return encoded.replace("\r", "%0D").replace("\n", "%0A")
 
 
-def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]], unreadable: bool = False) -> list[str]:
+def _source_appendix_section(
+    run: RunMetadata,
+    signals: list[dict[str, Any]],
+    overviews: dict[str, str],
+    overview_warning: str | None,
+    unreadable: bool = False,
+) -> list[str]:
     lines = [
         "## 収集Source一覧",
         "",
@@ -393,7 +406,8 @@ def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]], un
         "",
     ]
     if unreadable:
-        # Per-source "(0件)" headings would read as a real zero, so none are shown.
+        # Per-source "(0件)" headings would read as a real zero, so none are shown
+        # (nor the per-source overviews, which sit under those headings).
         lines.extend([_unreadable_note(SIGNALS_FILE), ""])
         return lines
     if not run.sources:
@@ -401,30 +415,31 @@ def _source_appendix_section(run: RunMetadata, signals: list[dict[str, Any]], un
         lines.append("")
         return lines
 
-    known_sources = set(run.sources)
-    other_key = "other"
-    while other_key in known_sources:
-        other_key = f"_{other_key}"
-
-    by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for signal in signals:
-        source = signal.get("source", "")
-        key = source if source in known_sources else other_key
-        by_source[key].append(signal)
-
-    ordered_sources = list(run.sources)
-    if other_key in by_source:
-        ordered_sources.append(other_key)
-
-    for source in ordered_sources:
-        items = by_source.get(source, [])
-        lines.extend(_source_subsection(source, items))
+    if overview_warning:
+        lines.extend(
+            [
+                "> ⚠️ 次のファイルを読めなかったため、本日の傾向を表示していません。",
+                ">",
+                f"> - {_sanitize_summary(overview_warning)}",
+                "",
+            ]
+        )
+    for source, items in group_signals_by_source(list(run.sources), signals).items():
+        lines.extend(_source_subsection(source, items, overviews.get(source)))
     return lines
 
 
-def _source_subsection(source: str, items: list[dict[str, Any]]) -> list[str]:
+def _source_subsection(source: str, items: list[dict[str, Any]], overview: str | None) -> list[str]:
+    if not items:
+        overview_line = "収集0件"
+    elif overview and overview.strip():
+        overview_line = _overview_text(overview)
+    else:
+        overview_line = "傾向未作成"
     lines = [
         f"### {source} ({len(items)}件)",
+        "",
+        overview_line,
         "",
         "<details>",
         "<summary>一覧を表示</summary>",
@@ -442,6 +457,20 @@ def _source_subsection(source: str, items: list[dict[str, Any]]) -> list[str]:
             lines.append(f"| [{title}](<{url}>) | {summary} |")
     lines.extend(["", "</details>", ""])
     return lines
+
+
+def _overview_text(overview: str) -> str:
+    """Escape an agent-written source overview for its own paragraph line.
+
+    Same escaping as the table summary (backslash, angle brackets, pipe) but not
+    truncated, with newlines turned into <br>. The text starts the line, so a
+    leading block marker is escaped as in _inline_text.
+    """
+    text = overview.strip().replace("\\", "\\\\")
+    text = text.replace("<", "&lt;").replace(">", "&gt;").replace("|", "\\|")
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
+    text = _ORDERED_MARKER.sub(r"\1\\\2", text, count=1)
+    return _BLOCK_MARKER.sub(r"\\\1", text, count=1)
 
 
 _DETERMINISTIC_WHY_NOW = re.compile(

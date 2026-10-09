@@ -72,8 +72,9 @@ def test_run_daily_writes_jsonl_and_markdown(tmp_path: Path):
     assert "AI Daily Radar 2026-09-25" in result.report_path.read_text(encoding="utf-8")
     report_text = result.report_path.read_text(encoding="utf-8")
     assert "## 収集Source一覧" in report_text
-    assert "### github (1件)" in report_text
-    assert "### other (1件)" in report_text
+    # The deterministic path writes no source overviews.
+    assert "### github (1件)\n\n傾向未作成\n\n<details>" in report_text
+    assert "### other (1件)\n\n傾向未作成\n\n<details>" in report_text
     assert "## 注目候補(選抜外)" in report_text
     assert "## 新モデルリリース" in report_text
     assert "| Selection | 記録なし |" in report_text
