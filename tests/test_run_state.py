@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_research_radar.cli.commands.run_state import (
+from ai_research_radar.storage.run_state import (
     INVALIDATED_REASON,
     RunStateError,
     add_error,

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from ai_research_radar.normalization.relevance import restore_abstract
 from ai_research_radar.schemas.models import RawItem
 

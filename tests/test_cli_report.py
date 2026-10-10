@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from ai_research_radar.cli.commands.run_state import save_run_state
+from ai_research_radar.storage.run_state import save_run_state
 from ai_research_radar.cli.main import main
 from ai_research_radar.sources.fixtures import FixtureAdapter
 from ai_research_radar.storage.jsonl import read_jsonl

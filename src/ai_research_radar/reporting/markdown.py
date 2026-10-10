@@ -12,6 +12,7 @@ from ai_research_radar.reporting.digest import (
     DailyDigest,
     group_model_releases,
 )
+from ai_research_radar.reporting.escape import cell, heading, inline, paragraph, span, url
 from ai_research_radar.reporting.source_overview import group_signals_by_source
 from ai_research_radar.schemas.models import (
     NOT_RUN_REASON,
@@ -33,10 +34,14 @@ def render_daily_report(
     unreadable_files: Collection[str] = (),
     source_overviews: dict[str, str] | None = None,
     source_overview_warning: str | None = None,
+    review_feedback_path: str | None = None,
 ) -> str:
     """unreadable_files holds the names of the day's files that could not be read
     (hot_candidates.jsonl / article_proposals.jsonl / signals.jsonl); their
-    sections get a note instead of reading as a real zero."""
+    sections get a note instead of reading as a real zero.
+
+    review_feedback_path is given when the review loop ended with unresolved
+    findings (needs_review); a warning banner pointing to it opens the report."""
     digest = digest or DailyDigest()
     selected_hot = [candidate for candidate in hot_candidates if candidate.selected]
     proposals_by_hot: dict[str, list[ArticleProposal]] = defaultdict(list)
@@ -44,6 +49,8 @@ def render_daily_report(
         proposals_by_hot[proposal.source_hot_id].append(proposal)
 
     lines = [f"# AI Daily Radar {date}", ""]
+    if review_feedback_path:
+        lines.extend([_review_banner(review_feedback_path), ""])
     lines.extend(_data_gaps_section(run))
     lines.extend(["## 選抜HOT", ""])
     if HOT_CANDIDATES_FILE in unreadable_files:
@@ -58,18 +65,18 @@ def render_daily_report(
     for candidate in selected_hot:
         lines.extend(
             [
-                f"### {candidate.title}",
+                f"### {heading(candidate.title)}",
                 "",
                 _summary_quote(candidate.summary),
                 "",
                 f"- HOT Score: {candidate.score}",
-                f"- Topic: {candidate.topic}",
-                f"- Source Families: {', '.join(candidate.source_families)}",
-                f"- Evidence: {', '.join(candidate.evidence_urls)}",
+                f"- Topic: {span(candidate.topic)}",
+                f"- Source Families: {span(', '.join(candidate.source_families))}",
+                f"- Evidence: {', '.join(_evidence_link(item) for item in candidate.evidence_urls)}",
                 "- Reasons:",
             ]
         )
-        lines.extend([f"  - {reason}" for reason in candidate.reasons])
+        lines.extend([f"  - {inline(reason)}" for reason in candidate.reasons])
         lines.extend(_assessment_section(candidate.assessment))
         lines.extend(["", "#### Article Proposals", ""])
         if PROPOSALS_FILE in unreadable_files:
@@ -86,7 +93,7 @@ def render_daily_report(
         lines.append("なし")
     else:
         for error in run.errors:
-            lines.append(f"- {error.get('source')}: {error.get('type')} - {error.get('message')}")
+            lines.append(f"- {_error_line(error.get('source'), error.get('type'), error.get('message'))}")
     lines.append("")
     lines.extend(
         _source_appendix_section(
@@ -99,6 +106,13 @@ def render_daily_report(
 HOT_CANDIDATES_FILE = "hot_candidates.jsonl"
 PROPOSALS_FILE = "article_proposals.jsonl"
 SIGNALS_FILE = "signals.jsonl"
+
+
+def _review_banner(review_feedback_path: str) -> str:
+    return (
+        "> ⚠️ **要確認**: 自動レビューで解消できなかった指摘があります。"
+        f"`{review_feedback_path}` を確認してください。"
+    )
 
 
 def _unreadable_note(file_name: str) -> str:
@@ -124,7 +138,7 @@ def _with_reason(text: str, reason: str) -> str:
     """Return "<text>(<reason>)。", omitting the parentheses for the default "未実行" reason."""
     if not reason or reason == NOT_RUN_REASON:
         return f"{text}。"
-    return f"{text}({_inline_text(reason)})。"
+    return f"{text}({inline(reason)})。"
 
 
 def _selection_status(result: dict[str, Any] | None, has_selected: bool) -> list[str]:
@@ -136,7 +150,7 @@ def _selection_status(result: dict[str, Any] | None, has_selected: bool) -> list
         return [] if has_selected else ["選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。", ""]
     if status == "deferred":
         # The reason is followed by "。", so a trailing one written by the agent is dropped.
-        reason = _inline_text(_stage_reason(result)).rstrip("。") or "理由未記載"
+        reason = inline(_stage_reason(result)).rstrip("。") or "理由未記載"
         if _stage_count(result, "candidate_count") == "0":
             scope = "候補0件"
         else:
@@ -169,7 +183,7 @@ def _deferral_reason(result: dict[str, Any] | None) -> str | None:
     if result is None or result["status"] != "deferred":
         return None
     # The reason sits inside "(保留: ...)", so a trailing "。" written by the agent is dropped.
-    return _inline_text(_stage_reason(result)).rstrip("。") or "理由未記載"
+    return inline(_stage_reason(result)).rstrip("。") or "理由未記載"
 
 
 def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str]:
@@ -183,7 +197,7 @@ def _run_summary_section(run: RunMetadata, display_timezone: tzinfo) -> list[str
         ("Proposals", _proposals_summary(_stage_result(run, "save-proposals"))),
     ]
     lines = ["## Run Summary", "", "| 項目 | 内容 |", "| --- | --- |"]
-    lines.extend(f"| {label} | {_cell(value)} |" for label, value in rows)
+    lines.extend(f"| {label} | {cell(value)} |" for label, value in rows)
     lines.append("")
     return lines
 
@@ -254,7 +268,7 @@ def _digest_warnings(digest: DailyDigest) -> list[str]:
     if not digest.warnings:
         return []
     lines = ["> ⚠️ 次のファイルを読めなかったため、注目候補・新モデルリリースの集約から除外しました。", ">"]
-    lines.extend(f"> - {_sanitize_summary(warning)}" for warning in digest.warnings)
+    lines.extend(f"> - {span(warning)}" for warning in digest.warnings)
     lines.append("")
     return lines
 
@@ -271,9 +285,9 @@ def _notable_section(digest: DailyDigest) -> list[str]:
         return lines
     for item in digest.notable:
         candidate = item.candidate
-        title = _sanitize_title(candidate.title)
+        title = heading(candidate.title)
         if candidate.evidence_urls:
-            lines.append(f"### [{title}](<{_sanitize_url(candidate.evidence_urls[0])}>)")
+            lines.append(f"### [{title}](<{url(candidate.evidence_urls[0])}>)")
         else:
             lines.append(f"### {title}")
         lines.extend(
@@ -282,9 +296,9 @@ def _notable_section(digest: DailyDigest) -> list[str]:
                 _summary_quote(item.summary),
                 "",
                 f"- HOT Score: {candidate.score}",
-                f"- Source: {', '.join(item.sources) or '不明'}",
+                f"- Source: {span(', '.join(item.sources)) or '不明'}",
                 f"- 初出日: {item.first_seen}",
-                f"- Reasons: {', '.join(candidate.reasons)}",
+                f"- Reasons: {span(', '.join(candidate.reasons))}",
                 "",
             ]
         )
@@ -305,19 +319,23 @@ def _model_release_section(digest: DailyDigest) -> list[str]:
         lines.extend(["該当なし", ""])
         return lines
     for provider, releases, overflow in groups:
-        lines.extend([f"### {_sanitize_title(provider)}", ""])
+        lines.extend([f"### {heading(provider)}", ""])
         for release in releases:
-            title = _sanitize_title(release.title)
-            name = f"[{title}](<{_sanitize_url(release.url)}>)" if release.url else title
-            channel = _CHANNEL_LABELS.get(release.channel, release.channel or "不明")
-            published = (release.published_at or "")[:10] or "不明"
-            models = f" — 紹介モデル: {', '.join(_sanitize_title(model) for model in release.models)}" if release.models else ""
+            title = span(release.title)
+            name = f"[{title}](<{url(release.url)}>)" if release.url else title
+            channel = span(_CHANNEL_LABELS.get(release.channel, release.channel or "不明"))
+            published = span((release.published_at or "")[:10]) or "不明"
+            models = f" — 紹介モデル: {', '.join(span(model) for model in release.models)}" if release.models else ""
             lines.append(f"- {name} ({channel} / 公開日 {published}){models}")
             lines.append(f"  - 概要: {_summary_text(release.summary)}")
         if overflow:
             lines.append(f"- ほか{overflow}件(表示上限超過)")
         lines.append("")
     return lines
+
+
+def _error_line(source: object, error_type: object, message: object) -> str:
+    return f"{inline(source)}: {span(error_type)} - {span(message)}"
 
 
 def _data_gaps_section(run: RunMetadata) -> list[str]:
@@ -331,7 +349,7 @@ def _data_gaps_section(run: RunMetadata) -> list[str]:
     for error in run.errors:
         source = error.get("source")
         if source in missing_sources and source not in errors_by_source:
-            errors_by_source[source] = f"{error.get('type')} - {error.get('message')}"
+            errors_by_source[source] = f"{span(error.get('type'))} - {span(error.get('message'))}"
 
     lines = [
         "## データ欠落",
@@ -342,7 +360,7 @@ def _data_gaps_section(run: RunMetadata) -> list[str]:
     ]
     for source in missing_sources:
         reason = errors_by_source.get(source, "reason unknown")
-        lines.append(f"- {source}: {reason}")
+        lines.append(f"- {inline(source)}: {reason}")
     lines.append("")
     return lines
 
@@ -350,16 +368,12 @@ def _data_gaps_section(run: RunMetadata) -> list[str]:
 _SUMMARY_MAX_LENGTH = 120
 
 
-def _sanitize_summary(summary: str) -> str:
-    sanitized = summary.replace("\\", "\\\\")
-    sanitized = sanitized.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
-    sanitized = sanitized.replace("<", "&lt;").replace(">", "&gt;")
-    sanitized = sanitized.replace("|", "\\|")
-    if len(sanitized) > _SUMMARY_MAX_LENGTH:
-        sanitized = sanitized[:_SUMMARY_MAX_LENGTH] + "…"
-    if not sanitized:
-        return "(概要なし)"
-    return sanitized
+def _table_summary(summary: str) -> str:
+    """A source signal's summary in the appendix table, cut to 120 characters before escaping."""
+    text = " ".join(summary.split())
+    if len(text) > _SUMMARY_MAX_LENGTH:
+        text = text[:_SUMMARY_MAX_LENGTH] + "…"
+    return span(text) or "(概要なし)"
 
 
 def _summary_quote(summary: str) -> str:
@@ -368,27 +382,8 @@ def _summary_quote(summary: str) -> str:
 
 
 def _summary_text(summary: str) -> str:
-    # Callers always put a prefix before this text, so the block-marker escaping of
-    # _inline_text is not needed; this keeps every summary escaped the same way.
-    return " ".join(_sanitize_title(summary).split()) or "概要未作成"
-
-
-def _sanitize_title(title: str) -> str:
-    sanitized = title.replace("\\", "\\\\")
-    sanitized = sanitized.replace("<", "&lt;").replace(">", "&gt;")
-    sanitized = sanitized.replace("|", "\\|")
-    return sanitized.replace("[", "\\[").replace("]", "\\]")
-
-
-def _sanitize_url(url: str) -> str:
-    """Percent-encode angle brackets so a raw '>' cannot terminate the
-    surrounding <...> link-destination syntax early, and backslash, '|' and
-    newlines so they cannot escape the bracket or break the table row.
-    HTML-entity escaping (&lt;/&gt;) is deliberately not used here because the URL is a link
-    destination, not visible text, and entities would render literally in
-    some viewers instead of being resolved as part of the URL."""
-    encoded = url.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E").replace("|", "%7C")
-    return encoded.replace("\r", "%0D").replace("\n", "%0A")
+    # Callers always put a prefix before this text, so `span` (no block-marker escaping) is enough.
+    return span(summary) or "概要未作成"
 
 
 def _source_appendix_section(
@@ -420,7 +415,7 @@ def _source_appendix_section(
             [
                 "> ⚠️ 次のファイルを読めなかったため、本日の傾向を表示していません。",
                 ">",
-                f"> - {_sanitize_summary(overview_warning)}",
+                f"> - {span(overview_warning)}",
                 "",
             ]
         )
@@ -433,11 +428,11 @@ def _source_subsection(source: str, items: list[dict[str, Any]], overview: str |
     if not items:
         overview_line = "収集0件"
     elif overview and overview.strip():
-        overview_line = _overview_text(overview)
+        overview_line = paragraph(overview)
     else:
         overview_line = "傾向未作成"
     lines = [
-        f"### {source} ({len(items)}件)",
+        f"### {heading(source)} ({len(items)}件)",
         "",
         overview_line,
         "",
@@ -451,26 +446,12 @@ def _source_subsection(source: str, items: list[dict[str, Any]], overview: str |
         lines.append("| タイトル | 概要 |")
         lines.append("| --- | --- |")
         for item in items:
-            title = _sanitize_title(str(item.get("title", "")))
-            url = _sanitize_url(str(item.get("url", "")))
-            summary = _sanitize_summary(str(item.get("summary") or ""))
-            lines.append(f"| [{title}](<{url}>) | {summary} |")
+            title = span(str(item.get("title", "")))
+            link = url(str(item.get("url", "")))
+            summary = _table_summary(str(item.get("summary") or ""))
+            lines.append(f"| [{title}](<{link}>) | {summary} |")
     lines.extend(["", "</details>", ""])
     return lines
-
-
-def _overview_text(overview: str) -> str:
-    """Escape an agent-written source overview for its own paragraph line.
-
-    Same escaping as the table summary (backslash, angle brackets, pipe) but not
-    truncated, with newlines turned into <br>. The text starts the line, so a
-    leading block marker is escaped as in _inline_text.
-    """
-    text = overview.strip().replace("\\", "\\\\")
-    text = text.replace("<", "&lt;").replace(">", "&gt;").replace("|", "\\|")
-    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
-    text = _ORDERED_MARKER.sub(r"\1\\\2", text, count=1)
-    return _BLOCK_MARKER.sub(r"\\\1", text, count=1)
 
 
 _DETERMINISTIC_WHY_NOW = re.compile(
@@ -514,25 +495,25 @@ def _article_proposals_section(proposals: list[ArticleProposal], deferral_reason
     traces = [_parse_why_now(proposal.why_now) for proposal in proposals]
     lines = ["| # | 企画タイトル | Type | Role | Critique |", "| --- | --- | --- | --- | --- |"]
     for index, (proposal, trace) in enumerate(zip(proposals, traces), start=1):
-        role = _cell(trace.role) if trace else "-"
+        role = cell(trace.role) if trace else "-"
         critique = f"{trace.critique_score}/100" if trace else "-"
         lines.append(
-            f"| {index} | {_cell(proposal.title_idea)} | {_cell(proposal.article_type)} | {role} | {critique} |"
+            f"| {index} | {cell(proposal.title_idea)} | {cell(proposal.article_type)} | {role} | {critique} |"
         )
     lines.append("")
 
     for index, (proposal, trace) in enumerate(zip(proposals, traces), start=1):
-        lines.extend([f"##### {index}. {_heading(proposal.title_idea)}", ""])
+        lines.extend([f"##### {index}. {heading(proposal.title_idea)}", ""])
         lines.extend(["| 項目 | 内容 |", "| --- | --- |"])
-        rows = [("Type", _cell(proposal.article_type)), ("Target Reader", _cell(proposal.target_reader))]
+        rows = [("Type", cell(proposal.article_type)), ("Target Reader", cell(proposal.target_reader))]
         risks_value = _bullets(proposal.risks)
         if trace:
             rows.extend(
                 [
-                    ("Role", _cell(trace.role)),
+                    ("Role", cell(trace.role)),
                     ("Critique Score", f"{trace.critique_score}/100"),
                     ("Critique Notes", _bullets(trace.critique_notes)),
-                    ("Debate", "<br>".join(_cell(part) for part in trace.debate.split("; ", 2))),
+                    ("Debate", "<br>".join(cell(part) for part in trace.debate.split("; ", 2))),
                 ]
             )
             duplicated = {f"軽量Critique: {note}" for note in trace.critique_notes} | {f"Debate: {trace.debate}"}
@@ -542,15 +523,15 @@ def _article_proposals_section(proposals: list[ArticleProposal], deferral_reason
             else:
                 risks_value = _bullets(risks)
         else:
-            rows.append(("Why Now", _cell(proposal.why_now)))
+            rows.append(("Why Now", cell(proposal.why_now)))
         rows.extend(
             [
-                ("Technical Angle", _cell(proposal.technical_angle)),
+                ("Technical Angle", cell(proposal.technical_angle)),
                 ("Experiment Plan", _numbered(proposal.experiment_plan)),
-                ("Unique Angle", _cell(proposal.unique_angle)),
-                ("Competition", _cell(proposal.competition)),
-                ("Traffic Opportunity", _cell(proposal.traffic_opportunity)),
-                ("Technical Opportunity", _cell(proposal.technical_opportunity)),
+                ("Unique Angle", cell(proposal.unique_angle)),
+                ("Competition", cell(proposal.competition)),
+                ("Traffic Opportunity", cell(proposal.traffic_opportunity)),
+                ("Technical Opportunity", cell(proposal.technical_opportunity)),
                 ("Risks", risks_value),
                 ("Evidence", "<br>".join(_evidence_link(url) for url in _as_list(proposal.evidence_links)) or "-"),
             ]
@@ -572,7 +553,7 @@ def _quality_rows(proposal: ArticleProposal) -> list[tuple[str, str]]:
 
     def text(key: str) -> str:
         value = quality.get(key)
-        return _cell(value if isinstance(value, str) else "")
+        return cell(value if isinstance(value, str) else "")
 
     def items(key: str) -> list[str]:
         return [item for item in _list_of(quality.get(key)) if isinstance(item, str) and item.strip()]
@@ -594,58 +575,40 @@ def _quality_rows(proposal: ArticleProposal) -> list[tuple[str, str]]:
     ]
 
 
-_ORDERED_MARKER = re.compile(r"^(\d+)([.)])(?=\s)")
-# Any leading character that can open a block (heading, list, thematic break, code fence,
-# setext underline) is escaped; a backslash before ASCII punctuation always renders as-is.
-_BLOCK_MARKER = re.compile(r"^([#=+*_`~-])")
-
-
-def _inline_text(value: object) -> str:
-    """Escape agent-written text for one line of a Markdown list item.
-
-    Non-strings (hand-edited records) become empty, newlines collapse to spaces,
-    and a leading block marker is escaped so it stays plain text.
-    """
-    text = value if isinstance(value, str) else ""
-    escaped = " ".join(_escape_text(text).replace("|", "\\|").split())
-    escaped = _ORDERED_MARKER.sub(r"\1\\\2", escaped, count=1)
-    return _BLOCK_MARKER.sub(r"\\\1", escaped, count=1)
-
-
 def _list_of(value: object) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
 def _evidence_check_line(check: dict[str, Any]) -> str:
-    """One EvidenceCheck as "URL(status / kind):claim" (shared with #11's proposal evidence)."""
-    url = check.get("url")
-    link = _evidence_link(url) if isinstance(url, str) and url else "(URL未記載)"
-    claim = _inline_text(check.get("claim")) or "(主張未記載)"
-    return f"{link}({_inline_text(check.get('status'))} / {_inline_text(check.get('kind'))}):{claim}"
+    """One EvidenceCheck as "URL(status / kind):claim" (shared with the proposal evidence)."""
+    value = check.get("url")
+    link = _evidence_link(value) if isinstance(value, str) and value else "(URL未記載)"
+    claim = inline(check.get("claim")) or "(主張未記載)"
+    return f"{link}({inline(check.get('status'))} / {inline(check.get('kind'))}):{claim}"
 
 
 def _assessment_section(assessment: object) -> list[str]:
     """Agent assessment of a selected HOT, except assessor and assessed_at."""
     if not isinstance(assessment, dict):
         return []
-    lines = [f"- 判断理由: {_inline_text(assessment.get('reason')) or '(未記載)'}"]
+    lines = [f"- 判断理由: {inline(assessment.get('reason')) or '(未記載)'}"]
     relevance = assessment.get("relevance")
     if isinstance(relevance, dict):
-        terms = ", ".join(term for term in (_inline_text(item) for item in _list_of(relevance.get("matched_terms"))) if term)
+        terms = ", ".join(term for term in (inline(item) for item in _list_of(relevance.get("matched_terms"))) if term)
         lines.append(
-            f"- 関連性: {_inline_text(relevance.get('status'))}"
-            f"(方法: {_inline_text(relevance.get('method'))} / 一致語: {terms or 'なし'})"
+            f"- 関連性: {inline(relevance.get('status'))}"
+            f"(方法: {inline(relevance.get('method'))} / 一致語: {terms or 'なし'})"
         )
-        relevance_reason = _inline_text(relevance.get("reason"))
+        relevance_reason = inline(relevance.get("reason"))
         if relevance_reason:
             lines.append(f"  - {relevance_reason}")
     else:
         lines.append("- 関連性: 記録なし")
     lines.extend(
         [
-            f"- 新規性: {_inline_text(assessment.get('novelty')) or '(未記載)'}",
-            f"- 重要性: {_inline_text(assessment.get('importance')) or '(未記載)'}",
-            f"- 読者への影響: {_inline_text(assessment.get('reader_impact')) or '(未記載)'}",
+            f"- 新規性: {inline(assessment.get('novelty')) or '(未記載)'}",
+            f"- 重要性: {inline(assessment.get('importance')) or '(未記載)'}",
+            f"- 読者への影響: {inline(assessment.get('reader_impact')) or '(未記載)'}",
         ]
     )
     evidence = [item for item in _list_of(assessment.get("evidence")) if isinstance(item, dict)]
@@ -654,36 +617,13 @@ def _assessment_section(assessment: object) -> list[str]:
         lines.extend(f"  - {_evidence_check_line(item)}" for item in evidence)
     else:
         lines.append("- 根拠: なし")
-    unknowns = [text for text in (_inline_text(item) for item in _list_of(assessment.get("unknowns"))) if text]
+    unknowns = [text for text in (inline(item) for item in _list_of(assessment.get("unknowns"))) if text]
     if unknowns:
         lines.append("- 未確認事項:")
         lines.extend(f"  - {text}" for text in unknowns)
     else:
         lines.append("- 未確認事項: なし")
     return lines
-
-
-def _escape_text(text: str) -> str:
-    escaped = text.replace("\\", "\\\\")
-    escaped = escaped.replace("[", "\\[").replace("]", "\\]")
-    return escaped.replace("<", "&lt;").replace(">", "&gt;")
-
-
-def _cell(text: str) -> str:
-    """Escape a value for a single table cell. Newlines become <br> after
-    escaping so they cannot terminate the table row."""
-    escaped = _escape_text(str(text)).replace("|", "\\|")
-    escaped = escaped.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
-    return escaped or "-"
-
-
-def _heading(text: str) -> str:
-    escaped = _escape_text(str(text))
-    escaped = escaped.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
-    if escaped.endswith("#"):
-        # A trailing "#" would be consumed as the ATX heading's closing sequence.
-        escaped = escaped[:-1] + "\\#"
-    return escaped
 
 
 def _as_list(items: list[str] | str) -> list[str]:
@@ -694,14 +634,13 @@ def _as_list(items: list[str] | str) -> list[str]:
 
 def _bullets(items: list[str] | str) -> str:
     items = _as_list(items)
-    return "<br>".join(f"・{_cell(item)}" for item in items) or "-"
+    return "<br>".join(f"・{cell(item)}" for item in items) or "-"
 
 
 def _numbered(items: list[str] | str) -> str:
     items = _as_list(items)
-    return "<br>".join(f"{index}. {_cell(item)}" for index, item in enumerate(items, start=1)) or "-"
+    return "<br>".join(f"{index}. {cell(item)}" for index, item in enumerate(items, start=1)) or "-"
 
 
-def _evidence_link(url: str) -> str:
-    text = _cell(url)
-    return f"[{text}](<{_sanitize_url(url)}>)"
+def _evidence_link(value: str) -> str:
+    return f"[{cell(value)}](<{url(value)}>)"

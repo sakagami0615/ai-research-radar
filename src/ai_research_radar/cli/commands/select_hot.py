@@ -6,7 +6,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from ai_research_radar.cli.commands.run_state import (
+from ai_research_radar.cli.commands.common import add_runtime_arguments, data_dir as resolve_data_dir, fail
+from ai_research_radar.storage.run_state import (
     add_error,
     invalidate_proposals_result,
     load_run_state,
@@ -25,22 +26,15 @@ COMMAND_NAME = "select-hot"
 def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(COMMAND_NAME)
     parser.add_argument("--date", required=True)
-    parser.add_argument("--data-dir", default="data")
     parser.add_argument("--input", default=None)
     # Parsed by run() so that a non-integer is recorded as invalid_input instead of argparse exit 2.
     parser.add_argument("--limit", default="2")
-    # Removed options, accepted only to return a migration error (deprecated_option).
-    parser.add_argument("--select", default=None)
-    parser.add_argument("--reason", action="append", default=None)
-    parser.add_argument("--summary", action="append", default=None)
+    add_runtime_arguments(parser)
+    parser.set_defaults(func=run)
 
 
 def _fail(state: dict[str, Any], data_dir: Path, date: str, error_type: str, message: str) -> int:
-    add_error(state, COMMAND_NAME, error_type, message)
-    set_stage_result(state, COMMAND_NAME, "failed", f"{error_type}: {message}")
-    save_run_state(data_dir, date, state)
-    print(message)
-    return 1
+    return fail(state, data_dir, date, COMMAND_NAME, error_type, message, record_stage_result=True)
 
 
 def _summaries_error(summaries: object, known_ids: set[str]) -> str | None:
@@ -55,7 +49,7 @@ def _summaries_error(summaries: object, known_ids: set[str]) -> str | None:
 
 
 def run(args: argparse.Namespace) -> int:
-    data_dir = Path(args.data_dir)
+    data_dir = resolve_data_dir(args)
     date = args.date
     run_dir = data_dir / "runs" / date
     hot_path = run_dir / "hot_candidates.jsonl"
@@ -63,14 +57,6 @@ def run(args: argparse.Namespace) -> int:
 
     state = load_run_state(data_dir, date)
     reset_errors_for(state, [COMMAND_NAME])
-
-    deprecated = [name for name, value in (("--select", args.select), ("--reason", args.reason), ("--summary", args.summary)) if value is not None]
-    if deprecated:
-        message = (
-            f"{' / '.join(deprecated)} は廃止しました。{input_path} に assessments / screened_ids / "
-            f"selection_reason / summaries を書き、`ai-radar select-hot --date {date}` を実行してください"
-        )
-        return _fail(state, data_dir, date, "deprecated_option", message)
 
     try:
         limit = int(args.limit)
@@ -126,7 +112,7 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         write_jsonl(hot_path, updated)
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError) as exc:  # ValueError: e.g. text that cannot be encoded
         return _fail(state, data_dir, date, "write_error", f"failed to write hot candidates: {exc}")
 
     state["output_counts"]["selected_hot"] = summary["selected_count"]

@@ -1,10 +1,15 @@
-from datetime import datetime, timezone
 
 import pytest
 
-from ai_research_radar.schemas.decoders import decode_signal, validate_assessment, validate_proposal_quality
+from ai_research_radar.schemas.decoders import decode_signal
 from ai_research_radar.schemas.models import to_json_dict
-from ai_research_radar.schemas.quality import QualityValidationError, validate_evidence_check, validate_evidence_list
+from ai_research_radar.schemas.quality import (
+    QualityValidationError,
+    validate_assessment,
+    validate_evidence_check,
+    validate_evidence_list,
+    validate_proposal_quality,
+)
 
 
 def _signal(**extra):

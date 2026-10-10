@@ -3,9 +3,10 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
 
-from ai_research_radar.config.settings import load_source_configs
+import pytest
+
+from ai_research_radar.config.settings import SourceConfig, load_source_configs
 import ai_research_radar.sources.public as public_module
-from ai_research_radar.schemas.models import RawItem
 from ai_research_radar.sources.public import (
     HuggingFaceOrgAdapter,
     OfficialFeedsAdapter,
@@ -42,8 +43,6 @@ def test_default_source_config_builds_public_and_arxiv_adapters():
 
 
 def test_build_adapters_can_create_public_adapter_without_network_call():
-    from ai_research_radar.config.settings import SourceConfig
-    from ai_research_radar.sources.public import PublicSearchAdapter
 
     configs = [
         SourceConfig(
@@ -443,3 +442,34 @@ def test_openalex_query_omits_mailto_when_env_var_unset(monkeypatch):
     )
 
     assert "mailto" not in adapter.query_params
+
+
+def test_build_adapters_chooses_by_adapter_key_so_a_source_can_be_renamed(monkeypatch):
+    configs = [SourceConfig("github_mcp", "technology", "github", True, False, {"keywords": ["mcp"]})]
+    (adapter,) = build_adapters(configs)
+
+    class Response:
+        def read(self) -> bytes:
+            return b'{"items":[{"id":1,"full_name":"org/mcp","html_url":"https://github.com/org/mcp","description":"mcp","stargazers_count":5,"created_at":"2026-09-24T10:00:00Z","updated_at":"2026-09-25T10:00:00Z"}]}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    captured: list[str] = []
+    monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: captured.append(request.full_url) or Response())
+
+    items = adapter.collect(since="2026-09-24", until="2026-09-25")
+    signal = adapter.normalize(items[0])
+
+    assert captured[0].startswith("https://api.github.com/search/repositories?")
+    assert parse_qs(urlsplit(captured[0]).query)["q"][0].startswith("mcp in:name,description")
+    assert items[0].source == "github_mcp"
+    assert signal.signal_id == "github_mcp:1"
+
+
+def test_build_adapters_rejects_unknown_adapter():
+    with pytest.raises(ValueError, match="unknown adapter 'nope' for source 'x'"):
+        build_adapters([SourceConfig("x", "technology", "nope", True, False, {})])

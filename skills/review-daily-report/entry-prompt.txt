@@ -2,4 +2,4 @@
 skills/review-daily-report/SKILL.md を読み、その手順に従って {date} の
 成果物(reports/daily/{date}.md、hot_candidates.jsonl、selection_input.json、article_proposals.jsonl)を
 検証してください。
-review_target.jsonの対象hashと照合し、原成果物を編集せずReviewResult形式で結果を記録してください。
+原成果物は編集せず、Critical / Important の指摘がある場合だけ data/runs/{date}/review_feedback.md に書いてください(指摘がなければ書かない)。

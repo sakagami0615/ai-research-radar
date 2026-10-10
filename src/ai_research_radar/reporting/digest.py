@@ -18,6 +18,7 @@ from typing import Any
 from ai_research_radar.normalization.dedup import canonical_url
 from ai_research_radar.schemas.decoders import decode_hot
 from ai_research_radar.schemas.models import HotCandidate
+from ai_research_radar.storage.files import atomic_write_text
 from ai_research_radar.storage.jsonl import read_jsonl
 
 LOOKBACK_DAYS = 3
@@ -124,9 +125,7 @@ def load_digest_summaries(data_dir: Path, date: str) -> dict[str, str]:
 def save_digest_summaries(data_dir: Path, date: str, summaries: dict[str, str]) -> None:
     """Merge summaries added on `date` into its digest_summaries.json (the same key is overwritten)."""
     merged = {**load_digest_summaries(data_dir, date), **summaries}
-    path = data_dir / "runs" / date / SUMMARIES_FILENAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(data_dir / "runs" / date / SUMMARIES_FILENAME, json.dumps(merged, ensure_ascii=False, indent=2) + "\n")
 
 
 def save_digest_record(data_dir: Path, date: str, digest: DailyDigest) -> None:
@@ -139,9 +138,7 @@ def save_digest_record(data_dir: Path, date: str, digest: DailyDigest) -> None:
         "notable": [item.candidate.hot_id for item in digest.notable],
         "model_releases": [release.key for release in displayed_model_releases(digest)],
     }
-    path = data_dir / "runs" / date / DIGEST_FILENAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(data_dir / "runs" / date / DIGEST_FILENAME, json.dumps(record, ensure_ascii=False, indent=2) + "\n")
 
 
 def group_model_releases(releases: list[ModelRelease]) -> list[tuple[str, list[ModelRelease], int]]:

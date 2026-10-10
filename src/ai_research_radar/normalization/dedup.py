@@ -39,19 +39,6 @@ def canonical_url(url: str) -> str:
 _canonical_url = canonical_url
 
 
-def deduplicate_quality_signals(signals: list[CanonicalSignal]) -> list[CanonicalSignal]:
-    from ai_research_radar.normalization.identity import extract_identity
-    grouped: dict[str, CanonicalSignal] = {}
-    for signal in signals:
-        identity = extract_identity(signal)
-        key = str(identity["event_key"])
-        if key not in grouped:
-            grouped[key] = replace(signal, metadata={**signal.metadata, "identity": identity})
-        else:
-            grouped[key] = _merge_signals(grouped[key], signal)
-    return list(grouped.values())
-
-
 def _is_tracking_parameter(key: str) -> bool:
     return key.lower().startswith("utm_") or key.lower() in {"fbclid", "gclid", "ref"}
 
@@ -88,19 +75,7 @@ def _merge_signals(first: CanonicalSignal, second: CanonicalSignal) -> Canonical
         categories=sorted(set(first.categories) | set(second.categories)),
         normalized_scores=merged_scores,
         metadata=merged_metadata,
-        quality=_merge_quality(first.quality, second.quality),
     )
-
-
-def _merge_quality(first: dict, second: dict) -> dict:
-    if not first:
-        return dict(second)
-    if not second:
-        return dict(first)
-    winner = first if float(first.get("priority") or 0) >= float(second.get("priority") or 0) else second
-    merged = dict(winner)
-    merged["metrics"] = list(first.get("metrics", [])) + list(second.get("metrics", []))
-    return merged
 
 
 def _with_cross_source_metadata(signal: CanonicalSignal) -> CanonicalSignal:

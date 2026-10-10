@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from ai_research_radar.schemas.decoders import decode_run
+from ai_research_radar.schemas.decoders import decode_event, decode_signal
 from ai_research_radar.schemas.models import (
     ArticleProposal,
     CanonicalSignal,
@@ -8,8 +8,6 @@ from ai_research_radar.schemas.models import (
     HotCandidate,
     RawItem,
     RunMetadata,
-    canonical_signal_from_dict,
-    event_from_dict,
     to_json_dict,
     valid_stage_result,
 )
@@ -108,7 +106,7 @@ def test_run_metadata_tracks_errors_and_outputs():
     assert to_json_dict(run)["errors"][0]["source"] == "arxiv"
 
 
-def test_canonical_signal_from_dict_round_trips_through_json():
+def test_decode_signal_round_trips_through_json():
     signal = CanonicalSignal(
         signal_id="github:owner/repo",
         source="github",
@@ -125,12 +123,12 @@ def test_canonical_signal_from_dict_round_trips_through_json():
         metadata={"owner": "owner"},
     )
 
-    restored = canonical_signal_from_dict(to_json_dict(signal))
+    restored = decode_signal(to_json_dict(signal))
 
     assert restored == signal
 
 
-def test_canonical_signal_from_dict_handles_missing_published_at():
+def test_decode_signal_handles_missing_published_at():
     signal = CanonicalSignal(
         signal_id="github:owner/repo",
         source="github",
@@ -147,12 +145,12 @@ def test_canonical_signal_from_dict_handles_missing_published_at():
         metadata={},
     )
 
-    restored = canonical_signal_from_dict(to_json_dict(signal))
+    restored = decode_signal(to_json_dict(signal))
 
     assert restored.published_at is None
 
 
-def test_event_from_dict_round_trips_through_json():
+def test_decode_event_round_trips_through_json():
     event = Event(
         event_id="event:agent-runtime",
         title="Agent Runtime",
@@ -167,7 +165,7 @@ def test_event_from_dict_round_trips_through_json():
         evidence=["https://github.com/owner/repo"],
     )
 
-    restored = event_from_dict(to_json_dict(event))
+    restored = decode_event(to_json_dict(event))
 
     assert restored == event
 
@@ -183,33 +181,6 @@ def test_decode_hot_reads_summary_and_defaults_to_empty_for_legacy_records():
 
     assert decode_hot(asdict(candidate)).summary == "概要"
     assert decode_hot(legacy).summary == ""
-
-
-def _run_record(**overrides) -> dict:
-    record = to_json_dict(
-        RunMetadata(
-            run_id="r", started_at=datetime(2026, 10, 4, tzinfo=timezone.utc), finished_at=None, mode="agent",
-            since="2026-10-03", until="2026-10-04", sources=[], input_counts={}, output_counts={}, errors=[], report_paths=[],
-        )
-    )
-    record.pop("stage_results")
-    record.update(overrides)
-    return record
-
-
-def test_decode_run_defaults_stage_results_to_empty_for_legacy_records():
-    assert decode_run(_run_record()).stage_results == {}
-
-
-def test_decode_run_reads_stage_results():
-    results = {"select-hot": {"status": "deferred", "reason": "r", "selected_count": 0}}
-
-    assert decode_run(_run_record(stage_results=results)).stage_results == results
-
-
-def test_decode_run_treats_non_dict_stage_results_as_empty():
-    assert decode_run(_run_record(stage_results=None)).stage_results == {}
-    assert decode_run(_run_record(stage_results=["x"])).stage_results == {}
 
 
 def test_valid_stage_result_accepts_only_known_status_dicts():

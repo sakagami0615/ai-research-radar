@@ -51,35 +51,10 @@ MVPでは、外部ネットワークに依存しないテストを中心にす�
 
 Source追加はAdapterとconfigの追加で行う。Pipeline、Scoring、IdeationをSource固有にしない。
 
-### Scoring改善
+- 既存の取得処理で足りる場合は、`config/sources.yaml` にSourceを追加し、`adapter` に既存の取得処理の名前を書く(Source名は自由。例: キーワードを変えた2つ目のGitHub収集)。
+- 新しい取得処理が必要な場合は、`sources/public.py` の `_SEARCH_SPECS`(検索・一覧APIの定義表)に追加するか、独自のAdapterクラスと `_ADAPTER_FACTORIES` への登録を追加する(04章)。
 
-初期実装は取得バッチ内のSource単位順位を使う。将来は以下を検討する。
-
-- Platform x Category x Age Bucketの履歴Peer Group
-- Source別の閾値config化
-- 通知件数を見た自動調整
-- 人間レビュー結果を使った重み調整
-
-### Ideation改善
-
-MVPでは決定論的なRole / Critique / Debate代替を使う。これは内容審査や独立Agentレビューを実施した証拠ではない。v2では定型企画を自動採用せず、Agent入力のProposalQualityを検証する。将来は以下を検討する。
-
-- LLM Judge
-- 複数Role生成の本格化
-- 競合記事調査
-- 記事化後の反応フィードバック
-
-### Trend分析
-
-Daily JSONLを蓄積し、週次・月次・年次分析に使う。
-
-将来の分析観点:
-
-- Topicの継続期間
-- Source Familyの広がり
-- HOT化頻度
-- 研究から実装への遷移
-- 公式発表とコミュニティ反応のタイムラグ
+Scoring・Ideation・Trend分析の改善案は [docs/future-works.md](../future-works.md) を参照。
 
 ## 既知制約
 
@@ -90,6 +65,6 @@ Daily JSONLを蓄積し、週次・月次・年次分析に使う。
 - 新モデルリリースは名前揺れを統合しないため、同じモデルが公式・HF・Ollamaに別項目で出ることがある。
 - `unsloth` / `lmstudio-community` などのHF orgは量子化版などの派生リポジトリを大量に作るため、新モデルリリース(提供元ごと上限10件)やHOT母集団のノイズになりうる。運用状況を見て監視対象を見直す。
 - 公式feedの `model_keywords` はタイトル一致のため、モデル名に言及した事例紹介記事なども「新モデルリリース」に出ることがある。OpenAIは `model_categories` で顧客事例を除いているが、許可category内の発表以外の記事(例: 「Better prompt caching for GPT-6」)は残り、許可外category(`Company`)のモデル発表は取りこぼす。categoryを持たないfeed(Google / Mistral)には適用できない。
-- PyPIのバージョン更新がHOTスコア75以上になりやすく、「注目候補(選抜外)」がパッケージ更新で埋まることがある(スコア計算側の課題として未対応)。
+- PyPIのバージョン更新がHOTスコア75以上になりやすく、「注目候補(選抜外)」がパッケージ更新で埋まることがある(スコア計算側の課題として未対応。AI関連度の部分一致の不具合は [Issue #32](https://github.com/sakagami0615/ai-research-radar/issues/32))。
 - Source内順位は取得バッチ単位であり、履歴ベースPeer Groupではない。
 - 出力先自体が書き込めない場合、Run Metadataを保存できない。

@@ -19,6 +19,17 @@ class SourceAdapter:
         ...
 ```
 
+## Adapterの選択
+
+`config/sources.yaml` の各Sourceは、キー名がSource名(`source_name`。保存データの `source` や `signal_id` の接頭辞になる)、`adapter` が使う取得処理の名前である。`build_adapters`(`sources/public.py`)は `adapter` で取得処理を選ぶ。Source名と `adapter` は同じでなくてよく、同じ `adapter` を別名のSourceで複数使える(例: キーワードを変えた `github_mcp`(`adapter: github`))。
+
+- 検索・一覧API型(`github` / `npm` / `hackernews` / `arxiv` / `openalex` / `huggingface` / `qiita` / `zenn`): `_SEARCH_SPECS` の表に、endpoint、クエリの組み立て、期間の指定方法、レスポンスからの要素の取り出し、RawItemへの変換、credibilityを1行ずつ定義する。
+- 独自のAdapterクラスを使うもの(`pypi` / `official_blogs` / `huggingface_orgs` / `ollama` / `fixture`): `_ADAPTER_FACTORIES` に生成関数を登録する。
+- どちらにもない `adapter` は、Source名と `adapter` を含むエラー(`ValueError`)にする。
+- `enabled: false` または `auth_required: true` のSourceは作らない。
+- OpenAlexの概要の復元など、取得処理に固有の補正は `adapter` の名前で判定する(`sources/remap.py`)。
+- ただし、Source内スコア正規化のPyPI / npm向けの補正(05章「Source単位スコア正規化」)はSource名(`pypi` / `npm`)で判定している。これらを別名のSourceで使うと補正されない。
+
 ## Source Family
 
 Cross-source Confidenceのため、SourceをFamilyへ分類する。

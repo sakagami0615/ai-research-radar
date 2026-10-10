@@ -62,7 +62,7 @@ def test_cli_collect_resolves_default_period_from_previous_runs(tmp_path: Path, 
         observed.update(data_dir=data_dir, max_lookback_days=max_lookback_days)
         return ("2026-10-03T00:00:00+00:00", "2026-10-04T00:00:00+00:00")
 
-    monkeypatch.setattr(collect_command, "resolve_default_period", fake_resolve)
+    monkeypatch.setattr("ai_research_radar.periods.resolve_default_period", fake_resolve)
     monkeypatch.setattr(
         collect_command,
         "build_adapters",
@@ -94,7 +94,7 @@ def test_cli_collect_uses_default_lookback_when_runtime_config_is_missing(tmp_pa
         observed.update(max_lookback_days=max_lookback_days)
         return ("2026-10-03T00:00:00+00:00", "2026-10-04T00:00:00+00:00")
 
-    monkeypatch.setattr(collect_command, "resolve_default_period", fake_resolve)
+    monkeypatch.setattr("ai_research_radar.periods.resolve_default_period", fake_resolve)
     monkeypatch.setattr(collect_command, "build_adapters", lambda configs: [])
 
     exit_code = main(

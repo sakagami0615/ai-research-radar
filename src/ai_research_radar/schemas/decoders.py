@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai_research_radar.schemas.models import CanonicalSignal, Event, HotCandidate, ArticleProposal, RunMetadata, _parse_datetime, _parse_datetime_or_none
-from ai_research_radar.schemas.quality import QualityValidationError, validate_assessment, validate_proposal_quality
+from ai_research_radar.schemas.models import CanonicalSignal, Event, HotCandidate, ArticleProposal, _parse_datetime, _parse_datetime_or_none
+from ai_research_radar.schemas.quality import QualityValidationError
 
 
 def _record(data: object) -> dict[str, Any]:
@@ -38,7 +38,3 @@ def decode_proposal(data: object) -> ArticleProposal:
     value = _record(data); version = _version(value)
     return ArticleProposal(**{key: value[key] for key in ("proposal_id", "source_hot_id", "title_idea", "article_type", "target_reader", "why_now", "technical_angle", "experiment_plan", "competition", "traffic_opportunity", "technical_opportunity", "unique_angle", "evidence_links", "risks")}, schema_version=version, quality=dict(value.get("quality", {})))
 
-
-def decode_run(data: object) -> RunMetadata:
-    value = _record(data); version = _version(value)
-    return RunMetadata(run_id=str(value["run_id"]), started_at=_parse_datetime(value["started_at"]), finished_at=_parse_datetime_or_none(value.get("finished_at")), mode=str(value["mode"]), since=str(value["since"]), until=str(value["until"]), sources=list(value["sources"]), input_counts=dict(value["input_counts"]), output_counts=dict(value["output_counts"]), errors=list(value["errors"]), report_paths=list(value["report_paths"]), schema_version=version, metadata=dict(value.get("metadata", {})), stage_results=dict(value["stage_results"]) if isinstance(value.get("stage_results"), dict) else {})

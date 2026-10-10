@@ -1,24 +1,64 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
 
 from ai_research_radar.periods import period_date, period_start
-from ai_research_radar.schemas.models import RawItem
-from ai_research_radar.sources.base import SourceAdapter
-from ai_research_radar.storage.jsonl import read_jsonl
+from ai_research_radar.schemas.models import CanonicalSignal, RawItem
+from ai_research_radar.sources.base import SourceAdapter, SourceError
+from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
 
 
-def collect_with_diagnostics(adapter: SourceAdapter, since: str, until: str) -> tuple[list[RawItem], dict[str, Any]]:
-    started = datetime.now(timezone.utc).isoformat()
-    try:
-        items = adapter.collect(since, until)
-    except Exception as exc:  # collection boundary records partial source failure
-        return [], {"source": adapter.source_name, "since": since, "until": until, "received": 0, "period_kept": 0, "status": "failed", "errors": [{"type": type(exc).__name__, "message": str(exc)}], "started_at": started}
-    diagnostics = dict(getattr(adapter, "collection_diagnostics", {}))
-    diagnostics.update({"source": adapter.source_name, "since": since, "until": until, "received": len(items), "period_kept": len(items), "status": diagnostics.get("status", "success"), "started_at": diagnostics.get("started_at", started), "finished_at": datetime.now(timezone.utc).isoformat()})
-    return items, diagnostics
+@dataclass
+class CollectionResult:
+    raw_items: list[RawItem] = field(default_factory=list)
+    signals: list[CanonicalSignal] = field(default_factory=list)
+    # Only sources whose collect() succeeded have a count; a missing source is a data gap.
+    input_counts: dict[str, int] = field(default_factory=dict)
+    errors: list[dict[str, str]] = field(default_factory=list)
+
+
+def collect_sources(
+    adapters: list[SourceAdapter],
+    since: str,
+    until: str,
+    data_dir: Path,
+    run_date: str,
+    use_overlap: bool,
+) -> CollectionResult:
+    """Collect and normalize every source, saving raw/<run_date>/<source>.jsonl.
+
+    A failing source is recorded in `errors` and the others continue (shared by
+    `collect` and `daily`).
+    """
+    result = CollectionResult()
+    for adapter in adapters:
+        try:
+            collected = collect_new_items(adapter, since, until, data_dir, run_date, use_overlap)
+        except Exception as exc:  # noqa: BLE001 - one failing source must not stop the others
+            result.errors.append(_source_error(adapter, exc))
+            continue
+        result.errors.extend(dict(error) for error in getattr(adapter, "partial_errors", []))
+        result.input_counts[adapter.source_name] = len(collected)
+        result.raw_items.extend(collected)
+        try:
+            write_jsonl(data_dir / "raw" / run_date / f"{adapter.source_name}.jsonl", collected)
+        except Exception as exc:  # noqa: BLE001
+            result.errors.append({"source": adapter.source_name, "type": "raw_write_error", "message": str(exc)})
+        try:
+            signals = [adapter.normalize(item) for item in collected]
+        except Exception as exc:  # noqa: BLE001
+            result.errors.append(_source_error(adapter, exc))
+            continue
+        result.signals.extend(signals)
+    return result
+
+
+def _source_error(adapter: SourceAdapter, exc: Exception) -> dict[str, str]:
+    if isinstance(exc, SourceError):
+        return {"source": exc.source, "type": exc.error_type, "message": str(exc)}
+    return {"source": adapter.source_name, "type": "unexpected_error", "message": str(exc)}
 
 
 def collect_new_items(

@@ -157,7 +157,7 @@ def test_records_not_run_when_nothing_is_selected(tmp_path: Path):
     assert "save-proposals" in _read_state(data_dir)["stages_completed"]
 
 
-# --- 旧形式(deprecated_input) ---
+# --- v2でない入力 ---
 
 
 @pytest.mark.parametrize(
@@ -169,23 +169,23 @@ def test_records_not_run_when_nothing_is_selected(tmp_path: Path):
         {"schema_version": 1, "proposals": []},
         {"schema_version": "2", "proposals": []},
         {"schema_version": True, "proposals": []},
+        {"schema_version": 3, "proposals": []},
     ],
-    ids=["empty-array", "array", "no-version", "version-1", "version-str", "version-bool"],
+    ids=["empty-array", "array", "no-version", "version-1", "version-str", "version-bool", "version-3"],
 )
-def test_legacy_top_level_is_deprecated_input(tmp_path: Path, payload, capsys):
+def test_non_v2_top_level_is_invalid_input(tmp_path: Path, payload):
     data_dir = tmp_path / "data"
     _write_selected_candidate(data_dir)
 
     assert _run_with_records(tmp_path, data_dir, payload) == 1
 
-    assert _error_types(data_dir) == ["deprecated_input"]
-    assert _result(data_dir)["reason"].startswith("deprecated_input: ")
-    assert "schema_version" in capsys.readouterr().out
+    assert _error_types(data_dir) == ["invalid_input"]
+    assert _result(data_dir)["reason"].startswith("invalid_input: ")
     assert not _proposals_path(data_dir).exists()
 
 
 @pytest.mark.parametrize("version", [None, 1], ids=["missing", "v1"])
-def test_legacy_proposal_is_deprecated_input(tmp_path: Path, version):
+def test_non_v2_proposal_is_invalid_proposal(tmp_path: Path, version):
     data_dir = tmp_path / "data"
     _write_selected_candidate(data_dir)
     proposal = _valid_proposal()
@@ -196,7 +196,7 @@ def test_legacy_proposal_is_deprecated_input(tmp_path: Path, version):
 
     assert _run_with_records(tmp_path, data_dir, _v2_input([proposal])) == 1
 
-    assert _error_types(data_dir) == ["deprecated_input"]
+    assert _error_types(data_dir) == ["invalid_proposal"]
 
 
 # --- 入力全体の構造(invalid_input) ---
@@ -444,11 +444,3 @@ def test_additional_url_with_blank_claim_is_rejected(tmp_path: Path):
     assert _error_types(data_dir) == ["invalid_proposal"]
 
 
-def test_newer_schema_version_message_does_not_call_it_legacy(tmp_path: Path, capsys):
-    data_dir = tmp_path / "data"
-    _write_selected_candidate(data_dir)
-
-    assert _run_with_records(tmp_path, data_dir, {"schema_version": 3, "proposals": []}) == 1
-
-    assert _error_types(data_dir) == ["deprecated_input"]
-    assert "旧形式です" not in capsys.readouterr().out

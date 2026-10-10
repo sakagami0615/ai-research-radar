@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_research_radar.cli.commands.run_state import save_run_state
+from ai_research_radar.storage.run_state import save_run_state
 from ai_research_radar.cli.main import main
 from ai_research_radar.schemas.models import ArticleProposal, HotCandidate
 from ai_research_radar.storage.jsonl import read_jsonl, write_jsonl
@@ -185,8 +185,8 @@ def test_save_proposals_reads_selected_ids_through_the_decoder(tmp_path: Path):
 
 
 def test_save_proposals_checks_input_format_before_reading_hot_candidates(tmp_path: Path):
-    """The agent's own input is checked first (as before #11): an old-format input is
-    deprecated_input even when hot_candidates.jsonl is also broken."""
+    """The agent's own input is checked first: a non-v2 input is invalid_input even
+    when hot_candidates.jsonl is also broken."""
     data_dir = tmp_path / "data"
     _write_bytes(data_dir / "runs" / DATE / "hot_candidates.jsonl", CORRUPTIONS["bad_json"])
     input_path = tmp_path / "draft_proposals.json"
@@ -194,7 +194,7 @@ def test_save_proposals_checks_input_format_before_reading_hot_candidates(tmp_pa
 
     assert main(["save-proposals", "--date", DATE, "--data-dir", str(data_dir), "--input", str(input_path)]) == 1
 
-    assert [e["type"] for e in _state(data_dir)["errors"] if e["source"] == "save-proposals"] == ["deprecated_input"]
+    assert [e["type"] for e in _state(data_dir)["errors"] if e["source"] == "save-proposals"] == ["invalid_input"]
 
 
 def test_save_proposals_reports_corrupt_hot_candidates_before_deferral_reason(tmp_path: Path):

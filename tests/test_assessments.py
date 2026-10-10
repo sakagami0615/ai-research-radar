@@ -1,14 +1,7 @@
-from datetime import datetime, timezone
-
 import pytest
 
-from ai_research_radar.schemas.models import Event
-from ai_research_radar.scoring.assessments import SelectionError, apply_assessments, compute_discovery_candidates
-
-
-def _event(name="e1"):
-    now = datetime.now(timezone.utc)
-    return Event(name, "Title", "desc", "observed_signal", now, now, ["s"], ["x"], ["technology"], {}, ["https://example.test"])
+from ai_research_radar.schemas.models import HotCandidate
+from ai_research_radar.scoring.assessments import SelectionError, apply_assessments
 
 
 def _evidence(**overrides):
@@ -24,7 +17,10 @@ def _assessment(hot_id, decision="selected", **overrides):
 
 
 def _candidates(*names):
-    return compute_discovery_candidates([_event(name) for name in names])
+    return [
+        HotCandidate(f"hot:event:{name}", "Title", name, 0.0, [], ["https://example.test"], ["technology"], ["s"], False)
+        for name in names
+    ]
 
 
 def _selection(assessments, screened, reason="理由", **extra):
@@ -35,10 +31,6 @@ def _code(candidates, selection, **kwargs):
     with pytest.raises(SelectionError) as info:
         apply_assessments(candidates, selection, **kwargs)
     return info.value.code
-
-
-def test_zero_priority_research_preserved():
-    assert len(compute_discovery_candidates([_event()])) == 1
 
 
 def test_applies_assessments_and_returns_counts():

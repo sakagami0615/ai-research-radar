@@ -20,6 +20,7 @@ AI Research Radar は、AI関連の研究、ツール、ライブラリ、公式
 - AIエージェント向け作業ルール: [AGENTS.md](AGENTS.md)
 - AI Agent向けSkill: [skills/](skills/)
 - 設定ファイル: [config/](config/)
+- 将来対応の構想: [docs/future-works.md](docs/future-works.md)
 
 ## AIエージェントごとの事前準備
 
@@ -28,7 +29,7 @@ AI Research Radar は、AI関連の研究、ツール、ライブラリ、公式
 1. Codexでこのリポジトリを開く
 2. [AGENTS.md](AGENTS.md) を読み、作業ルールとレビュー方針を確認する
 3. [docs/specs/README.md](docs/specs/README.md) から必要な設計書へ進む
-4. 調査・HOT判定・記事企画では [skills/](skills/) 配下のSkill文書を参照する
+4. 日次実行は [skills/agent-daily-run/SKILL.md](skills/agent-daily-run/SKILL.md)、HOT判定・記事企画の観点は [skills/](skills/) 配下のSkill文書を参照する
 
 ### Claude Code
 
@@ -39,7 +40,7 @@ AI Research Radar は、AI関連の研究、ツール、ライブラリ、公式
 
 ### GitHub Copilot
 
-GitHub Copilot向けの専用設定はまだ用意していません。利用する場合は、以下の資料をコンテキストとして参照してください。
+GitHub Copilot向けの専用設定はまだ用意していません(対応は [docs/future-works.md](docs/future-works.md) に記載)。利用する場合は、以下の資料をコンテキストとして参照してください。
 
 1. [docs/specs/README.md](docs/specs/README.md) から設計書を確認する
 2. [AGENTS.md](AGENTS.md) で作業ルールを確認する
@@ -63,7 +64,7 @@ python -m pip install -e ".[dev]"
 ai-radar daily
 ```
 
-期間や出力先を明示する場合:
+出力先の既定値は `config/runtime.yaml` の `output`(`data` / `reports`)です。期間や出力先を明示する場合:
 
 ```bash
 ai-radar daily \
@@ -97,7 +98,7 @@ sudo systemctl enable --now crond
 
 ### AI Agent(Claude Code / Codex)による日次実行(推奨)
 
-HOT最終選抜と記事企画をAgent自身の判断で行う場合は、cronから `claude -p` / `codex exec` を直接起動する(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、Agentはこれに従って `ai-radar` の各サブコマンド(`collect`/`normalize`/`score`/`select-hot`/`save-proposals`/`add-summary`/`add-source-overview`/`report`)の実行、選抜HOT・注目候補・新モデルリリースの日本語概要の作成、収集Source一覧のSourceごとの「本日の傾向」の作成、対象日の判定、レビュー・修正ループまで自分の判断で行う。
+HOT最終選抜と記事企画をAgent自身の判断で行う場合は、cronから `claude -p` / `codex exec` を直接起動する(ラッパースクリプトは使わない)。渡すプロンプトは `skills/agent-daily-run/SKILL.md` を読ませる `skills/agent-daily-run/entry-prompt.txt` であり、Agentはこれに従って `ai-radar` の各サブコマンド(`collect`/`normalize`/`score`/`select-hot`/`save-proposals`/`add-summary`/`add-source-overview`/`report`/`mark-needs-review`)の実行、選抜HOT・注目候補・新モデルリリースの日本語概要の作成、収集Source一覧のSourceごとの「本日の傾向」の作成、対象日の判定、レビュー・修正ループまで自分の判断で行う。
 
 `ai-radar` はpyenv shims経由のコマンドであり、`claude`/`codex`もPATH依存のため、crontabファイル先頭に `PATH=` 行が必要。同日の多重実行(ログが混ざる原因になる)を防ぐため `flock -n` で排他制御し、レポート未生成時にcronの失敗通知が機能するよう末尾で `test -f` による確認を行う。
 
@@ -113,7 +114,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
 - ローカルで動作確認したい場合は、`flock ...` と `>> ... 2>&1`、`&& test -f ...` を外し、`cd /path/to/ai-research-radar && claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions` をそのまま端末で実行すればよい。cron行と同じコマンドなので、動作確認用に別の手順を覚える必要がない。
-- レポート生成後、Agent自身が別プロセスとして `skills/review-daily-report/SKILL.md` に従うAgentを起動し、HOT選抜・記事企画の質をレビューさせる。問題が見つかれば自分自身で修正し、最大3回まで再レビューする(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければ、レポート冒頭に警告バナーを追加し、`data/runs/<date>/run_state.json` に `needs_review: true` を記録する。
+- レポート生成後、Agent自身が別プロセスとして `skills/review-daily-report/SKILL.md` に従うAgentを起動し、HOT選抜・記事企画の質をレビューさせる。問題が見つかれば自分自身で修正し、最大3回まで再レビューする(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければ、`ai-radar mark-needs-review` で `data/runs/<date>/run_state.json` に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
 
 ### 決定論的な `ai-radar daily` による日次実行(手動・CI向け)
 
@@ -137,3 +138,4 @@ HOT選抜と記事企画を決定論的なロジックのまま実行したい�
 - CLI・運用: [docs/specs/06-cli-and-operations.md](docs/specs/06-cli-and-operations.md)
 - Skills・Agent Workflow: [docs/specs/07-skills-and-agent-workflow.md](docs/specs/07-skills-and-agent-workflow.md)
 - テスト・拡張: [docs/specs/08-testing-and-extension.md](docs/specs/08-testing-and-extension.md)
+- 将来対応: [docs/future-works.md](docs/future-works.md)

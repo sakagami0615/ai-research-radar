@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from ai_research_radar.schemas.models import to_json_dict
+from ai_research_radar.storage.files import atomic_write_text
 
 T = TypeVar("T")
 
@@ -24,15 +25,14 @@ class JsonlReadError(ValueError):
 
 
 def write_jsonl(path: Path, records: Iterable[Any]) -> int:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    count = 0
-    with path.open("w", encoding="utf-8") as handle:
-        for record in records:
-            payload = to_json_dict(record) if not isinstance(record, dict) else record
-            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-            handle.write("\n")
-            count += 1
-    return count
+    """Write one JSON object per line, replacing the file atomically (see atomic_write_text)."""
+    lines = [
+        json.dumps(to_json_dict(record) if not isinstance(record, dict) else record, ensure_ascii=False, sort_keys=True)
+        + "\n"
+        for record in records
+    ]
+    atomic_write_text(path, "".join(lines))
+    return len(lines)
 
 
 def _iter_records(path: Path) -> Iterator[tuple[int, dict[str, Any]]]:

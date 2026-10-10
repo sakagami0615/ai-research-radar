@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from ai_research_radar.cli.commands.run_state import load_run_state, save_run_state
+from ai_research_radar.storage.run_state import load_run_state, save_run_state
 from ai_research_radar.cli.main import main
 from ai_research_radar.reporting.source_overview import load_source_overviews
 from ai_research_radar.storage.jsonl import write_jsonl
@@ -77,7 +77,7 @@ def test_add_source_overview_records_error_types_without_changing_saved_overview
 
     cases = [
         ([], "invalid_input"),
-        (["--input", str(tmp_path / "missing.json")], "invalid_input"),
+        (["--input", str(tmp_path / "missing.json")], "missing_input"),
         (["--input", str(broken)], "invalid_input"),
         (["--input", str(not_utf8)], "invalid_input"),
         (["--input", str(_input(tmp_path, ["github"], "list.json"))], "invalid_input"),

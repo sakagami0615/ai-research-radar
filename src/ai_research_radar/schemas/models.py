@@ -146,16 +146,6 @@ def _json_ready(value: Any) -> Any:
     return value
 
 
-def canonical_signal_from_dict(data: dict[str, Any]) -> CanonicalSignal:
-    from ai_research_radar.schemas.decoders import decode_signal
-    return decode_signal(data)
-
-
-def event_from_dict(data: dict[str, Any]) -> Event:
-    from ai_research_radar.schemas.decoders import decode_event
-    return decode_event(data)
-
-
 def _parse_datetime(value: Any) -> datetime:
     return datetime.fromisoformat(str(value))
 

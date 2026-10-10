@@ -7,6 +7,7 @@ import os
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,9 @@ from ai_research_radar.sources.remap import remap_raw_item
 from ai_research_radar.sources.base import SourceAdapter
 from ai_research_radar.sources.fixtures import FixtureAdapter
 
-RawItemMapper = Callable[[dict[str, Any]], RawItem]
+# (response item, source name) -> RawItem; the source name comes from sources.yaml.
+RawItemMapper = Callable[[dict[str, Any], str], RawItem]
+ItemSelector = Callable[[Any], list[dict[str, Any]]]
 PeriodParams = Callable[[dict[str, str], str, str], dict[str, str]]
 
 USER_AGENT = "ai-research-radar/0.1.0"
@@ -98,11 +101,14 @@ class PublicSearchAdapter(SourceAdapter):
         endpoint: str,
         query_params: dict[str, str],
         item_mapper: RawItemMapper,
-        item_selector: Callable[[Any], list[dict[str, Any]]] | None = None,
+        item_selector: ItemSelector | None = None,
         period_params: PeriodParams | None = None,
         credibility: float = 60.0,
+        adapter_kind: str | None = None,
     ) -> None:
         self.source_name = source_name
+        # The `adapter` of sources.yaml; source-specific remapping (e.g. OpenAlex) keys on it.
+        self.adapter_kind = adapter_kind or source_name
         self.source_family = source_family
         self.endpoint = endpoint
         self.query_params = query_params
@@ -116,11 +122,11 @@ class PublicSearchAdapter(SourceAdapter):
         url = f"{self.endpoint}?{urlencode(params)}" if params else self.endpoint
         with _open_with_retry(_build_request(url)) as response:
             payload = json.loads(_read_body(response).decode("utf-8"))
-        items = [self.item_mapper(item) for item in self.item_selector(payload)]
+        items = [self.item_mapper(item, self.source_name) for item in self.item_selector(payload)]
         return [item for item in items if _item_is_in_period(item, since, until)]
 
     def normalize(self, item: RawItem) -> CanonicalSignal:
-        return _normalize_raw_item(remap_raw_item(item, self.source_name), self.source_family, self.credibility)
+        return _normalize_raw_item(remap_raw_item(item, self.adapter_kind), self.source_family, self.credibility)
 
 
 class PublicArxivAdapter(PublicSearchAdapter):
@@ -131,7 +137,7 @@ class PublicArxivAdapter(PublicSearchAdapter):
             root = ElementTree.fromstring(_read_body(response).decode("utf-8"))
         namespace = {"atom": "http://www.w3.org/2005/Atom"}
         items = [
-            _map_arxiv_entry(_element_to_dict(entry))
+            self.item_mapper(_element_to_dict(entry), self.source_name)
             for entry in root.findall("atom:entry", namespace)[:100]
         ]
         return [item for item in items if _item_is_in_period(item, since, until)]
@@ -146,8 +152,10 @@ class PublicFeedAdapter(SourceAdapter):
         entry_mapper: RawItemMapper,
         keywords: list[str] | None = None,
         credibility: float = 80.0,
+        adapter_kind: str | None = None,
     ) -> None:
         self.source_name = source_name
+        self.adapter_kind = adapter_kind or source_name
         self.source_family = source_family
         self.endpoint = endpoint
         self.entry_mapper = entry_mapper
@@ -157,7 +165,7 @@ class PublicFeedAdapter(SourceAdapter):
     def collect(self, since: str, until: str) -> list[RawItem]:
         with _open_with_retry(_build_request(self.endpoint)) as response:
             root = ElementTree.fromstring(_read_body(response).decode("utf-8"))
-        items = [self.entry_mapper(entry) for entry in _feed_entries(root)]
+        items = [self.entry_mapper(entry, self.source_name) for entry in _feed_entries(root)]
         return [
             item
             for item in items
@@ -165,7 +173,7 @@ class PublicFeedAdapter(SourceAdapter):
         ]
 
     def normalize(self, item: RawItem) -> CanonicalSignal:
-        return _normalize_raw_item(remap_raw_item(item, self.source_name), self.source_family, self.credibility)
+        return _normalize_raw_item(remap_raw_item(item, self.adapter_kind), self.source_family, self.credibility)
 
 
 class OfficialFeedsAdapter(SourceAdapter):
@@ -219,6 +227,7 @@ class OfficialFeedsAdapter(SourceAdapter):
                     model_keywords=keywords,
                     categories=_entry_categories(element),
                     model_categories=model_categories,
+                    source=self.source_name,
                 )
                 if _item_is_in_period(item, since, until):
                     items.append(item)
@@ -330,18 +339,12 @@ class OllamaBlogAdapter(SourceAdapter):
         return _normalize_raw_item(item, self.source_family, self.credibility)
 
 def build_adapters(configs: list[SourceConfig]) -> list[SourceAdapter]:
+    """Adapters for the enabled sources, chosen by each source's `adapter` in sources.yaml."""
     adapters: list[SourceAdapter] = []
     for config in configs:
         if not config.enabled or config.auth_required:
             continue
-        if config.adapter == "fixture":
-            adapter: SourceAdapter = FixtureAdapter(
-                source_name=config.name,
-                source_family=config.family,
-                fixture_path=Path(str(config.options["fixture_path"])),
-            )
-        else:
-            adapter = _public_adapter_for(config)
+        adapter = _adapter_for(config)
         adapter.overlap_hours = _overlap_hours(config)
         adapters.append(adapter)
     return adapters
@@ -354,48 +357,70 @@ def _overlap_hours(config: SourceConfig) -> int:
     return value
 
 
-def _public_adapter_for(config: SourceConfig) -> SourceAdapter:
-    if config.name == "pypi":
-        return PublicFeedAdapter(
-            config.name,
-            config.family,
-            "https://pypi.org/rss/updates.xml",
-            _map_pypi_feed,
-            keywords=_keywords(config),
-            credibility=70.0,
-        )
-    if config.name == "official_blogs":
-        return OfficialFeedsAdapter(config.name, config.family, _official_feeds(config), credibility=95.0)
-    if config.name == "huggingface_orgs":
-        return HuggingFaceOrgAdapter(
-            config.name,
-            config.family,
-            {str(org): str(provider) for org, provider in dict(config.options.get("orgs", {})).items()},
-            per_org_limit=int(config.options.get("per_org_limit", 50)),
-        )
-    if config.name == "ollama":
-        return OllamaBlogAdapter(config.name, config.family)
-    endpoint_by_name = {
-        "github": "https://api.github.com/search/repositories",
-        "npm": "https://registry.npmjs.org/-/v1/search",
-        "hackernews": "https://hn.algolia.com/api/v1/search_by_date",
-        "arxiv": "https://export.arxiv.org/api/query",
-        "openalex": "https://api.openalex.org/works",
-        "huggingface": "https://huggingface.co/api/models",
-        "qiita": "https://qiita.com/api/v2/items",
-        "zenn": "https://zenn.dev/api/articles",
-    }
-    adapter_class = PublicArxivAdapter if config.name == "arxiv" else PublicSearchAdapter
-    return adapter_class(
+def _adapter_for(config: SourceConfig) -> SourceAdapter:
+    factory = _ADAPTER_FACTORIES.get(config.adapter)
+    if factory is not None:
+        return factory(config)
+    spec = _SEARCH_SPECS.get(config.adapter)
+    if spec is None:
+        raise ValueError(f"unknown adapter {config.adapter!r} for source {config.name!r}")
+    return spec.adapter_class(
         source_name=config.name,
         source_family=config.family,
-        endpoint=endpoint_by_name[config.name],
-        query_params=_query_params_for(config),
-        item_mapper=_map_arxiv_entry if config.name == "arxiv" else _mapper_for(config.name),
-        item_selector=_item_selector_for(config.name),
-        period_params=_period_params_for(config.name),
-        credibility=85.0 if config.name in {"arxiv", "openalex"} else 70.0,
+        endpoint=spec.endpoint,
+        query_params=spec.query(" ".join(_keywords(config)), config),
+        item_mapper=spec.mapper,
+        item_selector=spec.selector,
+        period_params=spec.period,
+        credibility=spec.credibility,
+        adapter_kind=config.adapter,
     )
+
+
+def _fixture_adapter(config: SourceConfig) -> SourceAdapter:
+    return FixtureAdapter(
+        source_name=config.name,
+        source_family=config.family,
+        fixture_path=Path(str(config.options["fixture_path"])),
+    )
+
+
+def _pypi_adapter(config: SourceConfig) -> SourceAdapter:
+    return PublicFeedAdapter(
+        config.name,
+        config.family,
+        "https://pypi.org/rss/updates.xml",
+        _map_pypi_feed,
+        keywords=_keywords(config),
+        credibility=70.0,
+        adapter_kind=config.adapter,
+    )
+
+
+def _official_blogs_adapter(config: SourceConfig) -> SourceAdapter:
+    return OfficialFeedsAdapter(config.name, config.family, _official_feeds(config), credibility=95.0)
+
+
+def _huggingface_orgs_adapter(config: SourceConfig) -> SourceAdapter:
+    return HuggingFaceOrgAdapter(
+        config.name,
+        config.family,
+        {str(org): str(provider) for org, provider in dict(config.options.get("orgs", {})).items()},
+        per_org_limit=int(config.options.get("per_org_limit", 50)),
+    )
+
+
+def _ollama_adapter(config: SourceConfig) -> SourceAdapter:
+    return OllamaBlogAdapter(config.name, config.family)
+
+
+_ADAPTER_FACTORIES: dict[str, Callable[[SourceConfig], SourceAdapter]] = {
+    "fixture": _fixture_adapter,
+    "pypi": _pypi_adapter,
+    "official_blogs": _official_blogs_adapter,
+    "huggingface_orgs": _huggingface_orgs_adapter,
+    "ollama": _ollama_adapter,
+}
 
 
 def _model_categories(feed: dict[str, Any]) -> set[str] | None:
@@ -418,61 +443,34 @@ def _official_feeds(config: SourceConfig) -> list[dict[str, Any]]:
     return [{"provider": "OpenAI", "url": str(config.options.get("feed_url", "https://openai.com/news/rss.xml"))}]
 
 
-def _query_params_for(config: SourceConfig) -> dict[str, str]:
-    query = " ".join(_keywords(config))
-    if config.name == "github":
-        return {"q": f"{query} in:name,description", "sort": "updated", "order": "desc"}
-    if config.name == "npm":
-        return {"text": query, "size": str(config.options.get("package_limit", 100))}
-    if config.name == "hackernews":
-        return {"query": query, "tags": "story"}
-    if config.name == "arxiv":
-        return {"search_query": f"all:({query})", "start": "0", "max_results": "100"}
-    if config.name == "openalex":
-        params = {"search": query, "per-page": "100"}
-        mailto = os.environ.get(_OPENALEX_MAILTO_ENV_VAR)
-        if mailto:
-            params["mailto"] = mailto
-        return params
-    if config.name == "huggingface":
-        return {"search": query, "sort": "lastModified", "direction": "-1", "limit": "100"}
-    if config.name == "qiita":
-        return {"query": query, "per_page": "100"}
-    if config.name == "zenn":
-        return {"order": "latest"}
-    return {}
+def _github_period(params: dict[str, str], since: str, until: str) -> dict[str, str]:
+    return {**params, "q": f"{params['q']} pushed:{period_date(since)}..{period_date(until)}"}
 
 
-def _period_params_for(source_name: str) -> PeriodParams:
-    if source_name == "github":
-        return lambda params, since, until: {
-            **params,
-            "q": f"{params['q']} pushed:{period_date(since)}..{period_date(until)}",
-        }
-    if source_name == "arxiv":
-        return lambda params, since, until: {
-            **params,
-            "search_query": (
-                f"{params['search_query']} AND submittedDate:[{period_date(since).replace('-', '')}0000"
-                f" TO {period_date(until).replace('-', '')}2359]"
-            ),
-        }
-    if source_name == "hackernews":
-        return lambda params, since, until: {
-            **params,
-            "numericFilters": f"created_at_i>={_epoch_start(since)},created_at_i<={_epoch_end(until)}",
-        }
-    if source_name == "openalex":
-        return lambda params, since, until: {
-            **params,
-            "filter": f"from_publication_date:{period_date(since)},to_publication_date:{period_date(until)}",
-        }
-    if source_name == "qiita":
-        return lambda params, since, until: {
-            **params,
-            "query": f"{params['query']} created:>={period_date(since)} created:<={period_date(until)}",
-        }
-    return _without_period_params
+def _arxiv_period(params: dict[str, str], since: str, until: str) -> dict[str, str]:
+    start = period_date(since).replace("-", "")
+    end = period_date(until).replace("-", "")
+    return {**params, "search_query": f"{params['search_query']} AND submittedDate:[{start}0000 TO {end}2359]"}
+
+
+def _hackernews_period(params: dict[str, str], since: str, until: str) -> dict[str, str]:
+    return {**params, "numericFilters": f"created_at_i>={_epoch_start(since)},created_at_i<={_epoch_end(until)}"}
+
+
+def _openalex_period(params: dict[str, str], since: str, until: str) -> dict[str, str]:
+    return {**params, "filter": f"from_publication_date:{period_date(since)},to_publication_date:{period_date(until)}"}
+
+
+def _qiita_period(params: dict[str, str], since: str, until: str) -> dict[str, str]:
+    return {**params, "query": f"{params['query']} created:>={period_date(since)} created:<={period_date(until)}"}
+
+
+def _openalex_query(query: str, config: SourceConfig) -> dict[str, str]:
+    params = {"search": query, "per-page": "100"}
+    mailto = os.environ.get(_OPENALEX_MAILTO_ENV_VAR)
+    if mailto:
+        params["mailto"] = mailto
+    return params
 
 
 def _without_period_params(params: dict[str, str], since: str, until: str) -> dict[str, str]:
@@ -487,18 +485,6 @@ def _epoch_end(value: str) -> int:
     return int(period_end(value).timestamp())
 
 
-def _item_selector_for(source_name: str) -> Callable[[Any], list[dict[str, Any]]]:
-    if source_name == "hackernews":
-        return lambda payload: _list_from_dict(payload, "hits")
-    if source_name == "openalex":
-        return lambda payload: _list_from_dict(payload, "results")
-    if source_name == "npm":
-        return lambda payload: _list_from_dict(payload, "objects")
-    if source_name == "zenn":
-        return lambda payload: _list_from_dict(payload, "articles")
-    return _default_items
-
-
 def _default_items(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
@@ -511,33 +497,21 @@ def _list_from_dict(payload: Any, key: str) -> list[dict[str, Any]]:
     return [item for item in payload[key] if isinstance(item, dict)]
 
 
-def _mapper_for(source_name: str) -> RawItemMapper:
-    return {
-        "github": _map_github,
-        "huggingface": _map_huggingface,
-        "npm": _map_npm,
-        "hackernews": _map_hackernews,
-        "qiita": _map_qiita,
-        "zenn": _map_zenn,
-        "openalex": _map_openalex,
-    }[source_name]
+def _map_github(item: dict[str, Any], source: str) -> RawItem:
+    return _make_raw_item(source, item, item.get("full_name"), item.get("html_url"), item.get("description"), item.get("created_at"), item.get("updated_at"), {"stars": item.get("stargazers_count"), "forks": item.get("forks_count")}, "tool")
 
 
-def _map_github(item: dict[str, Any]) -> RawItem:
-    return _make_raw_item("github", item, item.get("full_name"), item.get("html_url"), item.get("description"), item.get("created_at"), item.get("updated_at"), {"stars": item.get("stargazers_count"), "forks": item.get("forks_count")}, "tool")
-
-
-def _map_huggingface(item: dict[str, Any]) -> RawItem:
+def _map_huggingface(item: dict[str, Any], source: str) -> RawItem:
     model_id = item.get("modelId") or item.get("id")
-    return _make_raw_item("huggingface", item, model_id, f"https://huggingface.co/{model_id}" if model_id else "", item.get("pipeline_tag"), item.get("createdAt"), item.get("lastModified"), {"downloads": item.get("downloads"), "likes": item.get("likes")}, "model")
+    return _make_raw_item(source, item, model_id, f"https://huggingface.co/{model_id}" if model_id else "", item.get("pipeline_tag"), item.get("createdAt"), item.get("lastModified"), {"downloads": item.get("downloads"), "likes": item.get("likes")}, "model")
 
 
-def _map_npm(item: dict[str, Any]) -> RawItem:
+def _map_npm(item: dict[str, Any], source: str) -> RawItem:
     package = item.get("package") if isinstance(item.get("package"), dict) else item
     links = package.get("links", {}) if isinstance(package.get("links"), dict) else {}
     score = item.get("score", {}) if isinstance(item.get("score"), dict) else {}
     return _make_raw_item(
-        "npm", item, package.get("name"), links.get("npm"), package.get("description"),
+        source, item, package.get("name"), links.get("npm"), package.get("description"),
         package.get("date"), package.get("date"),
         {
             "popularity": score.get("final", 0),
@@ -549,32 +523,32 @@ def _map_npm(item: dict[str, Any]) -> RawItem:
     )
 
 
-def _map_hackernews(item: dict[str, Any]) -> RawItem:
+def _map_hackernews(item: dict[str, Any], source: str) -> RawItem:
     url = item.get("url") or f"https://news.ycombinator.com/item?id={item.get('objectID', '')}"
-    return _make_raw_item("hackernews", item, item.get("title"), url, item.get("story_text"), item.get("created_at"), item.get("created_at"), {"points": item.get("points"), "comments": item.get("num_comments")}, "discussion")
+    return _make_raw_item(source, item, item.get("title"), url, item.get("story_text"), item.get("created_at"), item.get("created_at"), {"points": item.get("points"), "comments": item.get("num_comments")}, "discussion")
 
 
-def _map_qiita(item: dict[str, Any]) -> RawItem:
-    return _make_raw_item("qiita", item, item.get("title"), item.get("url"), item.get("body"), item.get("created_at"), item.get("updated_at"), {"likes": item.get("likes_count"), "reactions": item.get("reactions_count")}, "article")
+def _map_qiita(item: dict[str, Any], source: str) -> RawItem:
+    return _make_raw_item(source, item, item.get("title"), item.get("url"), item.get("body"), item.get("created_at"), item.get("updated_at"), {"likes": item.get("likes_count"), "reactions": item.get("reactions_count")}, "article")
 
 
-def _map_zenn(item: dict[str, Any]) -> RawItem:
+def _map_zenn(item: dict[str, Any], source: str) -> RawItem:
     path = item.get("path", "")
-    return _make_raw_item("zenn", item, item.get("title"), f"https://zenn.dev{path}" if path else item.get("url"), item.get("excerpt"), item.get("published_at"), item.get("updated_at"), {"likes": item.get("liked_count")}, "article")
+    return _make_raw_item(source, item, item.get("title"), f"https://zenn.dev{path}" if path else item.get("url"), item.get("excerpt"), item.get("published_at"), item.get("updated_at"), {"likes": item.get("liked_count")}, "article")
 
 
-def _map_openalex(item: dict[str, Any]) -> RawItem:
+def _map_openalex(item: dict[str, Any], source: str) -> RawItem:
     location = item.get("primary_location") if isinstance(item.get("primary_location"), dict) else {}
-    return _make_raw_item("openalex", item, item.get("title"), location.get("landing_page_url") or item.get("doi"), item.get("abstract_inverted_index"), item.get("publication_date"), item.get("updated_date"), {"citations": item.get("cited_by_count")}, "paper")
+    return _make_raw_item(source, item, item.get("title"), location.get("landing_page_url") or item.get("doi"), item.get("abstract_inverted_index"), item.get("publication_date"), item.get("updated_date"), {"citations": item.get("cited_by_count")}, "paper")
 
 
-def _map_arxiv_entry(entry: dict[str, Any]) -> RawItem:
-    return _make_raw_item("arxiv", entry, entry.get("title"), entry.get("link"), entry.get("summary"), entry.get("published"), entry.get("updated"), {}, "paper", raw_id=entry.get("id"))
+def _map_arxiv_entry(entry: dict[str, Any], source: str) -> RawItem:
+    return _make_raw_item(source, entry, entry.get("title"), entry.get("link"), entry.get("summary"), entry.get("published"), entry.get("updated"), {}, "paper", raw_id=entry.get("id"))
 
 
-def _map_pypi_feed(entry: dict[str, Any]) -> RawItem:
+def _map_pypi_feed(entry: dict[str, Any], source: str) -> RawItem:
     return _make_raw_item(
-        "pypi", entry, entry.get("title"), entry.get("link"), entry.get("description"),
+        source, entry, entry.get("title"), entry.get("link"), entry.get("description"),
         entry.get("pubDate"), entry.get("pubDate"),
         {"ai_keyword_strength": _ai_keyword_strength(entry)},
         "package", raw_id=entry.get("guid"),
@@ -587,10 +561,11 @@ def _map_official_feed(
     model_keywords: list[str] | None = None,
     categories: list[str] | None = None,
     model_categories: set[str] | None = None,
+    source: str = "official_blogs",
 ) -> RawItem:
     title = str(entry.get("title") or "")
     event_type = _official_event_type(title)
-    item = _make_raw_item("official_blogs", entry, title, entry.get("link"), entry.get("description") or entry.get("summary"), entry.get("published") or entry.get("pubDate"), entry.get("updated") or entry.get("pubDate"), {}, "announcement", raw_id=entry.get("id") or entry.get("guid"), event_type=event_type)
+    item = _make_raw_item(source, entry, title, entry.get("link"), entry.get("description") or entry.get("summary"), entry.get("published") or entry.get("pubDate"), entry.get("updated") or entry.get("pubDate"), {}, "announcement", raw_id=entry.get("id") or entry.get("guid"), event_type=event_type)
     item.payload["metadata"]["provider"] = provider
     # model_keywords only mark the entry for the 新モデルリリース section. They do
     # not change event_type, so the Official override for HOT keeps using the
@@ -781,3 +756,73 @@ def _summary_text(value: object) -> str:
 def _stable_id(value: dict[str, Any]) -> str:
     encoded = json.dumps(value, ensure_ascii=True, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class _SearchSpec:
+    """How a search/list API source is queried and mapped (keyed by `adapter` in sources.yaml)."""
+
+    endpoint: str
+    # (space-joined keywords, config) -> query parameters
+    query: Callable[[str, SourceConfig], dict[str, str]]
+    mapper: RawItemMapper
+    selector: ItemSelector = _default_items
+    period: PeriodParams = _without_period_params
+    credibility: float = 70.0
+    adapter_class: type[PublicSearchAdapter] = PublicSearchAdapter
+
+
+_SEARCH_SPECS: dict[str, _SearchSpec] = {
+    "github": _SearchSpec(
+        "https://api.github.com/search/repositories",
+        lambda query, config: {"q": f"{query} in:name,description", "sort": "updated", "order": "desc"},
+        _map_github,
+        period=_github_period,
+    ),
+    "npm": _SearchSpec(
+        "https://registry.npmjs.org/-/v1/search",
+        lambda query, config: {"text": query, "size": str(config.options.get("package_limit", 100))},
+        _map_npm,
+        selector=lambda payload: _list_from_dict(payload, "objects"),
+    ),
+    "hackernews": _SearchSpec(
+        "https://hn.algolia.com/api/v1/search_by_date",
+        lambda query, config: {"query": query, "tags": "story"},
+        _map_hackernews,
+        selector=lambda payload: _list_from_dict(payload, "hits"),
+        period=_hackernews_period,
+    ),
+    "arxiv": _SearchSpec(
+        "https://export.arxiv.org/api/query",
+        lambda query, config: {"search_query": f"all:({query})", "start": "0", "max_results": "100"},
+        _map_arxiv_entry,
+        period=_arxiv_period,
+        credibility=85.0,
+        adapter_class=PublicArxivAdapter,
+    ),
+    "openalex": _SearchSpec(
+        "https://api.openalex.org/works",
+        _openalex_query,
+        _map_openalex,
+        selector=lambda payload: _list_from_dict(payload, "results"),
+        period=_openalex_period,
+        credibility=85.0,
+    ),
+    "huggingface": _SearchSpec(
+        "https://huggingface.co/api/models",
+        lambda query, config: {"search": query, "sort": "lastModified", "direction": "-1", "limit": "100"},
+        _map_huggingface,
+    ),
+    "qiita": _SearchSpec(
+        "https://qiita.com/api/v2/items",
+        lambda query, config: {"query": query, "per_page": "100"},
+        _map_qiita,
+        period=_qiita_period,
+    ),
+    "zenn": _SearchSpec(
+        "https://zenn.dev/api/articles",
+        lambda query, config: {"order": "latest"},
+        _map_zenn,
+        selector=lambda payload: _list_from_dict(payload, "articles"),
+    ),
+}

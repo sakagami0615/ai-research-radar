@@ -82,16 +82,6 @@ def test_add_summary_saves_notable_and_model_release_summaries_from_input(tmp_pa
     assert _errors(data_dir) == []
 
 
-def test_add_summary_rejects_removed_summary_option(tmp_path: Path, capsys):
-    data_dir = _setup(tmp_path)
-
-    assert _add(data_dir, "--summary", "past=概要", "--input", str(_input(tmp_path, {"past": "概要"}))) == 1
-
-    assert load_digest_summaries(data_dir, DATE) == {}
-    assert [error["type"] for error in _errors(data_dir)] == ["deprecated_option"]
-    assert "--input" in capsys.readouterr().out
-
-
 def test_add_summary_records_error_types_without_changing_saved_summaries(tmp_path: Path):
     data_dir = _setup(tmp_path)
     assert _add(data_dir, "--input", str(_input(tmp_path, {"past": "最初の概要"}))) == 0
@@ -101,7 +91,7 @@ def test_add_summary_records_error_types_without_changing_saved_summaries(tmp_pa
     not_utf8.write_bytes(b"\xff\xfe")
 
     cases = [
-        ([], "invalid_summary"),
+        ([], "invalid_input"),
         (["--input", str(tmp_path / "missing.json")], "missing_input"),
         (["--input", str(broken)], "invalid_input"),
         (["--input", str(not_utf8)], "invalid_input"),
