@@ -15,19 +15,19 @@
 - レビュー指摘は成果物を作成したセッションで修正し、完了条件に関わる指摘が解消されるまで必要な範囲でレビューと修正を繰り返すこと。
 - レビュー指摘を受けた際は、同じ指摘を再度受けないように、必要に応じてAGENTS.md、関連ドキュメント、Skill、チェックリストなどへ知見を蓄積すること。
 - 使用するツールやパッケージに関してはLTS最新版を使用すること。
-- `docs/specs` フォルダにある設計書と実装の内容に乖離を発生させないこと。実装前に設計書の内容を見直す、もしくは実装後に設計書の内容を更新するなどの対応を実施すること。
-- 未実装の構想・将来対応は `docs/specs` ではなく `docs/future-works.md` に追記すること。着手できる具体的な作業はGitHub Issueにし、future-worksにはIssue番号のリンクだけを書く。実装したらfuture-worksから削除し、`docs/specs` に反映すること。
+- [docs/README.md](docs/README.md) から要件・設計・検証を確認し、実装変更時は対応する要件ID・設計・検証と [適用状況](docs/06-planning/requirement-status.md) を同期すること。変更設計の目標と現行実装は区別すること。
+- 未実装の構想・将来対応は [将来対応](docs/06-planning/future-works.md) に追記すること。着手できる具体的な作業はGitHub Issueにし、future-worksにはIssue番号のリンクだけを書く。実装したらfuture-worksから削除し、要件・設計の該当ページと適用状況に反映すること。
 - 使っていないコード・設定・Skill・文書は残さず削除すること(gitの履歴に残るため)。
 
 ## 開発時の既知の注意点
 
 - この環境の `grep` は `.gitignore` を尊重する実装(ugrepベース)にエイリアスされており、相対パス(`grep -r . ...`など)で実行すると `docs/superpowers/` のような `.gitignore` 対象ディレクトリを黙ってスキップし、ヒットが無いのに「参照なし」と誤判定することがある。参照漏れ確認などで確実に全件を検索したい場合は `command grep` を使うか、絶対パス+`--no-ignore` を指定すること。
 - SKILL.md やプロンプトテンプレートなど、AI Agent自身が解釈して実行する「手順書」を変更した場合、静的なレビュー(diffの目視確認)だけでなく、可能であれば実際にAgent(`claude -p` 等)を起動して手順どおりに動くか実機確認すること。手順の曖昧さ(ループ回数の数え方、分岐の飛び先など)は静的レビューでも見つかることがあるが、実際にAgentに読ませて実行させないと気づけない解釈違いも起こりうる。
-- 対話セッション(IDE拡張のAuto Modeなど)内で `agent-daily-run` Skillを手動実行し、レビュー手順(`claude -p ... --permission-mode bypassPermissions` などの別プロセス起動)を実行しようとすると、そのセッション固有の権限分類器に「Create Unsafe Agents」として拒否される場合がある。cronからの本番起動は独立プロセスのためこの制約を受けないが、対話セッションで手動実行する際はsubagent(Agent機能)へのレビュー委譲など代替手段で対応する(詳細は [docs/specs/06-cli-and-operations.md](docs/specs/06-cli-and-operations.md) を参照)。
+- 対話セッション(IDE拡張のAuto Modeなど)内で `agent-daily-run` Skillを手動実行し、レビュー手順(`claude -p ... --permission-mode bypassPermissions` などの別プロセス起動)を実行しようとすると、そのセッション固有の権限分類器に「Create Unsafe Agents」として拒否される場合がある。cronからの本番起動は独立プロセスのためこの制約を受けないが、対話セッションで手動実行する際はsubagent(Agent機能)へのレビュー委譲など代替手段で対応する(詳細は [cron運用](docs/05-operations/scheduled-run.md) を参照)。
 
 - `ai-research-radar` はメインチェックアウトにeditable installされているため、git worktree内で `python -m pytest` をそのまま実行するとメインチェックアウト側のコードがimportされ、worktreeの変更をテストしないまま全件passしてしまう。worktreeでは `PYTHONPATH=src python -m pytest -q`(CLIは `PYTHONPATH=src python -m ai_research_radar.cli.main ...`)を使うこと。Skill(`agent-daily-run` など)をworktreeで実機確認する場合も、Skill内の `ai-radar` コマンドはメインチェックアウト側を指すため、`PYTHONPATH=<worktree>/src exec python -m ai_research_radar.cli.main "$@"` を実行する `ai-radar` ラッパーをscratchpadに置き、`PATH` の先頭に追加してから `claude -p` を起動すること。`data/` は `.gitignore` 対象でworktreeには無いため、直近3日分の集約を確認したい場合はメインチェックアウトの過去日の `data/` をコピーする。
 - Agentが書くJSON(`selection_input.json` など)の値を許容値の集合と照合するときは、先に `isinstance(value, str)` を確認すること。リストやdictが来ると `value in {...}` が `TypeError` になり、CLIがエラー種別を記録できずトレースバックで終わる(実装例: `schemas/quality.py` の `_is_one_of`)。
-- Agentが書いた文字列をMarkdownのリスト項目などに出すときは、改行を畳むだけでなく、先頭の `#` / `-` / `*` / `` ` `` / `~` / `=` / `1.` などのブロック記号もエスケープすること。`---` や `` ``` `` が区切り線・コードブロックとして解釈され、表示が崩れる(`reporting/escape.py` の `inline` などを使う。置き場所ごとの使い分けは03章「表示用のエスケープ」)。
+- Agentが書いた文字列をMarkdownのリスト項目などに出すときは、改行を畳むだけでなく、先頭の `#` / `-` / `*` / `` ` `` / `~` / `=` / `1.` などのブロック記号もエスケープすること。`---` や `` ``` `` が区切り線・コードブロックとして解釈され、表示が崩れる(`reporting/escape.py` の `inline` などを使う。置き場所ごとの使い分けは [日次レポートの表示契約](docs/03-detailed-design/reporting/report-format.md) の「表示用のエスケープ」)。
 - CLIに「上流ステージの再実行で下流の結果を無効にする」ような状態遷移を足すときは、上流を再実行しうるSkillの手順(初回実行、レポート生成前の状態確認による補完実行、レビュー指摘後の修正ループ、エラー時の自己修正)をすべて洗い出し、それぞれで下流を再実行するか・しないか(初回はまだ下流を実行していない、上流が失敗した場合は下流の記録が残る、など)を明記すること。1か所だけ直すと、未作成の入力で下流を前倒し実行したり、正しい成果物を空で上書きしたりする経路が残る(#12 のレビューで繰り返し指摘された)。
 - Skillで「警告が出たら直して再実行する」と書くときは、再実行の上限と、直せない場合(確認できなかった候補など)に警告を残して進む条件を明記すること。終了コード0の再実行は、`agent-daily-run` の `recovery.md`「エラー時の自己修正方針」にある最大3回の制限の対象外になり、無人実行のAgentがループするおそれがある。
 - Skillを複数ファイルに分けるとき(例: `agent-daily-run` の `SKILL.md` と `recovery.md`)は、分けた先を読むきっかけを本文の側に明記すること。「〜とあるときに読む」のように参照箇所に頼ると、参照がない手順(コマンドの失敗など)でAgentが分けた先を読まず、再実行の上限や禁止規則が抜けて無人実行がループするおそれがある(2026-10のリファクタのレビューで指摘)。

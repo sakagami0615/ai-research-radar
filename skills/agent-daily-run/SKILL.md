@@ -20,7 +20,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 実行手順
 
-実行時は`SelectionInput`と`ProposalQuality`を[03章](../../docs/specs/03-data-model-and-storage.md)の共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。品質レビューは別プロセスのレビュー担当に任せ、`data/runs/<date>/review_feedback.md` の有無だけで承認・要修正を判定する(手順9)。初回を1回目として最大3回まで修正し、レビュー担当の起動失敗や3回後に残った指摘を承認扱いにしない。
+実行時は[SelectionInput](../../docs/03-detailed-design/data-models/hot-selection.md)と[ProposalQuality](../../docs/03-detailed-design/data-models/quality-records.md)を共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。品質レビューは別プロセスのレビュー担当に任せ、`data/runs/<date>/review_feedback.md` の有無だけで承認・要修正を判定する(手順9)。初回を1回目として最大3回まで修正し、レビュー担当の起動失敗や3回後に残った指摘を承認扱いにしない。
 
 コマンドが失敗したとき、ファイルが壊れていたとき、レビューで指摘を受けたときの対応は [recovery.md](recovery.md) にまとめている。**どのコマンドでも終了コード1で終わったとき、または `run_state.json` の `errors` を見てコマンドの再実行を考えたときは、再実行する前に必ず recovery.md を読む**(再実行の回数の上限と、再実行してはいけない場合が書いてある)。各手順で「recovery.md の〜」とある場合も同じ。
 
@@ -30,7 +30,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    ai-radar collect --data-dir data --sources-config config/sources.yaml
    ```
 
-   `--since` / `--until` は省略する(省略時は前回実行から引き継いだ期間。詳細は `docs/specs/06-cli-and-operations.md`)。
+   `--since` / `--until` は省略する(省略時は前回実行から引き継いだ期間。詳細は [期間解決契約](../../docs/03-detailed-design/cli/period-resolution.md))。
 
    `collect` は特定のSourceの取得に失敗しても終了コード0で終わり、`run_state.json` の `errors` にそのSourceのエラーを残す。この場合は再実行せずに手順2へ進む(recovery.md の「エラー時の自己修正方針」)。
 
@@ -218,7 +218,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - `schema_version`: `2`(整数)
    - 文字列(空にしない): `proposal_id`(入力内で重複させない)/ `source_hot_id` / `title_idea` / `article_type` / `target_reader` / `why_now` / `technical_angle` / `competition` / `traffic_opportunity` / `technical_opportunity` / `unique_angle`
    - 文字列のリスト: `experiment_plan` / `risks` / `evidence_links`(文字列1つを渡さず、1件でもリストにする)
-   - `quality`: 企画の品質記録(形式は [03章「ProposalQuality」](../../docs/specs/03-data-model-and-storage.md)。書き方の観点は article-ideation Skill)
+   - `quality`: 企画の品質記録(形式は [ProposalQuality](../../docs/03-detailed-design/data-models/quality-records.md)。書き方の観点は article-ideation Skill)
      - 空にしない文字列: `question`(検証の問い)/ `difference`(既存手段との差分)/ `baseline`(比較対象)/ `baseline_version`(比較対象の版。版がなければ固定日や条件)/ `measurement`(測定方法)/ `inputs_and_environment`(入力・環境・手順)/ `effort`(概算工数)/ `effort_assumptions`(工数の前提)/ `success_condition`(成功条件)/ `stop_condition`(中止・保留条件)
      - `metrics`: 測定指標(空にしない文字列のリスト、1件以上)
      - `evidence`: 確認した根拠(`EvidenceCheck` のリスト。キーは `url` / `checked_at` / `target_version` / `status` / `kind` / `claim` / `note` の7つちょうど。書き方は手順4の評価レコードの根拠と同じで、URLを取得したら取得ログに1行追記する)

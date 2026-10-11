@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="910" viewBox="0 0 1500 910" role="img" aria-labelledby="title desc">
+  <title id="title">AI Research Radar 日次レポート作成の役割分担</title>
+  <desc id="desc">日次レポート作成を、人・Skill（Claude CodeまたはCodex）・ソース（Pythonのai-radar CLI）の3者の役割に分けて示す。人が準備して起動し、SkillがCLIを呼びながら採否・企画・概要を書き、ソースが収集・検証・保存・レポート生成を行う。人はできた日次レポートを読んで判断する。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#333"/></marker>
+    <style>
+      text {font-family:"Noto Sans JP","Noto Sans CJK JP","Yu Gothic",sans-serif;fill:#222;font-size:15px}
+      .heading {font-size:28px;font-weight:700}.sub {font-size:15px;fill:#444}
+      .col-title {font-size:21px;font-weight:700}.col-sub {font-size:13px;fill:#444}
+      .sec {font-size:16px;font-weight:700}.edge {font-size:14px;fill:#333}
+      .card {fill:#fff;stroke:#ccc;rx:8}
+      .flow {fill:none;stroke:#333;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1500" height="910" fill="#faf9f6"/>
+  <text x="40" y="48" class="heading">日次レポート作成の役割分担（agent-daily-run）</text>
+  <text x="40" y="80" class="sub">人が準備して起動し、Skillに従うAgentが判断・執筆し、Pythonのソースコードが処理・検証・保存する</text>
+  <!-- 人（利用者：AIエンジニア） -->
+  <rect x="40" y="160" width="400" height="560" rx="14" fill="#fdf3e7" stroke="#b0671a" stroke-width="2"/>
+  <rect x="40" y="160" width="400" height="8" rx="4" fill="#b0671a"/>
+  <text x="60" y="200" class="col-title">人（利用者：AIエンジニア）</text>
+  <text x="60" y="222" class="col-sub">準備・起動・結果の判断を担う</text>
+  <rect x="56" y="244" width="368" height="108" class="card"/>
+  <text x="70" y="268" class="sec" fill="#b0671a" style="fill:#b0671a">準備（初回）</text>
+  <text x="70" y="294">ai-radar と claude／codex CLI を導入する</text>
+  <text x="70" y="318">必要に応じて config/ の監視対象を調整</text>
+  <text x="70" y="342">定期実行なら crontab に PATH と起動行を登録</text>
+  <rect x="56" y="364" width="368" height="108" class="card"/>
+  <text x="70" y="388" class="sec" fill="#b0671a" style="fill:#b0671a">起動（毎日）</text>
+  <text x="70" y="414">cron：claude -p／codex exec を自動起動</text>
+  <text x="70" y="438">手動：同じコマンドを実行、または</text>
+  <text x="70" y="462">　　　対話セッションでAgentに依頼</text>
+  <rect x="56" y="484" width="368" height="156" class="card"/>
+  <text x="70" y="508" class="sec" fill="#b0671a" style="fill:#b0671a">結果の確認と判断</text>
+  <text x="70" y="534">reports/daily/&lt;date&gt;.md を読む</text>
+  <text x="70" y="558">記事化・実験の採否を決める</text>
+  <text x="70" y="582">「要確認」なら review_feedback.md を見る</text>
+  <text x="70" y="606">　（data/runs/&lt;date&gt;/ にある）</text>
+  <text x="70" y="630">直してほしい点を修正要望として出す</text>
+  <!-- Skill（Claude Code／Codex） -->
+  <rect x="540" y="160" width="420" height="560" rx="14" fill="#ecf6ef" stroke="#2f7a4a" stroke-width="2"/>
+  <rect x="540" y="160" width="420" height="8" rx="4" fill="#2f7a4a"/>
+  <text x="560" y="200" class="col-title">Skill（Claude Code／Codex）</text>
+  <text x="560" y="222" class="col-sub">agent-daily-run の手順に従い、判断と執筆を担う</text>
+  <rect x="556" y="244" width="388" height="84" class="card"/>
+  <text x="570" y="268" class="sec" fill="#2f7a4a" style="fill:#2f7a4a">手順の進行</text>
+  <text x="570" y="294">対象日を決め、CLIのコマンドを順に呼ぶ</text>
+  <text x="570" y="318">失敗したら入力を直して再実行（最大3回）</text>
+  <rect x="556" y="340" width="388" height="108" class="card"/>
+  <text x="570" y="364" class="sec" fill="#2f7a4a" style="fill:#2f7a4a">判断・執筆（Pythonでは行わない部分）</text>
+  <text x="570" y="390">HOT候補の根拠URLを読み、採否と概要を書く</text>
+  <text x="570" y="414">選抜したHOTから記事企画を書く</text>
+  <text x="570" y="438">不足している概要、Sourceごとの傾向を書く</text>
+  <rect x="556" y="460" width="388" height="132" class="card"/>
+  <text x="570" y="484" class="sec" fill="#2f7a4a" style="fill:#2f7a4a">品質レビュー</text>
+  <text x="570" y="510">別プロセスのAgentにレビューさせる</text>
+  <text x="570" y="534">　（対話セッションではsubagentで代替）</text>
+  <text x="570" y="558">指摘を直して再レビュー（初回含め最大3回）</text>
+  <text x="570" y="582">解消できなければ mark-needs-review を実行</text>
+  <rect x="556" y="604" width="388" height="84" class="card"/>
+  <text x="570" y="628" class="sec" fill="#2f7a4a" style="fill:#2f7a4a">参照するSkill</text>
+  <text x="570" y="654">hot-detection・article-ideation・</text>
+  <text x="570" y="678">review-daily-report</text>
+  <!-- ソース（Pythonコード） -->
+  <rect x="1060" y="160" width="400" height="560" rx="14" fill="#ebf2f9" stroke="#2f5d8a" stroke-width="2"/>
+  <rect x="1060" y="160" width="400" height="8" rx="4" fill="#2f5d8a"/>
+  <text x="1080" y="200" class="col-title">ソース（Pythonコード）</text>
+  <text x="1080" y="222" class="col-sub">ai-radar CLI が処理・検証・保存を担う（LLMは呼ばない）</text>
+  <rect x="1076" y="244" width="368" height="108" class="card"/>
+  <text x="1090" y="268" class="sec" fill="#2f5d8a" style="fill:#2f5d8a">収集・候補化</text>
+  <text x="1090" y="294">collect：公開Sourceから情報を収集</text>
+  <text x="1090" y="318">normalize：Signal・Eventに整理</text>
+  <text x="1090" y="342">score：HOTスコアを計算し候補を出す</text>
+  <rect x="1076" y="364" width="368" height="132" class="card"/>
+  <text x="1090" y="388" class="sec" fill="#2f5d8a" style="fill:#2f5d8a">Agentの入力を検証・保存</text>
+  <text x="1090" y="414">select-hot／save-proposals</text>
+  <text x="1090" y="438">add-summary／add-source-overview</text>
+  <text x="1090" y="462">mark-needs-review：「要確認」を記録</text>
+  <text x="1090" y="486">誤りは run_state.json にエラーで記録</text>
+  <rect x="1076" y="508" width="368" height="84" class="card"/>
+  <text x="1090" y="532" class="sec" fill="#2f5d8a" style="fill:#2f5d8a">レポート生成</text>
+  <text x="1090" y="558">report：data/ を集約しMarkdownを生成</text>
+  <text x="1090" y="582">「要確認」なら冒頭に警告を出す</text>
+  <rect x="1076" y="604" width="368" height="60" class="card"/>
+  <text x="1090" y="628" class="sec" fill="#2f5d8a" style="fill:#2f5d8a">保存先</text>
+  <text x="1090" y="654">data/：収集データ・判断・実行状態</text>
+  <!-- 成果物 -->
+  <rect x="560" y="780" width="380" height="96" rx="10" fill="#fff" stroke="#333" stroke-width="1.5"/>
+  <text x="580" y="812" class="col-title" style="font-size:18px">日次レポート</text>
+  <text x="580" y="838">reports/daily/&lt;date&gt;.md</text>
+  <text x="580" y="862" class="col-sub">解消できない指摘があれば冒頭に「要確認」</text>
+  <!-- 人 → ソース：設定 -->
+  <path d="M240 160 V124 H1260 V160" class="flow"/>
+  <text x="750" y="116" text-anchor="middle" class="edge">CLIが config/ の監視条件・スコア設定を読む</text>
+  <!-- 人 → Skill：起動 -->
+  <path d="M440 400 H540" class="flow"/>
+  <text x="490" y="390" text-anchor="middle" class="edge">起動</text>
+  <!-- Skill ⇄ ソース -->
+  <path d="M960 330 H1060" class="flow"/>
+  <text x="1010" y="300" text-anchor="middle" class="edge">コマンド</text>
+  <text x="1010" y="320" text-anchor="middle" class="edge">入力JSON</text>
+  <path d="M1060 430 H960" class="flow"/>
+  <text x="1010" y="456" text-anchor="middle" class="edge">候補・一覧</text>
+  <text x="1010" y="476" text-anchor="middle" class="edge">検証結果</text>
+  <!-- ソース → 成果物 → 人 -->
+  <path d="M1260 720 V828 H940" class="flow"/>
+  <text x="1270" y="760" class="edge">生成</text>
+  <path d="M560 828 H240 V720" class="flow"/>
+  <text x="250" y="760" class="edge">読む</text>
+</svg>

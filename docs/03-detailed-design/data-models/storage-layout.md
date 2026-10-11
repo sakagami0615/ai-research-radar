@@ -1,0 +1,50 @@
+# 保存形式とディレクトリ構成
+
+旧設計書の該当節を分割した資料。現行と移行目標の区別は [文書全体の入口](../../README.md) から確認する。
+
+## 保存方針
+
+MVPでは、人間が確認しやすく、再処理もしやすい形式を優先する。
+
+- 構造化データ: JSONL
+- 人間向けレポート: Markdown
+- SQLite: 将来検討
+
+JSONLは1行1レコードとし、日次実行ごとの成果物を日付ディレクトリに保存する。
+
+
+## ディレクトリ構成
+
+```text
+data/
+  raw/<date>/<source>.jsonl
+  collected/<date>/signals.jsonl
+  normalized/<date>/signals.jsonl
+  events/<date>/events.jsonl
+  topics/<date>/topics.jsonl
+  runs/<date>/run_state.json
+  runs/<date>/hot_candidates.jsonl
+  runs/<date>/selection_input.json
+  runs/<date>/summary_input.json
+  runs/<date>/draft_proposals.json
+  runs/<date>/article_proposals.jsonl
+  runs/<date>/run.jsonl
+  runs/<date>/report_digest.json
+  runs/<date>/digest_summaries.json
+  runs/<date>/source_overview_input.json
+  runs/<date>/source_overviews.json
+  runs/<date>/evidence_fetch_log.tsv
+  runs/<date>/review_feedback.md
+
+reports/
+  daily/<date>.md
+```
+
+`runs/<date>/evidence_fetch_log.tsv` は、実行Agentが手順4〜9で取得したURLの記録(根拠の確認のほか、注目候補・新モデルリリースの概要補完での取得も含む。ヘッダー付きTSV。形式は `agent-daily-run` Skillの手順4)。CLIは読み書きしない。
+
+その他のファイルの役割は次のとおり。
+
+- `collected/<date>/signals.jsonl`: `collect` がCanonicalSignalに変換した、重複排除前のSignal。`normalize` の入力。
+- `runs/<date>/run_state.json`: Agent経路のサブコマンドが共有する、その日の実行状態([実行記録](run-metadata.md))。決定論経路では作らない。
+- `runs/<date>/draft_proposals.json`: Agentが `save-proposals --input` に渡すために書く記事企画の入力([記事企画](article-proposals.md)の「save-proposals の入力(v2)」)。
+- `runs/<date>/review_feedback.md`: レビュー担当のAgentが、Critical / Important の指摘があるときだけ書く指摘。ファイルの有無が承認・要修正の判定になる([日次レビュー](../agent-workflows/review-daily-report.md))。CLIは読み書きしない。

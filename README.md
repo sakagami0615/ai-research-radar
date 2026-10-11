@@ -16,11 +16,13 @@ AI Research Radar は、AI関連の研究、ツール、ライブラリ、公式
 
 ## リポジトリ内の主な入口
 
-- 設計書入口: [docs/specs/README.md](docs/specs/README.md)
+- 日次レポート作成の役割分担(人・Skill・Pythonコード、1枚図): [日次レポート作成の役割分担](docs/08-reference/daily-run-flow.svg)
+- 参考資料の入口: [docs/08-reference/README.md](docs/08-reference/README.md)（調査資料はローカルのAPPENDIXに配置）
+- ドキュメント入口・読む順: [docs/README.md](docs/README.md)
 - AIエージェント向け作業ルール: [AGENTS.md](AGENTS.md)
 - AI Agent向けSkill: [skills/](skills/)
 - 設定ファイル: [config/](config/)
-- 将来対応の構想: [docs/future-works.md](docs/future-works.md)
+- 将来対応の構想: [docs/06-planning/future-works.md](docs/06-planning/future-works.md)
 
 ## AIエージェントごとの事前準備
 
@@ -28,21 +30,21 @@ AI Research Radar は、AI関連の研究、ツール、ライブラリ、公式
 
 1. Codexでこのリポジトリを開く
 2. [AGENTS.md](AGENTS.md) を読み、作業ルールとレビュー方針を確認する
-3. [docs/specs/README.md](docs/specs/README.md) から必要な設計書へ進む
+3. [docs/README.md](docs/README.md) から必要な設計書へ進む
 4. 日次実行は [skills/agent-daily-run/SKILL.md](skills/agent-daily-run/SKILL.md)、HOT判定・記事企画の観点は [skills/](skills/) 配下のSkill文書を参照する
 
 ### Claude Code
 
 1. Claude Codeでこのリポジトリを開く
 2. [AGENTS.md](AGENTS.md) を読み、作業ルールとレビュー方針を確認する
-3. [docs/specs/README.md](docs/specs/README.md) から必要な設計書へ進む
+3. [docs/README.md](docs/README.md) から必要な設計書へ進む
 4. `skills/` 配下のSkill文書を必要に応じて参照する
 
 ### GitHub Copilot
 
-GitHub Copilot向けの専用設定はまだ用意していません(対応は [docs/future-works.md](docs/future-works.md) に記載)。利用する場合は、以下の資料をコンテキストとして参照してください。
+GitHub Copilot向けの専用設定はまだ用意していません(対応は [docs/06-planning/future-works.md](docs/06-planning/future-works.md) に記載)。利用する場合は、以下の資料をコンテキストとして参照してください。
 
-1. [docs/specs/README.md](docs/specs/README.md) から設計書を確認する
+1. [docs/README.md](docs/README.md) から設計書を確認する
 2. [AGENTS.md](AGENTS.md) で作業ルールを確認する
 3. エディタ側でこのリポジトリ全体をCopilotの参照コンテキストに含める
 
@@ -130,12 +132,12 @@ HOT選抜と記事企画を決定論的なロジックのまま実行したい�
 
 より詳しい設計や運用方針は以下を参照してください。
 
-- コンセプト: [docs/specs/01-concept.md](docs/specs/01-concept.md)
-- アーキテクチャ: [docs/specs/02-architecture.md](docs/specs/02-architecture.md)
-- データモデル・保存: [docs/specs/03-data-model-and-storage.md](docs/specs/03-data-model-and-storage.md)
-- Source Adapter: [docs/specs/04-source-adapters.md](docs/specs/04-source-adapters.md)
-- Pipeline / Scoring / Ideation: [docs/specs/05-pipeline-scoring-ideation.md](docs/specs/05-pipeline-scoring-ideation.md)
-- CLI・運用: [docs/specs/06-cli-and-operations.md](docs/specs/06-cli-and-operations.md)
-- Skills・Agent Workflow: [docs/specs/07-skills-and-agent-workflow.md](docs/specs/07-skills-and-agent-workflow.md)
-- テスト・拡張: [docs/specs/08-testing-and-extension.md](docs/specs/08-testing-and-extension.md)
-- 将来対応: [docs/future-works.md](docs/future-works.md)
+- 01 [要求・要件](docs/01-requirements/README.md)
+- 02 [基本設計](docs/02-architecture/README.md)
+- 03 [詳細設計](docs/03-detailed-design/README.md)
+- 04 [検証・受入](docs/04-verification/README.md)
+- 05 [運用](docs/05-operations/README.md)
+- 06 [計画・適用状況](docs/06-planning/README.md)
+- 07 [設計判断・変更設計](docs/07-decisions/README.md)
+- 08 [参考調査](docs/08-reference/README.md)
+- 将来対応: [docs/06-planning/future-works.md](docs/06-planning/future-works.md)
