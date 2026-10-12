@@ -1,12 +1,12 @@
 # Agent Daily Run: 失敗・やり直しの対応
 
-[SKILL.md](SKILL.md) の手順で、コマンドが失敗したとき、ファイルが壊れていたとき、レビューで指摘を受けたときの対応。手順の番号(手順1〜10、8a〜8d、9a・9b)は `SKILL.md` のもの。エラー種別の条件は [06章](../../docs/specs/06-cli-and-operations.md) にあり、ここには書き写さない。
+[SKILL.md](SKILL.md) の手順で、コマンドが失敗したとき、ファイルが壊れていたとき、レビューで指摘を受けたときの対応。手順の番号(手順1〜10、8a〜8d、9a・9b)は `SKILL.md` のもの。エラー種別の条件は [CLIコマンド契約](../../docs/spec/03-detailed-design/cli/commands.md) にあり、ここには書き写さない。
 
 ## エラー時の自己修正方針
 
 `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` が終了コード1を返した場合:
 
-1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別ごとの条件は [06章「Agent経路のサブコマンド」](../../docs/specs/06-cli-and-operations.md) の各コマンドの表を見る。
+1. `data/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別ごとの条件は [CLIコマンド契約](../../docs/spec/03-detailed-design/cli/commands.md) の「Agent経路のサブコマンド」の各コマンドの表を見る。
    - `invalid_proposal` のメッセージの `proposal[<番号>]` は、`proposals` の何番目(0始まり)の企画かを示す。
    - `select-hot` / `save-proposals` / `add-source-overview` の `corrupt_input` は自分が書いた入力ではなく、前のステージが出力したjsonl(`select-hot` / `save-proposals` は `hot_candidates.jsonl`、`add-source-overview` は `data/normalized/<date>/signals.jsonl`)の破損である。項目2・3ではなく、下の「壊れた入力(`corrupt_input`)」に従う。
 2. 原因に応じて `selection_input.json`・`draft_proposals.json`・`summary_input.json`・`source_overview_input.json` を修正し、再実行する。
