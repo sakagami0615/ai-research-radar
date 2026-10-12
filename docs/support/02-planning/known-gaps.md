@@ -18,6 +18,5 @@
 ## 現行コードに残る課題
 
 - `sources/public.py::_matches_keywords` は `classify_relevance` の判定結果を一致の有無だけに丸めて捨てる(判定結果を残す案は [将来対応](future-works.md) の「AI関連性の判定結果をデータに残す」)。
-- `_strongest_event_type`(Event種別の優先度判定)が `pipeline/events.py` と `normalization/dedup.py` に別々に実装されている(引数の形は異なる)。
 - `normalization/scores.py::_rank_popularity` は件数の2乗に比例する計算量である。
 - OpenAlexの `abstract_inverted_index` の復元(`restore_abstract`)が、収集時(`sources/public.py`、診断情報は破棄)と正規化時(`sources/remap.py`)の2か所で同じデータに対して実行される。
