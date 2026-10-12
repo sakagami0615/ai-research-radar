@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ai_research_radar.schemas.models import NOT_RUN_REASON, valid_stage_result
+from ai_research_radar.schemas.models import INVALIDATED_REASON, NOT_RUN_REASON, valid_stage_result
 from ai_research_radar.storage.files import atomic_write_text
 
 
@@ -23,7 +23,6 @@ def run_state_path(data_dir: Path, date: str) -> Path:
 
 
 STAGE_RESULT_STAGES = ("select-hot", "save-proposals")
-INVALIDATED_REASON = "選抜の再実行により無効"
 
 
 def _initial_stage_result() -> dict[str, Any]:

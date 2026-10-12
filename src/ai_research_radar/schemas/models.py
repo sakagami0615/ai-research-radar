@@ -103,6 +103,8 @@ class ArticleProposal:
 
 STAGE_RESULT_STATUSES = frozenset({"completed", "deferred", "not_run", "failed"})
 NOT_RUN_REASON = "未実行"
+INVALIDATED_REASON = "選抜の再実行により無効"
+NO_SELECTION_REASON = "選抜HOTなし"
 
 
 def valid_stage_result(value: object) -> dict[str, Any] | None:

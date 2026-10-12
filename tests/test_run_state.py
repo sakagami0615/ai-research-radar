@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from ai_research_radar.schemas.models import INVALIDATED_REASON
 from ai_research_radar.storage.run_state import (
-    INVALIDATED_REASON,
     RunStateError,
     add_error,
     invalidate_proposals_result,
