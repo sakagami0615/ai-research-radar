@@ -16,7 +16,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 
 - `codex` で実行する場合は `claude -p "..." --permission-mode bypassPermissions` を `codex exec "..." --sandbox workspace-write` に置き換えた別のcron行を使う(両方を同時に有効化しない)。
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
-- レポート生成後、Agent自身が別プロセスの `claude -p` / `codex exec` を起動して `skills/review-daily-report/SKILL.md` によるレビューを行わせ、指摘があれば自分自身で修正して最大3回まで再試行する(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければ `ai-radar mark-needs-review` で `run_state.json` に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
+- レポート生成後、Agent自身が別プロセスの `claude -p` / `codex exec` を起動して `skills/review-daily-report/SKILL.md` によるレビューを行わせ、指摘があれば自分自身で修正して再レビューする。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回目の試行の後も指摘が残れば `ai-radar mark-needs-review` で `run_state.json` に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
 
 上記のレビュー起動(Agent自身が別プロセスの `claude -p` / `codex exec` を起動する手順)はcronからの起動を前提とする。対話セッション(IDE拡張のAuto Modeなど)内で `agent-daily-run` を手動実行する場合、Bash経由で `claude -p ... --permission-mode bypassPermissions` を新規起動しようとすると、そのセッション固有の権限分類器に「Create Unsafe Agents」として拒否されることがある。この場合は同一セッション内のsubagent(Agent機能)へレビューを委譲する代替手段で対応してよい。cronによる本番実行はこの制約を受けない独立プロセスであるため、設計自体は変更不要である。
 

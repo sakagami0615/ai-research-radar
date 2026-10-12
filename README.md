@@ -116,7 +116,7 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
 - ローカルで動作確認したい場合は、`flock ...` と `>> ... 2>&1`、`&& test -f ...` を外し、`cd /path/to/ai-research-radar && claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions` をそのまま端末で実行すればよい。cron行と同じコマンドなので、動作確認用に別の手順を覚える必要がない。
-- レポート生成後、Agent自身が別プロセスとして `skills/review-daily-report/SKILL.md` に従うAgentを起動し、HOT選抜・記事企画の質をレビューさせる。問題が見つかれば自分自身で修正し、最大3回まで再レビューする(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回解消できなければ、`ai-radar mark-needs-review` で `data/runs/<date>/run_state.json` に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
+- レポート生成後、Agent自身が別プロセスとして `skills/review-daily-report/SKILL.md` に従うAgentを起動し、HOT選抜・記事企画の質をレビューさせる。問題が見つかれば自分自身で修正して再レビューする。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回目の試行の後も指摘が残れば、`ai-radar mark-needs-review` で `data/runs/<date>/run_state.json` に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
 
 ### 決定論的な `ai-radar daily` による日次実行(手動・CI向け)
 

@@ -12,7 +12,7 @@
 | Agent入力が不正 | [CLI契約](../../spec/03-detailed-design/cli/commands.md) | `invalid_input`、評価・企画入力の契約 |
 | 上流の保存データが破損 | [日次Skill](../../../skills/agent-daily-run/SKILL.md) | `corrupt_input`、補完実行範囲と上限 |
 | 保存・レポート生成失敗 | [実行状態](../../spec/03-detailed-design/data-models/run-metadata.md) | 書込み失敗、未実行・失敗・保留の区別 |
-| レビュー指摘が残る | [日次Skill](../../../skills/agent-daily-run/SKILL.md) | 初回を含む最大3回と警告条件 |
+| レビュー指摘が残る | [日次Skill](../../../skills/agent-daily-run/SKILL.md) | 警告条件と試行回数(レビューの試行は最大3回で初回を1回目とし、修正は試行の間に行うため最大2回) |
 | 対話セッションでレビュー起動を拒否 | [cron運用](scheduled-run.md) | 別プロセスとsubagent代替の条件 |
 
 修正手順や回数の分岐は共通Skillを正本とする。実装変更が必要なら要件・設計への影響を確認し、[バックログ](../02-planning/backlog.md)とレビュー運用に従う。

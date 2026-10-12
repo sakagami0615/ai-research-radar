@@ -20,7 +20,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 ## 実行手順
 
-実行時は[SelectionInput](../../docs/spec/03-detailed-design/data-models/hot-selection.md)と[ProposalQuality](../../docs/spec/03-detailed-design/data-models/quality-records.md)を共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。品質レビューは別プロセスのレビュー担当に任せ、`data/runs/<date>/review_feedback.md` の有無だけで承認・要修正を判定する(手順9)。初回を1回目として最大3回まで修正し、レビュー担当の起動失敗や3回後に残った指摘を承認扱いにしない。
+実行時は[SelectionInput](../../docs/spec/03-detailed-design/data-models/hot-selection.md)と[ProposalQuality](../../docs/spec/03-detailed-design/data-models/quality-records.md)を共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。品質レビューは別プロセスのレビュー担当に任せ、`data/runs/<date>/review_feedback.md` の有無だけで承認・要修正を判定する(手順9)。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回とし、レビュー担当の起動失敗や3回目の試行の後に残った指摘を承認扱いにしない。
 
 コマンドが失敗したとき、ファイルが壊れていたとき、レビューで指摘を受けたときの対応は [recovery.md](recovery.md) にまとめている。**どのコマンドでも終了コード1で終わったとき、または `run_state.json` の `errors` を見てコマンドの再実行を考えたときは、再実行する前に必ず recovery.md を読む**(再実行の回数の上限と、再実行してはいけない場合が書いてある)。各手順で「recovery.md の〜」とある場合も同じ。
 
@@ -365,7 +365,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       - 記録があり、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しをまだ行っていない場合: それに従って流し直し(手順8のa〜dのやり直しを含む)、この確認をもう一度行う。
       - 記録があり、流し直しを行った後の場合(上限到達): 何もせず、記録を残したまま手順9へ進む。
 
-9. `report` 完了後、成果物の質を別セッションのAgentにレビューさせる。
+9. `report` 完了後、成果物の質を別セッションのAgentにレビューさせる。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回(1回目・2回目の試行の後)。
 
    a. 自分自身が起動されているのと同じCLIで、新しいプロセスとして
       `skills/review-daily-report/entry-prompt.txt` の内容(`{date}` は
@@ -385,7 +385,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
         recovery.md で手順10へ進むとされた場合を除き、手順8のa〜d(概要の補完、本日の傾向の作成、レポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
-10. 3回試行しても `data/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input`)だけが残った場合は、未解消であることを記録し、レポートを生成し直す。
+10. 3回目の試行の後も `data/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input`)だけが残った場合は、未解消であることを記録し、レポートを生成し直す。
 
     ```bash
     ai-radar mark-needs-review --date <date>
