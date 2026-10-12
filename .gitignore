@@ -1,6 +1,6 @@
 .superpowers/
 docs/superpowers/
-docs/08-reference/APPENDIX/
+docs/support/03-reference/APPENDIX/
 
 __pycache__/
 *.pyc

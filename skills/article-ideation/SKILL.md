@@ -17,7 +17,7 @@ description: Use when 選抜HOTから技術記事の企画候補を作るとき�
 
 ## 出力
 
-- Article Proposal(v2。`schema_version: 2` と `quality` を持つ。`save-proposals` の入力形式と検証内容は [記事企画入力契約](../../docs/03-detailed-design/data-models/article-proposals.md)、品質項目は [共通品質契約](../../docs/03-detailed-design/data-models/quality-records.md)、Agent経路での書き方は [agent-daily-run Skill](../agent-daily-run/SKILL.md) の手順6)
+- Article Proposal(v2。`schema_version: 2` と `quality` を持つ。`save-proposals` の入力形式と検証内容は [記事企画入力契約](../../docs/spec/03-detailed-design/data-models/article-proposals.md)、品質項目は [共通品質契約](../../docs/spec/03-detailed-design/data-models/quality-records.md)、Agent経路での書き方は [agent-daily-run Skill](../agent-daily-run/SKILL.md) の手順6)
 - Daily Report内の記事企画候補(v2の企画は `quality` の全項目も表示される)
 
 ## quality の書き方
