@@ -52,6 +52,6 @@
 - `run_state.json` が壊れたJSON、またはJSONとして正しくてもオブジェクトでない場合、`load_run_state` は `RunStateError` を送出する。この場合は `errors` にも `stage_results` にも記録できないため、`stage_results` は更新されない。CLIは `RunStateError` を捕まえ、標準エラーに `error: <メッセージ>` を出して終了コード1で終わる(トレースバックにしない)。
 - 判定用の定数・関数(`STAGE_RESULT_STATUSES` / `valid_stage_result`)と、`reason` に入れる定型の理由の定数(`NOT_RUN_REASON`(未実行)/ `INVALIDATED_REASON`(選抜の再実行により無効)/ `NO_SELECTION_REASON`(選抜HOTなし))は `schemas/models.py` にある。
 
-`run_state.json` の `needs_review` は、品質レビューループが3回で解消しなかったことを表す(`true` のときだけキーを持つ)。`ai-radar mark-needs-review` が記録し、`collect` が消す。`report` はこれが `true` ならレポートの冒頭に警告を出す([日次レポートの表示契約](../reporting/report-format.md)、[CLIコマンド](../cli/commands.md))。`run.jsonl` には書かない。
+`run_state.json` の `needs_review` は、品質レビューループが3回目の試行(初回を1回目とする)の後も解消しなかったことを表す(`true` のときだけキーを持つ)。`ai-radar mark-needs-review` が記録し、`collect` が消す。`report` はこれが `true` ならレポートの冒頭に警告を出す([日次レポートの表示契約](../reporting/report-format.md)、[CLIコマンド](../cli/commands.md))。`run.jsonl` には書かない。
 
 Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。

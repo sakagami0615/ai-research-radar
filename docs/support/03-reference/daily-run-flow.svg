@@ -55,7 +55,7 @@
   <text x="570" y="484" class="sec" fill="#2f7a4a" style="fill:#2f7a4a">品質レビュー</text>
   <text x="570" y="510">別プロセスのAgentにレビューさせる</text>
   <text x="570" y="534">　（対話セッションではsubagentで代替）</text>
-  <text x="570" y="558">指摘を直して再レビュー（初回含め最大3回）</text>
+  <text x="570" y="558">指摘を直して再レビュー（試行3回・修正2回まで）</text>
   <text x="570" y="582">解消できなければ mark-needs-review を実行</text>
   <rect x="556" y="604" width="388" height="84" class="card"/>
   <text x="570" y="628" class="sec" fill="#2f7a4a" style="fill:#2f7a4a">参照するSkill</text>
