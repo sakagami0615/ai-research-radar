@@ -8,6 +8,7 @@ from ai_research_radar.schemas.models import (
     HotCandidate,
     RawItem,
     RunMetadata,
+    strongest_event_type,
     to_json_dict,
     valid_stage_result,
 )
@@ -189,3 +190,25 @@ def test_valid_stage_result_accepts_only_known_status_dicts():
     assert valid_stage_result({"status": ["completed"]}) is None
     assert valid_stage_result("completed") is None
     assert valid_stage_result(None) is None
+
+
+def test_strongest_event_type_prefers_higher_priority():
+    assert strongest_event_type(["observed_signal", "research_signal", "major_api_release"]) == "major_api_release"
+    assert strongest_event_type(["research_signal", "observed_signal"]) == "research_signal"
+
+
+def test_strongest_event_type_keeps_first_on_tie():
+    assert strongest_event_type(["major_api_release", "major_model_release"]) == "major_api_release"
+    assert strongest_event_type(["major_model_release", "major_api_release"]) == "major_model_release"
+
+
+def test_strongest_event_type_ranks_empty_below_observed_and_unknown_as_zero():
+    assert strongest_event_type(["", "observed_signal"]) == "observed_signal"
+    assert strongest_event_type(["", "unknown_type"]) == "unknown_type"
+    assert strongest_event_type(["unknown_type", "observed_signal"]) == "unknown_type"
+    assert strongest_event_type(["observed_signal", "unknown_type"]) == "observed_signal"
+    assert strongest_event_type(["", ""]) == ""
+
+
+def test_strongest_event_type_defaults_to_observed_for_empty_list():
+    assert strongest_event_type([]) == "observed_signal"

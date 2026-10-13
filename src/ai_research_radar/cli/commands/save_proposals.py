@@ -15,11 +15,10 @@ from ai_research_radar.storage.run_state import (
 )
 from ai_research_radar.ideation.validation import REQUIRED_FIELDS, validate_proposals
 from ai_research_radar.schemas.decoders import decode_hot
-from ai_research_radar.schemas.models import ArticleProposal
+from ai_research_radar.schemas.models import NO_SELECTION_REASON, ArticleProposal
 from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, write_jsonl
 
 COMMAND_NAME = "save-proposals"
-NO_SELECTION_REASON = "選抜HOTなし"
 _ALLOWED_KEYS = frozenset({"schema_version", "proposals", "deferral_reason"})
 
 

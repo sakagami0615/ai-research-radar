@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -82,3 +83,14 @@ def test_deduplicated_official_major_event_receives_hot_override():
     assert events[0].event_type == "major_api_release"
     assert len(candidates) == 1
     assert "Official override" in candidates[0].reasons
+
+
+def test_build_events_prefers_observed_signal_over_empty_event_type():
+    # 空文字列の event_type(dedupで統合されたfixtureのSignal)は observed_signal より弱い。
+    empty = _signal("github:a", "Agent Runtime", "technology")
+    empty = replace(empty, metadata={**empty.metadata, "event_type": ""})
+    observed = _signal("hn:b", "Agent Runtime", "community", event_type="observed_signal")
+
+    [event] = build_events([empty, observed])
+
+    assert event.event_type == "observed_signal"

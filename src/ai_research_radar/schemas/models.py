@@ -50,6 +50,21 @@ class Event:
     quality: dict[str, Any] = field(default_factory=dict)
 
 
+_EVENT_TYPE_PRIORITY = {
+    "major_model_release": 3,
+    "major_api_release": 3,
+    "major_standard_update": 3,
+    "research_signal": 1,
+    "observed_signal": 0,
+    "": -1,
+}
+
+
+def strongest_event_type(event_types: list[str]) -> str:
+    """最も強いEvent種別。表にない種別は0、同じ強さなら先勝ち、空リストなら observed_signal。"""
+    return max(event_types or ["observed_signal"], key=lambda value: _EVENT_TYPE_PRIORITY.get(value, 0))
+
+
 @dataclass(frozen=True)
 class Topic:
     topic_id: str
@@ -103,6 +118,8 @@ class ArticleProposal:
 
 STAGE_RESULT_STATUSES = frozenset({"completed", "deferred", "not_run", "failed"})
 NOT_RUN_REASON = "未実行"
+INVALIDATED_REASON = "選抜の再実行により無効"
+NO_SELECTION_REASON = "選抜HOTなし"
 
 
 def valid_stage_result(value: object) -> dict[str, Any] | None:

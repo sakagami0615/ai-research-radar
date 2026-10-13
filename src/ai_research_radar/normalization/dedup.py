@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from ai_research_radar.schemas.models import CanonicalSignal
+from ai_research_radar.schemas.models import CanonicalSignal, strongest_event_type
 
 
 def deduplicate_signals(signals: list[CanonicalSignal]) -> list[CanonicalSignal]:
@@ -66,9 +66,8 @@ def _merge_signals(first: CanonicalSignal, second: CanonicalSignal) -> Canonical
     # from a source that does not set it (e.g. keyword HF search vs HF org).
     if "model_release" not in merged_metadata and "model_release" in second.metadata:
         merged_metadata["model_release"] = second.metadata["model_release"]
-    merged_metadata["event_type"] = _strongest_event_type(
-        str(merged_metadata.get("event_type", "")),
-        str(second.metadata.get("event_type", "")),
+    merged_metadata["event_type"] = strongest_event_type(
+        [str(merged_metadata.get("event_type", "")), str(second.metadata.get("event_type", ""))]
     )
     return replace(
         first,
@@ -83,15 +82,3 @@ def _with_cross_source_metadata(signal: CanonicalSignal) -> CanonicalSignal:
     metadata.setdefault("sources", [signal.source])
     metadata.setdefault("source_families", [signal.source_family])
     return replace(signal, metadata=metadata)
-
-
-def _strongest_event_type(first: str, second: str) -> str:
-    priority = {
-        "major_model_release": 3,
-        "major_api_release": 3,
-        "major_standard_update": 3,
-        "research_signal": 1,
-        "observed_signal": 0,
-        "": -1,
-    }
-    return first if priority.get(first, 0) >= priority.get(second, 0) else second
