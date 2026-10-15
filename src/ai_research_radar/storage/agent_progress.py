@@ -41,6 +41,17 @@ FIX_LIMITS = {
 CORRUPT_INPUT_LIMIT = 1
 # Stages a corrupt input is rebuilt from (the "再実行を始めるステージ" of recovery.md).
 CORRUPT_INPUT_STAGES = ("collect", "normalize", "score", "save-proposals")
+SELECTION_MISMATCH = "selection_mismatch"
+# Rerunning after report's selection_mismatch is allowed once over the whole day,
+# counted apart from the corrupt input rebuild (Issue #21).
+SELECTION_MISMATCH_LIMIT = 1
+# select-hot when the selection is redone (from step 4), score when hot_candidates.jsonl is missing.
+SELECTION_MISMATCH_STAGES = ("score", "select-hot")
+# Kinds counted over the whole day rather than per stage: limit and the stages a rerun starts from.
+DAY_WIDE_KINDS = {
+    CORRUPT_INPUT: (CORRUPT_INPUT_LIMIT, CORRUPT_INPUT_STAGES),
+    SELECTION_MISMATCH: (SELECTION_MISMATCH_LIMIT, SELECTION_MISMATCH_STAGES),
+}
 
 
 def review_target_path(data_dir: Path, date: str) -> Path:
@@ -125,15 +136,15 @@ def _valid_retry(record: object) -> bool:
     if not isinstance(record, dict):
         return False
     stage, kind = record.get("stage"), record.get("kind")
-    return isinstance(stage, str) and stage in FIX_LIMITS and isinstance(kind, str) and kind in (FIX, CORRUPT_INPUT)
+    return isinstance(stage, str) and stage in FIX_LIMITS and isinstance(kind, str) and (kind == FIX or kind in DAY_WIDE_KINDS)
 
 
 def retry_count(progress: dict[str, Any], stage: str, kind: str) -> int:
-    """Reruns recorded so far: per stage for a fix, over the whole day for a corrupt input."""
-    if kind == CORRUPT_INPUT:
-        return sum(1 for record in progress["retries"] if record["kind"] == CORRUPT_INPUT)
+    """Reruns recorded so far: per stage for a fix, over the whole day for the other kinds (each apart)."""
+    if kind in DAY_WIDE_KINDS:
+        return sum(1 for record in progress["retries"] if record["kind"] == kind)
     return sum(1 for record in progress["retries"] if record["kind"] == FIX and record["stage"] == stage)
 
 
 def retry_limit(stage: str, kind: str) -> int:
-    return CORRUPT_INPUT_LIMIT if kind == CORRUPT_INPUT else FIX_LIMITS[stage]
+    return DAY_WIDE_KINDS[kind][0] if kind in DAY_WIDE_KINDS else FIX_LIMITS[stage]

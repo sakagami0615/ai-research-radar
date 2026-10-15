@@ -27,7 +27,7 @@ from ai_research_radar.reporting.digest import (
 from ai_research_radar.reporting.markdown import render_daily_report
 from ai_research_radar.reporting.source_overview import SOURCE_OVERVIEWS_FILENAME, load_source_overviews
 from ai_research_radar.schemas.decoders import decode_hot, decode_proposal
-from ai_research_radar.schemas.models import RunMetadata
+from ai_research_radar.schemas.models import HotCandidate, RunMetadata, valid_stage_result
 from ai_research_radar.storage.files import atomic_write_text
 from ai_research_radar.storage.jsonl import JsonlReadError, read_decoded_jsonl, read_jsonl, write_jsonl
 from ai_research_radar.storage.run_state import add_error, load_run_state, reset_errors_for, save_run_state
@@ -86,10 +86,16 @@ def run(args: argparse.Namespace) -> int:
             return []
 
     run_dir = data_dir / "runs" / date
-    hot_candidates = read_or_empty(run_dir / "hot_candidates.jsonl", lambda path: read_decoded_jsonl(path, decode_hot))
+    hot_path = run_dir / "hot_candidates.jsonl"
+    hot_candidates = read_or_empty(hot_path, lambda path: read_decoded_jsonl(path, decode_hot))
     proposals = read_or_empty(run_dir / "article_proposals.jsonl", lambda path: read_decoded_jsonl(path, decode_proposal))
     # Displayed through dict.get(), so only UTF-8 / JSON / object errors count, not missing keys.
     signals = read_or_empty(data_dir / "normalized" / date / "signals.jsonl", read_jsonl)
+    # Judged only here (before RunMetadata, so it shows under Errors); the report gets the result.
+    # An unreadable hot_candidates.jsonl is only recorded as corrupt_input.
+    selection_mismatch = None if hot_path.name in unreadable else _selection_mismatch(state, hot_candidates, hot_path)
+    if selection_mismatch is not None:
+        add_error(state, COMMAND_NAME, "selection_mismatch", selection_mismatch)
 
     started_at = datetime.fromisoformat(state["run_id"])
     report_path = resolve_reports_dir(args) / "daily" / f"{date}.md"
@@ -120,6 +126,7 @@ def run(args: argparse.Namespace) -> int:
         digest,
         display_timezone=resolve_display_timezone(runtime_config(args)),
         unreadable_files=unreadable,
+        selection_mismatch=selection_mismatch is not None,
         source_overviews=source_overviews,
         source_overview_warning=source_overview_warning,
         review_feedback_path=_review_feedback_path(state, data_dir, date),
@@ -140,6 +147,23 @@ def run(args: argparse.Namespace) -> int:
     write_jsonl(data_dir / "runs" / date / "run.jsonl", [final_run])
     print(report_path)
     return 0
+
+
+def _selection_mismatch(state: dict, hot_candidates: list[HotCandidate], hot_path: Path) -> str | None:
+    """Message when stage_results["select-hot"] disagrees with hot_candidates.jsonl, else None.
+
+    Checked: deferred with selected HOT, and completed with none (a missing file counts as 0).
+    Not checked: run states without the record, and completed counts that differ while both are 1 or more."""
+    results = state.get("stage_results")
+    result = valid_stage_result(results.get("select-hot")) if isinstance(results, dict) else None
+    if result is None:
+        return None
+    status = result["status"]
+    selected_count = sum(1 for candidate in hot_candidates if candidate.selected)
+    if not (status == "deferred" and selected_count > 0 or status == "completed" and selected_count == 0):
+        return None
+    found = f"has {selected_count} selected" if hot_path.exists() else "does not exist (0 selected)"
+    return f"select-hot is {status} in stage_results but {hot_path} {found}"
 
 
 def _load_source_overviews(data_dir: Path, date: str) -> tuple[dict[str, str], str | None]:
