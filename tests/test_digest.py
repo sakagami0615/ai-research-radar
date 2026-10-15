@@ -108,6 +108,17 @@ def test_model_releases_dedupe_by_url_keep_first_seen_and_skip_unmarked_signals(
     assert [(release.key, release.first_seen) for release in digest.model_releases] == [("https://hf.co/o/m1", "2026-09-24")]
 
 
+def test_official_model_release_feed_summary_comes_from_first_seen_day(tmp_path: Path):
+    older = {**_model_signal("https://example.com/news/m1", "O", "official", "2026-09-24T00:00:00+00:00"), "summary": "First\n description."}
+    newer = {**_model_signal("https://example.com/news/m1", "O", "official", "2026-09-24T00:00:00+00:00"), "summary": "Edited description."}
+    _write_signals(tmp_path, "2026-09-24", [older])
+    _write_signals(tmp_path, "2026-09-25", [newer])
+
+    digest = build_daily_digest(tmp_path, "2026-09-25")
+
+    assert [release.feed_summary for release in digest.model_releases] == ["First description."]
+
+
 def _run() -> RunMetadata:
     return RunMetadata(
         run_id="run-1",

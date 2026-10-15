@@ -50,6 +50,10 @@ class ModelRelease:
     models: tuple[str, ...] = ()
     # The summary added on the target date (digest_summaries.json); empty if none.
     summary: str = ""
+    # The feed's own description at collection time (whitespace collapsed). Only
+    # set for channel "official": a Hugging Face signal's summary is its
+    # pipeline_tag, not a description.
+    feed_summary: str = ""
 
 
 @dataclass(frozen=True)
@@ -246,13 +250,15 @@ def _model_release_from_signal(record: dict[str, Any], day: str) -> ModelRelease
     if not key:
         return None
     published_at = record.get("published_at")
+    channel = str(marker.get("channel") or "")
     return ModelRelease(
         key=key,
         provider=str(marker.get("provider") or "不明"),
-        channel=str(marker.get("channel") or ""),
+        channel=channel,
         title=str(record.get("title") or key),
         url=url,
         published_at=str(published_at) if published_at else None,
         first_seen=day,
         models=tuple(str(name) for name in marker.get("models", []) if name),
+        feed_summary=" ".join(str(record.get("summary") or "").split()) if channel == "official" else "",
     )
