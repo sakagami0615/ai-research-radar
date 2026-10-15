@@ -252,6 +252,7 @@
 
 - 壊れた入力を読んで失敗したステージ(上の表の「ただし」)は、そのステージが記録した `corrupt_input` の `path` のファイルがすべて今は読める場合は飛ばさない(流し直しで入力が作り直された後、読んだ側を再実行する前に止まった場合。流し直しの1回は作り直しを始めた時点で使い切るため、飛ばすと再実行されないまま先へ進んでしまう)。`path` のない記録があるか、まだ壊れたファイルがある場合は、`corrupt_input` の流し直しの上限で判定する。読んだ側を再実行すると、そのステージの `errors` は置き換わる(`reset_errors_for`)ため、戻り続けることはない。
 - `fix` の回数はステージごと、`corrupt_input` / `selection_mismatch` はその日全体で数える(`progress retry` と同じ `retry_count`)。`selection_mismatch` の再実行は、どの行の上限の判定にも使わない(`fix` / `corrupt_input` とは別に数えるため。回数は `retries` に出す)。保存済みの記録の `stage` と `kind` の組み合わせ(`progress retry` が受け付ける組み合わせか)は確かめないため、`corrupt_input` / `selection_mismatch` の記録の `stage` は判定に使わない。
+- `progress retry` は再実行の **直前** に記録するため、上限内の最後の再実行を記録した後、その再実行を終える前に止まった場合も、記録した再実行は1回と数え、上限に達したと判定してそのステージには戻さない(上限1回の `collect` / `normalize` / `score` では、その再実行は行われないまま先へ進む)。結果が出る前に止まった `started` のレビューの試行を1回と数えるのと同じ考え方である。壊れた入力の流し直しで、作り直した入力を読む側のステージは、上の注記のとおり飛ばさない。
 
 出力の形式(例: 選抜が上限に達して `failed` のまま止まった日):
 
@@ -288,7 +289,6 @@
 
 既知の限界:
 
-- `progress retry` は再実行の **直前** に記録するため、上限内の最後の再実行を記録した後、その再実行を終える前に止まった場合も上限に達したと判定し、そのステージには戻さない(上限1回の `collect` / `normalize` / `score` では、その再実行は行われないまま先へ進む)。壊れた入力の流し直しで、作り直した入力を読む側のステージは、上の注記のとおり飛ばさない。
-- `score` を再実行しても `select-hot` / `save-proposals` の `stage_results` は失効しないため、`score` から流し直す途中(手順4〜7をやり直す前)で止まると、行5・6は完了のままと判定し、作り直した `hot_candidates.jsonl` の選抜をやり直さずに手順8へ進む。この場合の食い違いは、`report` が `selection_mismatch` として記録する。
+- `score` を再実行しても `select-hot` / `save-proposals` の `stage_results` は失効しないため、`score` から流し直す途中(手順4〜7をやり直す前)で止まると、行5・6は完了のままと判定し、作り直した `hot_candidates.jsonl` の選抜をやり直さずに手順8へ進む。この場合の食い違いは、`report` が `selection_mismatch` として記録する([#60](https://github.com/sakagami0615/ai-research-radar/issues/60))。
 
 - 再開のシナリオ(Issue #30 の1〜11)のテスト用データは `tests/fixtures/resume_scenarios/<シナリオ名>/` にあり、自動テスト `tests/test_progress_show.py` で判定を確かめる。データは `scripts/build_resume_scenarios.py` が実際のCLIで作る。テスト用の出力先への配置は `scripts/setup_resume_scenario.py`([Agent実機確認](../../../support/01-operations/testing/03-agent-smoke-tests.md) の「再開の確認」)。
