@@ -32,6 +32,7 @@ def render_daily_report(
     digest: DailyDigest | None = None,
     display_timezone: tzinfo | None = None,
     unreadable_files: Collection[str] = (),
+    selection_mismatch: bool = False,
     source_overviews: dict[str, str] | None = None,
     source_overview_warning: str | None = None,
     review_feedback_path: str | None = None,
@@ -39,6 +40,9 @@ def render_daily_report(
     """unreadable_files holds the names of the day's files that could not be read
     (hot_candidates.jsonl / article_proposals.jsonl / signals.jsonl); their
     sections get a note instead of reading as a real zero.
+
+    selection_mismatch is given by `report`, which judges whether the select-hot
+    record disagrees with hot_candidates.jsonl; it is not judged again here.
 
     review_feedback_path is given when the review loop ended with unresolved
     findings (needs_review); a warning banner pointing to it opens the report."""
@@ -56,7 +60,7 @@ def render_daily_report(
     if HOT_CANDIDATES_FILE in unreadable_files:
         lines.extend([_unreadable_note(HOT_CANDIDATES_FILE), ""])
     else:
-        lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot)))
+        lines.extend(_selection_status(_stage_result(run, "select-hot"), bool(selected_hot), selection_mismatch))
     proposal_result = _stage_result(run, "save-proposals")
     if selected_hot:
         shown = any(proposals_by_hot.get(candidate.hot_id) for candidate in selected_hot)
@@ -141,13 +145,15 @@ def _with_reason(text: str, reason: str) -> str:
     return f"{text}({inline(reason)})。"
 
 
-def _selection_status(result: dict[str, Any] | None, has_selected: bool) -> list[str]:
-    """Status line shown under 選抜HOT so a deferred day reads differently from a skipped or failed one."""
+def _selection_status(result: dict[str, Any] | None, has_selected: bool, mismatch: bool) -> list[str]:
+    """Status line shown under 選抜HOT so a deferred day reads differently from a skipped or failed one.
+
+    mismatch: the record (completed / deferred) disagrees with the selection in hot_candidates.jsonl."""
     if result is None:
         return [] if has_selected else ["本日の選抜HOTはありません。", ""]
     status = result["status"]
     if status == "completed":
-        return [] if has_selected else ["選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。", ""]
+        return ["選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。", ""] if mismatch else []
     if status == "deferred":
         # The reason is followed by "。", so a trailing one written by the agent is dropped.
         reason = inline(_stage_reason(result)).rstrip("。") or "理由未記載"
@@ -158,7 +164,10 @@ def _selection_status(result: dict[str, Any] | None, has_selected: bool) -> list
                 f"候補 {_stage_count(result, 'candidate_count')}件中 {_stage_count(result, 'screened_count')}件を確認、"
                 f"未確認 {_stage_count(result, 'unreviewed_count')}件"
             )
-        return [f"本日の選抜HOTはありません(保留: {reason}。{scope})。", ""]
+        line = f"本日の選抜HOTはありません(保留: {reason}。{scope})。"
+        if mismatch:
+            line += "選抜の記録(保留)と選抜結果が一致しません。以下は hot_candidates.jsonl の内容です。"
+        return [line, ""]
     line = _with_reason("選抜は未実行" if status == "not_run" else "選抜は失敗", _stage_reason(result))
     if has_selected:
         line += "以下は前回成功時の結果です。"

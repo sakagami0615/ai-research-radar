@@ -966,9 +966,33 @@ def test_selection_failed_without_previous_selection_has_no_previous_notice():
 
 
 def test_selection_completed_without_selected_hot_points_to_rescoring():
-    markdown = render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED), [])
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED), [], selection_mismatch=True)
 
     assert "選抜結果が見つかりません(score の再実行などで選抜が消えた可能性があります)。" in _selected_section(markdown)
+
+
+def test_selection_status_follows_mismatch_given_by_report():
+    """Issue #21: report judges the mismatch, so the renderer does not judge it again from the candidates."""
+    markdown = render_daily_report("2026-10-04", [], [], _stage_run(COMPLETED), [])
+
+    assert "選抜結果が見つかりません" not in _selected_section(markdown)
+
+
+def test_selection_deferred_with_selected_hot_shows_mismatch_notice_and_results():
+    no_selection = {"status": "not_run", "reason": "選抜HOTなし", "proposal_count": 0}
+
+    markdown = render_daily_report(
+        "2026-10-04", [_assessed_hot(None)], [], _stage_run(DEFERRED, no_selection), [], selection_mismatch=True
+    )
+
+    section = _selected_section(markdown)
+    assert (
+        "本日の選抜HOTはありません(保留: 一次情報を確認できなかった。候補 10件中 8件を確認、未確認 2件)。"
+        "選抜の記録(保留)と選抜結果が一致しません。以下は hot_candidates.jsonl の内容です。\n"
+    ) in section
+    assert "### Tool A" in section
+    # The proposal line still follows the record.
+    assert "記事企画は未実行(選抜HOTなし)。" in section
 
 
 def test_selection_completed_with_selected_hot_has_no_status_line():
