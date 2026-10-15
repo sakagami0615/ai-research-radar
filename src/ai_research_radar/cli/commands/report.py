@@ -193,7 +193,7 @@ def _list_missing_summaries(data_dir: Path, date: str) -> int:
 
 def _missing_summary_record(item: NotableItem | ModelRelease) -> dict[str, object]:
     if isinstance(item, ModelRelease):
-        return {
+        record: dict[str, object] = {
             "kind": "model_release",
             "key": item.key,
             "title": item.title,
@@ -202,6 +202,9 @@ def _missing_summary_record(item: NotableItem | ModelRelease) -> dict[str, objec
             "url": item.url,
             "first_seen": item.first_seen,
         }
+        if item.channel == "official":
+            record["feed_summary"] = item.feed_summary
+        return record
     return {
         "kind": "notable",
         "hot_id": item.candidate.hot_id,

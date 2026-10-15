@@ -102,7 +102,7 @@
   - レポートまたは `report_digest.json` の書き込みに失敗した場合は `report_write_error`(`source: report`)を記録し、終了コード1にする。
   - 直近3日分を集約する注目候補・新モデルリリース(Pipeline設計「日次ダイジェスト」)は、読めない日を飛ばして警告に残す。当日の `hot_candidates.jsonl` が壊れている場合は、この警告と上の注記の両方に出る。
   - `run_state.json` の `needs_review` が `true` なら、レポートの見出しの直後に要確認の警告を出す(データ契約「Daily Markdown Report」)。
-- `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(Pipeline設計「注目候補・新モデルリリースの概要補完」参照)。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
+- `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(Pipeline設計「注目候補・新モデルリリースの概要補完」参照)。`channel: official` の新モデルリリースの行には、公式RSSの説明文 `feed_summary`(空なら `""`)も出す。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
 - `mark-needs-review --date <date>`: 品質レビューループ(`agent-daily-run` 手順9〜10)が3回目の試行(初回を1回目とする)の後も解消しなかったことを `run_state.json` に `needs_review: true` として記録する。`report` を実行するとレポートの冒頭に要確認の警告が出る(再生成しても消えない)。記録だけを行い、レポートは書き換えないため、続けて `report` を実行する。`errors` には何も記録しない。その日の `run_state.json` がない場合は(`--date` の打ち間違いで新しく作らないよう)何も書かずに終了コード1にする。`collect` は実行のはじめに `needs_review` を消す(その日の実行をやり直すため)。
 
 ## 途中経過の記録(`progress`)

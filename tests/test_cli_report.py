@@ -403,6 +403,46 @@ def test_cli_report_lists_missing_summaries_without_writing_anything(tmp_path: P
     assert "report_digest.json" not in before
 
 
+def test_cli_report_lists_feed_summary_only_for_official_model_releases(tmp_path: Path, capsys):
+    from ai_research_radar.storage.jsonl import write_jsonl
+
+    def signal(name: str, channel: str, summary: str, published_at: str) -> dict:
+        return {
+            "signal_id": f"x:{name}",
+            "source": "x",
+            "source_family": "technology",
+            "content_type": "model",
+            "title": name,
+            "url": f"https://example.com/{name}",
+            "published_at": published_at,
+            "fetched_at": "2026-09-25T00:00:00+00:00",
+            "summary": summary,
+            "categories": [],
+            "raw_metrics": {},
+            "normalized_scores": {},
+            "metadata": {"model_release": {"provider": "P", "channel": channel}},
+        }
+
+    data_dir = tmp_path / "data"
+    write_jsonl(
+        data_dir / "normalized" / "2026-09-25" / "signals.jsonl",
+        [
+            signal("official", "official", "  GPT‑6 is rolling out\n globally\t in ChatGPT.  ", "2026-09-25T04:00:00+00:00"),
+            signal("official-empty", "official", "", "2026-09-25T03:00:00+00:00"),
+            signal("hf", "huggingface", "robotics", "2026-09-25T02:00:00+00:00"),
+            signal("ollama", "ollama", "An Ollama post.", "2026-09-25T01:00:00+00:00"),
+        ],
+    )
+
+    assert main(["report", "--date", "2026-09-25", "--data-dir", str(data_dir), "--list-missing-summaries"]) == 0
+
+    lines = {line["title"]: line for line in map(json.loads, capsys.readouterr().out.splitlines())}
+    assert lines["official"]["feed_summary"] == "GPT‑6 is rolling out globally in ChatGPT."
+    assert lines["official-empty"]["feed_summary"] == ""
+    assert "feed_summary" not in lines["hf"]
+    assert "feed_summary" not in lines["ollama"]
+
+
 def _report(tmp_path: Path, date: str) -> tuple[dict, str]:
     data_dir = tmp_path / "data"
     reports_dir = tmp_path / "reports"

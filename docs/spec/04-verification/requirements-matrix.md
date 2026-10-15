@@ -8,7 +8,7 @@
 | F-02 | [データ](../03-detailed-design/data-models/README.md)、[集約](../03-detailed-design/pipeline/grouping.md) | [集約受入](acceptance/normalization.md)、[重複排除](../../../tests/test_dedup.py) |
 | F-03 | [選抜入力](../03-detailed-design/data-models/hot-selection.md) | [選抜受入](acceptance/selection-and-proposals.md)、[評価検証](../../../tests/test_assessments.py)、[選抜CLI](../../../tests/test_cli_select_hot.py) |
 | F-04 | [企画入力](../03-detailed-design/data-models/article-proposals.md) | [企画受入](acceptance/selection-and-proposals.md)、[企画検証](../../../tests/test_ideation_validation.py)、[保存CLI](../../../tests/test_cli_save_proposals.py) |
-| F-05 | [表示と集約](../03-detailed-design/reporting/README.md) | [表示受入](acceptance/reporting-and-review.md)、[Markdown](../../../tests/test_reporting.py)、[digest](../../../tests/test_digest.py) |
+| F-05 | [表示と集約](../03-detailed-design/reporting/README.md) | [表示受入](acceptance/reporting-and-review.md)、[Markdown](../../../tests/test_reporting.py)、[digest](../../../tests/test_digest.py)、[report CLI](../../../tests/test_cli_report.py) |
 | F-06 | [レビュー運用](../../support/01-operations/review-and-improvement.md) | [レビュー受入](acceptance/reporting-and-review.md)、[要確認の記録](../../../tests/test_cli_common.py)、[途中経過の記録](../../../tests/test_cli_progress.py)、Agent実機 |
 | N-01 | [障害境界](../02-architecture/failure-boundaries.md) | [収集受入](acceptance/collection.md)、[Pipeline](../../../tests/test_daily_pipeline.py) |
 | N-02 | [実行状態](../03-detailed-design/data-models/run-metadata.md) | [復旧受入](acceptance/operations-and-compatibility.md)、[状態](../../../tests/test_run_state.py)、[途中経過の記録](../../../tests/test_cli_progress.py) |
