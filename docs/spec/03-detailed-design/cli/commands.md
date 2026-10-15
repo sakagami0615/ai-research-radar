@@ -163,7 +163,7 @@
 - `artifacts` はレビュー対象の6つの成果物のSHA-256(16進の小文字)。パスは `data_dir` / `reports_dir` からの相対。存在しないファイルは `null`。`evidence_fetch_log.tsv` は追記され続けるため含めない。
 - 計算は `storage/agent_progress.py` の `review_artifact_hashes` で行う。再開時に今の成果物と比べる判定(#42)も同じ関数を使う。
 
-### `progress retry --date <date> --stage <stage> [--kind corrupt_input]`
+### `progress retry --date <date> --stage <stage> [--kind corrupt_input|selection_mismatch]`
 
 自己修正の再実行を1回記録する。上限を超えても記録して終了コード0で終え、標準出力に次のJSONを出す(止めるかどうかはSkillが判断する)。
 
@@ -173,26 +173,27 @@
 
 - 呼ぶ順番: Skillは再実行の **直前** に `progress retry` を呼び、`allowed` が `false` なら再実行しない(記録は残る)。
 
-- `kind`: `--kind` を付けなければ `fix`(エラー時の自己修正)、付けたら `corrupt_input`(壊れた入力の流し直し)。
-- `count`: この記録を含む回数。`fix` はステージごと、`corrupt_input` はステージによらずその日全体で数える。`fix` と `corrupt_input` は別に数える。
+- `kind`: `--kind` を付けなければ `fix`(エラー時の自己修正)。`--kind corrupt_input` は壊れた入力の流し直し、`--kind selection_mismatch` は `report` が記録した `selection_mismatch`(選抜の記録と `hot_candidates.jsonl` の食い違い)を直すための再実行。
+- `count`: この記録を含む回数。`fix` はステージごと、`corrupt_input` / `selection_mismatch` はステージによらずその日全体で数える。`fix` / `corrupt_input` / `selection_mismatch` はそれぞれ別に数える。
 - `limit`: 下の表の上限。
 - `allowed`: `count` が `limit` 以下(この再実行は上限内)。例: `normalize` の1回目は `allowed: true`、2回目は `allowed: false`。
-- `limit_reached`: `count` が `limit` 以上(この後は再実行しない。再開時の判定(#42)の「上限に達したステージには戻さない」と同じ意味)。上限内の最後の再実行では `allowed` と `limit_reached` がどちらも `true` になる。
+- `limit_reached`: `count` が `limit` 以上(この後は再実行しない。再開時の判定(#42)の「上限に達したステージには戻さない」と同じ意味)。上限内の最後の再実行では `allowed` と `limit_reached` がどちらも `true` になる。`corrupt_input` / `selection_mismatch` の `limit_reached` は、その種類の再実行をその日もう行わないことを表し、ステージ単位の判定ではない。
 
-上限(`skills/agent-daily-run/recovery.md` の決まりに対応する数値の正本。実装は `storage/agent_progress.py` の `FIX_LIMITS` / `CORRUPT_INPUT_LIMIT`):
+上限(`skills/agent-daily-run/recovery.md` の決まりに対応する数値の正本。実装は `storage/agent_progress.py` の `FIX_LIMITS` / `CORRUPT_INPUT_LIMIT` / `SELECTION_MISMATCH_LIMIT`):
 
-| `--stage` | `fix` の上限(ステージごと) | `--kind corrupt_input` |
-| --- | --- | --- |
-| `collect` | 1 | 指定できる |
-| `normalize` | 1 | 指定できる |
-| `score` | 1 | 指定できる |
-| `select-hot` | 3 | 指定できない |
-| `save-proposals` | 3 | 指定できる |
-| `add-summary` | 3 | 指定できない |
-| `add-source-overview` | 3 | 指定できない |
+| `--stage` | `fix` の上限(ステージごと) | `--kind corrupt_input` | `--kind selection_mismatch` |
+| --- | --- | --- | --- |
+| `collect` | 1 | 指定できる | 指定できない |
+| `normalize` | 1 | 指定できる | 指定できない |
+| `score` | 1 | 指定できる | 指定できる |
+| `select-hot` | 3 | 指定できない | 指定できる |
+| `save-proposals` | 3 | 指定できる | 指定できない |
+| `add-summary` | 3 | 指定できない | 指定できない |
+| `add-source-overview` | 3 | 指定できない | 指定できない |
 
 - `collect` / `normalize` / `score` の `fix` を1回にしているのは、失敗の原因が環境(設定ファイル・ディスク・`run_state.json` の破損)にあることが多く、流し直しても結果が変わらないため。Agentが直せるのは引数の書き間違いで、1回の修正で足りる。`collect` のSource単位の失敗は終了コード0のため再実行しない(通信の一時的な失敗はSourceの中で再試行している)。引数の誤りでargparseが終了コード2で終わった場合も、同じ `fix` の1回として数える。
 - `corrupt_input` の流し直しの上限は、その日全体で1回。`--stage` には流し直しを始めるステージ(`recovery.md` の「壊れた入力(`corrupt_input`)」の表の「再実行を始めるステージ」)を指定する。それ以外のステージに `--kind corrupt_input` を付けた場合は終了コード1。
+- `selection_mismatch` の再実行の上限も、その日全体で1回(`corrupt_input` の流し直しの1回とは別に数える。Issue #21)。`--stage` には再実行を始めるステージを指定する: 選抜をやり直す場合(`deferred` なのに選抜あり、`completed` なのに選抜0件。後者は手順4の選抜の判断からやり直すが、最初に実行するステージは `select-hot`)は `select-hot`、`hot_candidates.jsonl` がない場合は `score`。それ以外のステージに付けた場合は終了コード1。
 - `--stage` に指定できるのは上の7つ(`add-summary` / `add-source-overview` はステージではないが、再実行の回数を数える対象)。
 - 記録は `{"stage": ..., "kind": ..., "recorded_at": ...}` を `agent_progress.retries` に追加する。
 

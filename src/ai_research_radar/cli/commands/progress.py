@@ -12,8 +12,7 @@ from ai_research_radar.cli.commands.common import (
     reports_dir as resolve_reports_dir,
 )
 from ai_research_radar.storage.agent_progress import (
-    CORRUPT_INPUT,
-    CORRUPT_INPUT_STAGES,
+    DAY_WIDE_KINDS,
     FIX,
     FIX_LIMITS,
     MAX_REVIEW_ATTEMPTS,
@@ -47,7 +46,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     retry = actions.add_parser("retry")
     retry.add_argument("--date", required=True)
     retry.add_argument("--stage", required=True, choices=list(FIX_LIMITS))
-    retry.add_argument("--kind", choices=[CORRUPT_INPUT])
+    retry.add_argument("--kind", choices=list(DAY_WIDE_KINDS))
     add_runtime_arguments(retry)
     retry.set_defaults(func=_run(_retry))
 
@@ -137,8 +136,8 @@ def _review(args: argparse.Namespace, state: dict[str, Any], progress: dict[str,
 
 def _retry(args: argparse.Namespace, state: dict[str, Any], progress: dict[str, Any]) -> int:
     kind = args.kind or FIX
-    if kind == CORRUPT_INPUT and args.stage not in CORRUPT_INPUT_STAGES:
-        return _error(f"a corrupt input is rebuilt from {' / '.join(CORRUPT_INPUT_STAGES)}, not from {args.stage}")
+    if kind in DAY_WIDE_KINDS and args.stage not in (stages := DAY_WIDE_KINDS[kind][1]):
+        return _error(f"a {kind} rerun starts from {' / '.join(stages)}, not from {args.stage}")
     # Recorded even past the limit; whether to stop is up to the skill.
     progress["retries"].append({"stage": args.stage, "kind": kind, "recorded_at": _now()})
     count, limit = retry_count(progress, args.stage, kind), retry_limit(args.stage, kind)

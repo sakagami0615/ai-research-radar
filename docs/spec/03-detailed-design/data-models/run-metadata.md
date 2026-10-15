@@ -82,7 +82,7 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 | キー | 内容 | 書くコマンド |
 | --- | --- | --- |
 | `review_attempts` | レビューの試行。記録した順(試行番号順)に並ぶ。`status` は `started`(開始のみ。結果が出る前に止まった試行もこのまま残る)/ `approved` / `changes_requested` / `failed`。`finished_at` は結果を記録したときだけ持つ | `progress review --start` / `--result` |
-| `retries` | 自己修正の再実行1回ごとの記録。`kind` は `fix`(エラー時の自己修正)/ `corrupt_input`(壊れた入力の流し直し) | `progress retry` |
+| `retries` | 自己修正の再実行1回ごとの記録。`kind` は `fix`(エラー時の自己修正)/ `corrupt_input`(壊れた入力の流し直し)/ `selection_mismatch`(`report` が記録した選抜の食い違いを直す再実行) | `progress retry` |
 | `finalized_at` | 手順10に入った時刻(最後に記録したもの) | `progress finalize` |
 | `completed_at` | その日の実行を完了した時刻(最後に記録したもの) | `progress complete` |
 
@@ -90,4 +90,4 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 - 時刻はUTCのISO 8601。最初の記録のときに `review_attempts` / `retries` を空のリストで作る。`finalized_at` / `completed_at` は記録するまでキーを持たない。
 - 回数はその日全体で数え、`collect` を流し直しても消さない。`started` のままの試行も1回と数える。
 - 形が壊れている場合(オブジェクトでない、`review_attempts` / `retries` がリストでない、記録がオブジェクトでない、`attempt` が1〜3の整数でない、`attempt` が昇順でない・重複している、`status` / `kind` が上の値以外、`stage` が `progress retry --stage` に指定できるステージでない、`finalized_at` / `completed_at` が文字列でない)、`progress` は `RunStateError` として終了コード1で止まり、何も書き換えない(回数を信用できないため)。
-- 判定用の定数・関数(上限 `FIX_LIMITS` / `CORRUPT_INPUT_LIMIT`、回数 `retry_count`、レビュー対象のハッシュ `review_artifact_hashes`)は `storage/agent_progress.py` にある。
+- 判定用の定数・関数(上限 `FIX_LIMITS` / `CORRUPT_INPUT_LIMIT` / `SELECTION_MISMATCH_LIMIT`、回数 `retry_count`、レビュー対象のハッシュ `review_artifact_hashes`)は `storage/agent_progress.py` にある。

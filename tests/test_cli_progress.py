@@ -360,7 +360,44 @@ def test_retry_corrupt_input_only_from_a_stage_that_rebuilds_the_file(tmp_path: 
 
     assert _progress(data_dir, "retry", "--stage", stage, "--kind", "corrupt_input") == 1
 
-    assert capsys.readouterr().err.startswith("error: a corrupt input is rebuilt from")
+    assert capsys.readouterr().err.startswith("error: a corrupt_input rerun starts from")
+    assert "agent_progress" not in load_run_state(data_dir, DATE)
+
+
+def test_retry_selection_mismatch_is_counted_over_the_day_apart_from_other_kinds(tmp_path: Path, capsys):
+    """Issue #21: once a day, counted apart from the corrupt input rebuild and the stage's own fixes."""
+    data_dir, _ = _setup(tmp_path)
+    assert _progress(data_dir, "retry", "--stage", "score", "--kind", "corrupt_input") == 0
+    assert _progress(data_dir, "retry", "--stage", "select-hot") == 0
+    capsys.readouterr()
+
+    assert _progress(data_dir, "retry", "--stage", "select-hot", "--kind", "selection_mismatch") == 0
+    assert _last_json(capsys) == {
+        "stage": "select-hot", "kind": "selection_mismatch", "count": 1, "limit": 1, "allowed": True, "limit_reached": True
+    }
+
+    # Another stage still counts towards the same once-a-day limit.
+    assert _progress(data_dir, "retry", "--stage", "score", "--kind", "selection_mismatch") == 0
+    assert _last_json(capsys) == {
+        "stage": "score", "kind": "selection_mismatch", "count": 2, "limit": 1, "allowed": False, "limit_reached": True
+    }
+
+    # The other kinds are not counted with it.
+    assert _progress(data_dir, "retry", "--stage", "score", "--kind", "corrupt_input") == 0
+    assert _last_json(capsys)["count"] == 2
+    assert _progress(data_dir, "retry", "--stage", "select-hot") == 0
+    assert _last_json(capsys)["count"] == 2
+    kinds = [record["kind"] for record in load_run_state(data_dir, DATE)["agent_progress"]["retries"]]
+    assert kinds.count("selection_mismatch") == 2
+
+
+@pytest.mark.parametrize("stage", ["collect", "normalize", "save-proposals", "add-summary", "add-source-overview"])
+def test_retry_selection_mismatch_only_from_score_or_select_hot(tmp_path: Path, capsys, stage: str):
+    data_dir, _ = _setup(tmp_path)
+
+    assert _progress(data_dir, "retry", "--stage", stage, "--kind", "selection_mismatch") == 1
+
+    assert capsys.readouterr().err.startswith("error: a selection_mismatch rerun starts from score / select-hot")
     assert "agent_progress" not in load_run_state(data_dir, DATE)
 
 
@@ -429,6 +466,7 @@ def test_progress_fails_with_broken_run_state(tmp_path: Path, capsys, content: b
         {"review_attempts": [{"attempt": "1", "status": "started"}], "retries": []},
         {"review_attempts": [{"attempt": 1, "status": ["started"]}], "retries": []},
         {"review_attempts": [], "retries": [{"stage": "score", "kind": None}]},
+        {"review_attempts": [], "retries": [{"stage": "score", "kind": "bogus"}]},
         {"review_attempts": [], "retries": ["score"]},
         {"review_attempts": [{"attempt": 4, "status": "started"}], "retries": []},
         {"review_attempts": [{"attempt": 2, "status": "approved"}, {"attempt": 1, "status": "started"}], "retries": []},
@@ -443,6 +481,7 @@ def test_progress_fails_with_broken_run_state(tmp_path: Path, capsys, content: b
         "attempt-not-int",
         "status-not-str",
         "kind-null",
+        "kind-unknown",
         "retry-not-object",
         "attempt-out-of-range",
         "attempts-not-ascending",

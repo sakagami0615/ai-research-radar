@@ -13,7 +13,7 @@
 | F-05 | 日次表示・集約の現行記載あり。選抜の記録と `hot_candidates.jsonl` の食い違いは `report` が `selection_mismatch` として記録・表示する(#21。レビュー観点と `agent-daily-run` の自己修正は未適用)。新しい品質状態表示は移行目標を含む | B-03、B-04、B-06 |
 | F-06 | Skillレビュー手順あり(`review_feedback.md` の有無で判定、未解消時は `mark-needs-review` で記録しレポートに警告)。試行ごとの結果とレビュー対象のhash(`review_target.json`)を記録する `progress review` はCLIのみ実装(Skill未接続: #43)。hashによる再レビュー判定は未実装(#42) | B-04、B-06 |
 | N-01 | Source失敗継続・記録の現行記載あり | B-06 |
-| N-02 | 選抜再実行で企画状態を失効。レビューの試行・自己修正の再実行の回数をその日全体で記録する `progress` 記録系CLIを実装(上限の数値はCLI設計。Skill未接続: #43、再開位置の判定 `progress show`: #42)。Pipeline全体の履歴・失効は未実装 | B-04、B-06 |
+| N-02 | 選抜再実行で企画状態を失効。レビューの試行・自己修正の再実行の回数をその日全体で記録する `progress` 記録系CLIを実装(`selection_mismatch` の再実行(その日全体で1回、#21)を含む。上限の数値はCLI設計。Skill未接続: #43、再開位置の判定 `progress show`: #42)。Pipeline全体の履歴・失効は未実装 | B-04、B-06 |
 | N-03 | URL・評価・取得ログの現行記載あり。provenance・旧試行の追跡は未実装 | B-04、B-05、B-06 |
 | N-04 | 共通資料・v1互換あり。両Agentの現在の実機結果は未確認 | B-06 |
 | N-05 | 機密除去の変更目標あり。provenance記録は未実装 | B-05、B-06 |
