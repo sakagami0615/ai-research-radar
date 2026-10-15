@@ -1,0 +1,60 @@
+{
+  "agent_progress": {
+    "retries": [
+      {
+        "kind": "fix",
+        "recorded_at": "2026-10-15T19:59:19.257875+00:00",
+        "stage": "select-hot"
+      },
+      {
+        "kind": "fix",
+        "recorded_at": "2026-10-15T19:59:19.461551+00:00",
+        "stage": "select-hot"
+      },
+      {
+        "kind": "fix",
+        "recorded_at": "2026-10-15T19:59:19.664676+00:00",
+        "stage": "select-hot"
+      }
+    ],
+    "review_attempts": []
+  },
+  "errors": [
+    {
+      "message": "missing top-level key(s): screened_ids",
+      "source": "select-hot",
+      "type": "invalid_input"
+    }
+  ],
+  "input_counts": {
+    "github": 2
+  },
+  "output_counts": {
+    "events": 2,
+    "hot_candidates": 2,
+    "raw_items": 2,
+    "signals": 2,
+    "topics": 2
+  },
+  "run_id": "2026-10-15T19:59:18.845034+00:00",
+  "since": "2026-09-24",
+  "sources": [
+    "github"
+  ],
+  "stage_results": {
+    "save-proposals": {
+      "reason": "未実行",
+      "status": "not_run"
+    },
+    "select-hot": {
+      "reason": "invalid_input: missing top-level key(s): screened_ids",
+      "status": "failed"
+    }
+  },
+  "stages_completed": [
+    "collect",
+    "normalize",
+    "score"
+  ],
+  "until": "2026-09-25"
+}

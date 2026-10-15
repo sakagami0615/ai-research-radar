@@ -14,3 +14,6 @@ data/
 reports/
 logs/
 test_output/
+# 再開のシナリオのテスト用データ(tests/fixtures/resume_scenarios/<シナリオ名>/data・reports)は管理する
+!tests/fixtures/resume_scenarios/*/data/
+!tests/fixtures/resume_scenarios/*/reports/
