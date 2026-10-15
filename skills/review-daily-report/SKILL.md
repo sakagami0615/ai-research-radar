@@ -52,6 +52,8 @@ description: Use when 日次パイプラインの成果物(HOT選抜・記事企
 - 記事企画にEvidence URLなしの主張がないか。
 - 各 `article_proposals` の `evidence_links` が、対応するHOT候補(`source_hot_id` が一致するもの)の `evidence_urls` と整合しているか。元のHOT候補にないURL(比較対象など)は、`quality.evidence` の `claim` に書かれた役割とURLの内容が合っているか。
 - v2の企画(`schema_version: 2`)の `quality`(レポートの詳細表の 検証の問い / 既存との差分 / 比較対象と版 / 測定方法 / 入力・環境 / 工数と前提 / 成功条件 / 中止条件 / 指標 / 未確認事項 / 確認した根拠)が、企画ごとに具体的か。題名の言い換えや定型文だけになっていないか、比較対象に版または固定日・条件があるか、確認した根拠の内容と企画の主張が対応しているか、確認していないことを未確認事項に書いているか(必要に応じて根拠のURLを確認する)。`quality.evidence` の `checked_at` と取得ログの突き合わせは、選抜HOTの評価レコードの根拠と同じ観点で確認する。
+- v2の企画の `quality.evidence` に、`status: verified` かつ `kind: primary` で `checked_at` が空でない根拠が1件以上あるか。ない企画(根拠を確認できないまま作った企画)は、企画を取り下げて保留する(企画が1件もなくなる日は `deferral_reason` に理由を書く)か、根拠を確認し直して記録するよう、Importantとして指摘する。条件を満たす根拠のURLが元のHOT候補の `evidence_urls` と一致しないこと(PyPI候補のJSON APIのURLなど)や、比較対象のURLの根拠であることは指摘しない。
+- 選抜HOTの評価レコードの根拠(同じURL・同じ `checked_at`)を `quality.evidence` に流用するのは正常である。この場合は取得ログに企画用の行が追加されず、評価レコードの根拠と同じ取得ログの行で `checked_at` を裏付ける。流用した根拠に企画用の取得ログの行がないことは指摘しない。
 - 競合・読者需要(`competition` / `traffic_opportunity`)を、調べた形跡がないのに「High」などと断定していないか(未調査なら「未調査」と書くのが正しい)。
 - 選抜HOTがあるのに企画が0件の場合(レポートの「記事企画なし(保留: <理由>)」、Run SummaryのProposals行の `deferred`)、その理由が妥当か。
 - 「品質評価: 旧形式のため未評価」の行は、過去日の旧形式の企画と決定論経路の企画に出る正常な表示であり、指摘しない。当日の `agent-daily-run` で保存した企画は必ずv2であり、この行は出ない。
