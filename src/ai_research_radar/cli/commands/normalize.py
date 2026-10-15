@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import argparse
 
-from ai_research_radar.cli.commands.common import add_runtime_arguments, data_dir as resolve_data_dir, fail
+from ai_research_radar.cli.commands.common import (
+    add_runtime_arguments,
+    corrupt_input_path,
+    data_dir as resolve_data_dir,
+    fail,
+)
 from ai_research_radar.normalization.dedup import deduplicate_signals
 from ai_research_radar.normalization.scores import normalize_source_batch
 from ai_research_radar.pipeline.events import build_events, cluster_topics
@@ -31,7 +36,9 @@ def run(args: argparse.Namespace) -> int:
     try:
         signals = read_decoded_jsonl(collected_path, decode_signal)
     except JsonlReadError as exc:
-        return fail(state, data_dir, date, COMMAND_NAME, "corrupt_input", str(exc))
+        return fail(
+            state, data_dir, date, COMMAND_NAME, "corrupt_input", str(exc), path=corrupt_input_path(data_dir, exc)
+        )
 
     deduped = deduplicate_signals(normalize_source_batch(signals))
     events = build_events(deduped)

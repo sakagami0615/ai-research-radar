@@ -10,6 +10,7 @@ from typing import Any
 
 from ai_research_radar.config.settings import load_runtime_config_or_default, resolve_max_lookback_days, resolve_output_dir
 from ai_research_radar import periods
+from ai_research_radar.storage.jsonl import JsonlReadError
 from ai_research_radar.storage.run_state import add_error, save_run_state, set_stage_result
 
 DEFAULT_RUNTIME_CONFIG = "config/runtime.yaml"
@@ -44,18 +45,25 @@ def fail(
     message: str,
     *,
     record_stage_result: bool = False,
+    path: str | None = None,
 ) -> int:
     """Record the error in run_state.json, print it and return exit code 1.
 
     `record_stage_result` also records the stage as failed in stage_results
-    (select-hot / save-proposals).
+    (select-hot / save-proposals). `path` is the broken file of a corrupt_input
+    (see corrupt_input_path).
     """
-    add_error(state, command, error_type, message)
+    add_error(state, command, error_type, message, path=path)
     if record_stage_result:
         set_stage_result(state, command, "failed", f"{error_type}: {message}")
     save_run_state(data_dir, date, state)
     print(message)
     return 1
+
+
+def corrupt_input_path(data_dir: Path, exc: JsonlReadError) -> str:
+    """The broken file of a corrupt_input, relative to data_dir (as in review_target.json)."""
+    return exc.path.relative_to(data_dir).as_posix()
 
 
 def read_input_object(input_arg: str | None, value_name: str) -> tuple[dict[str, Any], tuple[str, str] | None]:

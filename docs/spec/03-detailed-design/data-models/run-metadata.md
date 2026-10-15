@@ -54,4 +54,40 @@
 
 `run_state.json` の `needs_review` は、品質レビューループが3回目の試行(初回を1回目とする)の後も解消しなかったことを表す(`true` のときだけキーを持つ)。`ai-radar mark-needs-review` が記録し、`collect` が消す。`report` はこれが `true` ならレポートの冒頭に警告を出す([日次レポートの表示契約](../reporting/report-format.md)、[CLIコマンド](../cli/commands.md))。`run.jsonl` には書かない。
 
-Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。
+Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を最初に確認する。`errors` の各記録は `source` / `type` / `message` を持ち、`corrupt_input` の記録は壊れたファイルの `data_dir` からの相対パス `path` も持つ(Issue #41。それより前の記録は `path` を持たない。[CLIコマンド](../cli/commands.md))。
+
+## agent_progress
+
+`run_state.json` の `agent_progress` は、`agent-daily-run` の途中経過(レビューの試行、自己修正の再実行、手順10への突入、完了)を記録する(Issue #30・#41)。`ai-radar progress` の記録系サブコマンドが書く([CLIコマンド](../cli/commands.md) の「途中経過の記録(`progress`)」)。`run.jsonl` には書かない。
+
+現行: CLIは実装済みだが、まだSkillからは呼ばれないため、通常の実行では記録されない(Skillへの組み込みは #43、記録から再開する手順の判定(`progress show`)は #42)。
+
+```json
+{
+  "agent_progress": {
+    "review_attempts": [
+      {"attempt": 1, "status": "changes_requested", "started_at": "<ISO 8601>", "finished_at": "<ISO 8601>"},
+      {"attempt": 2, "status": "started", "started_at": "<ISO 8601>"}
+    ],
+    "retries": [
+      {"stage": "select-hot", "kind": "fix", "recorded_at": "<ISO 8601>"},
+      {"stage": "score", "kind": "corrupt_input", "recorded_at": "<ISO 8601>"}
+    ],
+    "finalized_at": "<ISO 8601>",
+    "completed_at": "<ISO 8601>"
+  }
+}
+```
+
+| キー | 内容 | 書くコマンド |
+| --- | --- | --- |
+| `review_attempts` | レビューの試行。記録した順(試行番号順)に並ぶ。`status` は `started`(開始のみ。結果が出る前に止まった試行もこのまま残る)/ `approved` / `changes_requested` / `failed`。`finished_at` は結果を記録したときだけ持つ | `progress review --start` / `--result` |
+| `retries` | 自己修正の再実行1回ごとの記録。`kind` は `fix`(エラー時の自己修正)/ `corrupt_input`(壊れた入力の流し直し) | `progress retry` |
+| `finalized_at` | 手順10に入った時刻(最後に記録したもの) | `progress finalize` |
+| `completed_at` | その日の実行を完了した時刻(最後に記録したもの) | `progress complete` |
+
+- `progress` は `stage_results` を補わない(`agent_progress` だけを書き換える。`report` と同じく旧形式の「記録なし」を保つ)。
+- 時刻はUTCのISO 8601。最初の記録のときに `review_attempts` / `retries` を空のリストで作る。`finalized_at` / `completed_at` は記録するまでキーを持たない。
+- 回数はその日全体で数え、`collect` を流し直しても消さない。`started` のままの試行も1回と数える。
+- 形が壊れている場合(オブジェクトでない、`review_attempts` / `retries` がリストでない、記録がオブジェクトでない、`attempt` が1〜3の整数でない、`attempt` が昇順でない・重複している、`status` / `kind` が上の値以外、`stage` が `progress retry --stage` に指定できるステージでない、`finalized_at` / `completed_at` が文字列でない)、`progress` は `RunStateError` として終了コード1で止まり、何も書き換えない(回数を信用できないため)。
+- 判定用の定数・関数(上限 `FIX_LIMITS` / `CORRUPT_INPUT_LIMIT`、回数 `retry_count`、レビュー対象のハッシュ `review_artifact_hashes`)は `storage/agent_progress.py` にある。

@@ -41,6 +41,8 @@ def _assert_recorded(data_dir: Path, source: str, path: Path) -> str:
     assert len(errors) == 1
     message = errors[0]["message"]
     assert message.startswith(f"{path}:2: ")
+    # The broken file relative to data_dir, used to decide which stage to rerun on resume.
+    assert errors[0]["path"] == path.relative_to(data_dir).as_posix()
     return message
 
 
@@ -270,7 +272,8 @@ def _section(markdown: str, heading: str) -> str:
 def _assert_report_recorded(tmp_path: Path, data_dir: Path, path: Path, markdown: str) -> str:
     message = _assert_recorded(data_dir, "report", path)
     run = read_jsonl(data_dir / "runs" / DATE / "run.jsonl")[0]
-    assert {"source": "report", "type": "corrupt_input", "message": message} in run["errors"]
+    error = {"source": "report", "type": "corrupt_input", "message": message, "path": path.relative_to(data_dir).as_posix()}
+    assert error in run["errors"]
     assert run["report_paths"] == [str(tmp_path / "reports" / "daily" / f"{DATE}.md")]
     assert f"- report: corrupt_input - {message}" in _section(markdown, "Errors")
     return message

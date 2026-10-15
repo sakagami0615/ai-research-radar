@@ -11,6 +11,7 @@ from typing import TypeVar
 
 from ai_research_radar.cli.commands.common import (
     add_runtime_arguments,
+    corrupt_input_path,
     data_dir as resolve_data_dir,
     reports_dir as resolve_reports_dir,
     runtime_config,
@@ -80,7 +81,7 @@ def run(args: argparse.Namespace) -> int:
         try:
             return read(path)
         except JsonlReadError as exc:
-            add_error(state, COMMAND_NAME, "corrupt_input", str(exc))
+            add_error(state, COMMAND_NAME, "corrupt_input", str(exc), path=corrupt_input_path(data_dir, exc))
             unreadable.add(path.name)
             return []
 

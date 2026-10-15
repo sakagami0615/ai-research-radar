@@ -134,6 +134,7 @@ def test_add_source_overview_records_corrupt_input_when_signals_are_broken(tmp_p
 
         assert [error["type"] for error in _errors(data_dir)] == ["corrupt_input"]
         assert "signals.jsonl:2" in _errors(data_dir)[0]["message"]
+        assert _errors(data_dir)[0]["path"] == f"normalized/{DATE}/signals.jsonl"
         assert load_source_overviews(data_dir, DATE) == {}
 
 
