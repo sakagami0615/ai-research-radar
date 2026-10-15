@@ -48,7 +48,7 @@ PyPIは全Package検索ではなく、更新RSSをAI関連keywordで絞る(下�
 
 `feeds` に提供元ごとのRSS/Atomを複数登録できる。各要素は `provider`(表示名)、`url`、`model_keywords`(モデル系列名)、任意の `model_categories`(新モデル判定に使うcategoryの許可リスト)を持つ。旧形式の単一 `feed_url` も引き続き受け付け、その場合の `provider` は `OpenAI` とする。
 
-- 各エントリの `event_type` はタイトルだけで次のように決める(大文字小文字は区別しない)。`major_api_release` / `major_model_release` は公式重大イベントとして、低スコアでもHOT候補になる(Official Override。[現行スコアとHOT候補化](../pipeline/scoring.md))。
+- 各エントリの `event_type` は、まずタイトルだけで次のように決める(タイトル規則。大文字小文字は区別しない)。その後、後述の新モデルリリースに当たり、タイトル規則で `observed_signal` のエントリは `major_model_release` に上げる。`major_api_release` / `major_model_release` は公式重大イベントとして、低スコアでもHOT候補になる(Official Override。[現行スコアとHOT候補化](../pipeline/scoring.md))。
   1. release/launch系の語がなければ `observed_signal`。`release` / `launch` は語頭だけを境界で判定し(直前がASCII英数字でない。ハイフンは区切りとして扱う)、語末は判定しない(`released` / `releases` / `launches` / `launched` / `pre-release` / `re-launch` に一致し、`prerelease` / `relaunching` には一致しない)。語末を見ないため、`launchpad` のような別の名詞にも一致する。
   2. `api` があれば `major_api_release`。
   3. 2に当たらず `model` があれば `major_model_release`。
@@ -58,10 +58,14 @@ PyPIは全Package検索ではなく、更新RSSをAI関連keywordで絞る(下�
 - Accept-Encodingを送っていなくてもgzip圧縮で返すfeedがある(DeepMindで確認)。このため、レスポンス本文がgzipのマジックバイト(`1f 8b`)で始まる場合は展開してから解析する(ヘッダーは見ない)。
 - 次のいずれかを満たすエントリに `metadata.model_release`(`channel=official`)を付与し、「新モデルリリース」の対象にする。
   - タイトルに、そのfeedの `model_keywords` のいずれかが単語として含まれる。大文字小文字は区別しない。語頭は常に単語境界で判定し、語末はkeywordが英数字で終わる場合のみ単語境界で判定する(`gpt-` は "GPT-6" に一致し、`veo` は "Coveo" に一致しない)。
-    - ただし `model_categories` を設定したfeedでは、keyword一致はエントリのcategory(RSSの `category` 要素のテキスト、Atomの `category` 要素の `term` 属性)のいずれかが `model_categories` に一致する場合に限る。比較は前後空白を除き大文字小文字を区別しない。categoryのないエントリは対象外とする。空リストやリスト以外の値は未設定として扱う。OpenAIは顧客事例(`Startup` / `Company` / categoryなし)がモデル名をタイトルに含むため、`[Product, Research, Release]` を設定している。許可外categoryのモデル発表(例: `Company` の「Introducing GPT-5.4 mini and nano」)は検知されず、許可category内の発表以外の記事(例: 「Better prompt caching for GPT-6」)は検知される。
+    - ただし `model_categories` を設定したfeedでは、keyword一致はエントリのcategory(RSSの `category` 要素のテキスト、Atomの `category` 要素の `term` 属性)のいずれかが `model_categories` に一致する場合に限る。比較は前後空白を除き大文字小文字を区別しない。categoryのないエントリは対象外とする。空リストやリスト以外の値は未設定として扱う。OpenAIは顧客事例(`Startup` / `Company` / categoryなし)がモデル名をタイトルに含むため、`[Product, Research, Release]` を設定している。許可外categoryのモデル発表(例: `Company` の「Introducing GPT-5.4 mini and nano」)は検知されず、許可category内の発表以外の記事(例: 「A model guide for the GPT-6 family」)は検知される。
     - category は official_blogs 専用の経路で読み取る。汎用RSS・Ollamaの `payload.raw` は変えない。
   - `event_type` が `major_model_release` である(上記のタイトル規則)。
-- `model_keywords` への一致は `event_type` を変えない。HOTのOfficial Overrideは上記の `event_type` のタイトル規則だけで決まり、keyword追加によって候補化の母集団が広がらないようにする。
+- `metadata.model_release` を付与したエントリのうち、タイトル規則の `event_type` が `observed_signal` のものは `major_model_release` にする(#34)。タイトル規則で `major_api_release` のものはそのままとする。これにより公式ブログの新モデルリリースは、スコアに関係なくOfficial OverrideでHOT候補になる(モデル名中心のタイトル、例: 「GPT-6 and Intelligent UI for everyone」「Introducing Mistral Large 4」も対象になる)。
+  - `model_categories` で除外されたエントリ(顧客事例など)には `model_release` が付かないため、`event_type` はタイトル規則のままである。
+  - 発表以外の記事(例: 「A model guide for the GPT-6 family」)もHOT候補になるが、Agent経路の評価(`selection_input.json`)で選抜外にできるため許容する。選抜外になった公式のモデル発表は、日次レポートの「注目候補(選抜外)」と「新モデルリリース」の両方に出る。
+  - `model_keywords` の語頭境界に当たらないエントリ(例: Googleの「EmbeddingGemma 2: …」は `gemma` に一致しない)は新モデルリリースにならず、本規則のOfficial overrideの対象にもならない。
+  - スコアの閾値を公式ブログのEvent全体で外す方式は採らない(2026-10-09の実データで公式のEvent 17件がすべてHOT候補になるため)。keyword追加は「新モデルリリース」とHOT候補の両方の母集団を広げる。
 - 提供元名そのもの(例: "Mistral")はkeywordにしない。提携や拠点開設の記事まで誤検知するためである。
 - Meta、Anthropic、xAIは公式RSSを提供していないため登録しない(2026-10時点で確認)。Metaのオープンウェイトは `huggingface_orgs`(`meta-llama` / `meta-models`。2026年のモデルは `meta-models`)で拾う。
 - Qwenのブログ(`qwenlm.github.io`)は `qwen.ai/research` へ移転し、RSSがないため登録しない(2026-10時点で確認。旧feedは2025-09で更新停止)。Qwenのモデルは `huggingface_orgs` の `Qwen` で拾う。

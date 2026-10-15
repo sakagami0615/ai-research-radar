@@ -565,17 +565,20 @@ def _map_official_feed(
 ) -> RawItem:
     title = str(entry.get("title") or "")
     event_type = _official_event_type(title)
-    item = _make_raw_item(source, entry, title, entry.get("link"), entry.get("description") or entry.get("summary"), entry.get("published") or entry.get("pubDate"), entry.get("updated") or entry.get("pubDate"), {}, "announcement", raw_id=entry.get("id") or entry.get("guid"), event_type=event_type)
-    item.payload["metadata"]["provider"] = provider
-    # model_keywords only mark the entry for the 新モデルリリース section. They do
-    # not change event_type, so the Official override for HOT keeps using the
-    # stricter title rule below.
     keyword_match = _mentions_any(title, model_keywords or [])
     if keyword_match and model_categories is not None:
         # Feeds like OpenAI's also tag customer stories that name a model; only
         # the configured categories count as model announcements.
         keyword_match = any(category.casefold() in model_categories for category in categories or [])
-    if event_type == "major_model_release" or keyword_match:
+    model_release = event_type == "major_model_release" or keyword_match
+    if model_release and event_type == "observed_signal":
+        # An official model release is a major event even when the title rule
+        # misses it (e.g. "GPT-6 is now available"), so it gets the HOT Official
+        # override regardless of score. major_api_release stays as is.
+        event_type = "major_model_release"
+    item = _make_raw_item(source, entry, title, entry.get("link"), entry.get("description") or entry.get("summary"), entry.get("published") or entry.get("pubDate"), entry.get("updated") or entry.get("pubDate"), {}, "announcement", raw_id=entry.get("id") or entry.get("guid"), event_type=event_type)
+    item.payload["metadata"]["provider"] = provider
+    if model_release:
         item.payload["metadata"]["model_release"] = {"provider": provider, "channel": "official"}
     return item
 
