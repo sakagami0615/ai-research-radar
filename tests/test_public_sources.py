@@ -138,6 +138,43 @@ def test_pypi_rss_filters_non_ai_entries_and_keeps_raw_entry(monkeypatch):
     assert items[0].payload["raw"]["title"] == "llm-tool 1.0"
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "storage-utils 1.0",
+        "leverage tool 1.0",
+        "fragment parser 1.0",
+        "django-paragraph 1.0",
+        # Accepted by the #32 decision: derived forms, compounds and digit-suffixed terms no longer match.
+        "litellm-proxy 1.0",
+        "agentic toolkit 1.0",
+        "llm2vec 1.0",
+    ],
+)
+def test_pypi_ai_keyword_strength_ignores_terms_inside_other_words(title):
+    # e.g. "rag" inside storage / leverage / fragment / paragraph must not count as RAG.
+    assert public_module._ai_keyword_strength({"title": title, "description": ""}) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("RAG-based search 1.0", 1.0),
+        ("LLMs toolkit 1.0", 1.0),
+        ("agents runtime 1.0", 0.65),
+        ("agent-storage 1.0", 0.65),
+    ],
+)
+def test_pypi_ai_keyword_strength_matches_terms_with_word_boundaries(title, expected):
+    assert public_module._ai_keyword_strength({"title": title, "description": ""}) == expected
+
+
+def test_pypi_ai_keyword_strength_keeps_substring_match_for_terms_with_spaces():
+    entry = {"title": "toolkit 1.0", "description": "Utilities for machine learning pipelines"}
+
+    assert public_module._ai_keyword_strength(entry) == 1.0
+
+
 def test_zenn_adapter_reads_articles_response_shape():
     adapter = next(
         adapter

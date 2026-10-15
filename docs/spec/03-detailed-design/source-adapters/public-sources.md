@@ -19,7 +19,25 @@ MVPでは認証なしで取得可能なSourceを対象にする。
 - Hugging Face org別モデル一覧(`huggingface_orgs`)
 - Ollama Blog RSS(`ollama`、モデル紹介判定のため記事本文HTMLも取得する)
 
-PyPIは全Package検索ではなく、更新RSSをAI関連keywordで絞る。npmは検索scoreを利用する。Official BlogsはGitHub検索ではなくRSS/Atomとして扱う。
+PyPIは全Package検索ではなく、更新RSSをAI関連keywordで絞る(下記「PyPI」)。npmは検索scoreを利用する。Official BlogsはGitHub検索ではなくRSS/Atomとして扱う。
+
+### PyPI(`pypi`)
+
+更新RSS `https://pypi.org/rss/updates.xml` を取得し、`config/sources.yaml` の `keywords` にタイトルか説明文が一致したエントリだけをSignalにする(一致の規則は `normalization/relevance.py` の関連語判定と同じ)。
+
+各エントリには、タイトルと説明文から計算したAI関連度 `raw_metrics.ai_keyword_strength`(0〜1)を収集時に付ける。
+
+| 強度 | 一致する語 |
+| --- | --- |
+| 1.0 | `llm` / `rag` / `mcp` / `artificial intelligence` / `machine learning` / `deep learning` / `generative ai` / `generative-ai` のいずれか |
+| 0.65 | 1.0の語がなく、`agent` がある |
+| 0.0 | どれもない |
+
+- 一致は `normalization/relevance.py::_term_matches` で判定し、大文字小文字は区別しない。
+- 英数字・`_`・`-` だけの語(`llm` / `rag` / `mcp` / `generative-ai` / `agent`)は、前後がASCII英数字でないことを条件とする境界付き一致とし、末尾の複数形 `s` は許す(`LLMs` / `agents` / `RAG-based` / `agent-storage` の `agent` には一致し、`storage` / `leverage` / `fragment` / `paragraph` 内の `rag` には一致しない)。
+  - `agentic` などの派生形、`litellm` / `fastmcp` / `ragflow` のような複合語の中の語、`llm2vec` のように数字が続く語には一致しない。説明文にAI関連語があれば、その語で判定する。
+- 空白を含む語(`machine learning` など)は部分一致とする。
+- AI関連度は、スコア計算で2か所に使う([現行スコアとHOT候補化](../pipeline/scoring.md))。Source内人気の元の値には、人気の指標とAI関連度の大きい方を使う。また、AI関連度0.9以上(現行の語では1.0)のパッケージは強い新着package discoveryとして補正の対象になる(48時間以内などの条件は同じページを参照)。
 
 
 ## 新モデルリリース検知Source

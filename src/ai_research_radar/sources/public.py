@@ -24,7 +24,7 @@ from ai_research_radar.normalization.scores import (
 )
 from ai_research_radar.periods import period_date, period_end, period_start
 from ai_research_radar.schemas.models import CanonicalSignal, RawItem
-from ai_research_radar.normalization.relevance import classify_relevance, restore_abstract
+from ai_research_radar.normalization.relevance import _term_matches, classify_relevance, restore_abstract
 from ai_research_radar.sources.remap import remap_raw_item
 from ai_research_radar.sources.base import SourceAdapter
 from ai_research_radar.sources.fixtures import FixtureAdapter
@@ -686,14 +686,14 @@ def _matches_keywords(item: RawItem, keywords: list[str]) -> bool:
 
 
 def _ai_keyword_strength(entry: dict[str, Any]) -> float:
-    text = f"{entry.get('title', '')} {entry.get('description', '')}".lower()
+    text = f"{entry.get('title', '')} {entry.get('description', '')}"
     strong_terms = (
         "llm", "rag", "mcp", "artificial intelligence", "machine learning",
         "deep learning", "generative ai", "generative-ai",
     )
-    if any(term in text for term in strong_terms):
+    if any(_term_matches(term, text) for term in strong_terms):
         return 1.0
-    if "agent" in text:
+    if _term_matches("agent", text):
         return 0.65
     return 0.0
 
