@@ -60,7 +60,7 @@ Source失敗や後段失敗は `errors` に残す。運用時は `run.jsonl` を
 
 `run_state.json` の `agent_progress` は、`agent-daily-run` の途中経過(レビューの試行、自己修正の再実行、手順10への突入、完了)を記録する(Issue #30・#41)。`ai-radar progress` の記録系サブコマンドが書く([CLIコマンド](../cli/commands.md) の「途中経過の記録(`progress`)」)。`run.jsonl` には書かない。
 
-現行: CLIは実装済みだが、まだSkillからは呼ばれないため、通常の実行では記録されない(Skillへの組み込みは #43、記録から再開する手順の判定(`progress show`)は #42)。
+現行: 記録系のCLIと、記録から再開する手順を判定する `progress show`(#42)は実装済みだが、まだSkillからは呼ばれないため、通常の実行では記録されない(Skillへの組み込みは #43・#44)。`progress show` が記録をどう使うかは [CLIコマンド](../cli/commands.md) の「`progress show`」。
 
 ```json
 {

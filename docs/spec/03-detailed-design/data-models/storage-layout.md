@@ -58,4 +58,4 @@ test_output/
 - `runs/<date>/run_state.json`: Agent経路のサブコマンドが共有する、その日の実行状態([実行記録](run-metadata.md))。決定論経路では作らない。Agentの途中経過(レビューの試行、自己修正の再実行の回数、手順10への突入、完了)は `agent_progress` に持つ([実行記録](run-metadata.md) の「agent_progress」。CLIは実装済みで、Skillからはまだ呼ばれない)。
 - `runs/<date>/draft_proposals.json`: Agentが `save-proposals --input` に渡すために書く記事企画の入力([記事企画](article-proposals.md)の「save-proposals の入力(v2)」)。
 - `runs/<date>/review_feedback.md`: レビュー担当のAgentが、Critical / Important の指摘があるときだけ書く指摘。ファイルの有無が承認・要修正の判定になる([日次レビュー](../agent-workflows/review-daily-report.md))。CLIは読み書きしない。
-- `runs/<date>/review_target.json`: `progress review --start` が書く、レビューの試行を始めた時点のレビュー対象の成果物(6つ)のSHA-256([CLIコマンド](../cli/commands.md) の「`progress review`」)。再開時に、レビュー後に成果物が変わったかを判定するのに使う(#42)。Skillからはまだ呼ばれないため、現行の実行では作られない。
+- `runs/<date>/review_target.json`: `progress review --start` が書く、レビューの試行を始めた時点のレビュー対象の成果物(6つ)のSHA-256([CLIコマンド](../cli/commands.md) の「`progress review`」)。再開時に、レビュー後に成果物が変わったかを `progress show` が判定するのに使う。Skillからはまだ呼ばれないため、現行の実行では作られない。

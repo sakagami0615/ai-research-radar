@@ -507,7 +507,7 @@ def test_progress_fails_with_malformed_agent_progress(tmp_path: Path, capsys, ag
 def test_progress_keeps_old_errors_without_path(tmp_path: Path):
     """corrupt_input records written before `path` was added are still read as they are.
 
-    Only reading is checked here; how a record without `path` is judged on resume is checked in #42.
+    Only reading is checked here; how a record without `path` is judged on resume is checked in test_progress_show.py.
     """
     data_dir, _ = _setup(tmp_path)
     state = load_run_state(data_dir, DATE)
