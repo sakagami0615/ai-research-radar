@@ -108,9 +108,11 @@ def test_selected_without_verified_primary_evidence_is_invalid_assessment():
         assert _code([a], _selection([_assessment(a.hot_id, evidence=evidence)], [a.hot_id])) == "invalid_assessment"
 
 
-def test_deferred_without_evidence_is_allowed():
+@pytest.mark.parametrize("decision", ["deferred", "rejected"])
+def test_not_selected_without_evidence_is_allowed(decision):
+    # Proposals require checked verified primary evidence (#25); assessments that are not selected still do not.
     (a,) = _candidates("a")
-    updated, summary = apply_assessments([a], _selection([_assessment(a.hot_id, "deferred", evidence=[])], [a.hot_id]))
+    updated, summary = apply_assessments([a], _selection([_assessment(a.hot_id, decision, evidence=[])], [a.hot_id]))
     assert updated[0].selected is False and summary["selected_count"] == 0
 
 

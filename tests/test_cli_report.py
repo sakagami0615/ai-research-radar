@@ -138,7 +138,17 @@ def _run_full_pipeline(tmp_path: Path, monkeypatch) -> Path:
             "success_condition": "テスト",
             "stop_condition": "テスト",
             "metrics": ["テスト"],
-            "evidence": [],
+            "evidence": [
+                {
+                    "url": "https://example.com/release",
+                    "checked_at": "2026-09-25T00:59:00+00:00",
+                    "target_version": None,
+                    "status": "verified",
+                    "kind": "primary",
+                    "claim": "テスト",
+                    "note": "",
+                }
+            ],
             "unknowns": [],
         },
     }
