@@ -45,6 +45,7 @@ HOT候補から生成される記事企画案。
   - `proposal_id` が入力内で重複しないこと。
   - `source_hot_id` が当日の HOT候補にあり、選抜済み(`selected: true`)であること。
   - `quality` が `ProposalQuality` の契約(`validate_proposal_quality`。`quality.evidence` の各要素は `EvidenceCheck`)を満たすこと。
+  - `quality.evidence` に、`status: verified` かつ `kind: primary` で `checked_at` が空白以外を含む根拠が1件以上あること(#25。`status` / `kind` / `checked_at` の条件は同じ1件で満たす)。この根拠のURLは元のHOT候補の `evidence_urls` と一致しなくてよい(PyPI候補は、`evidence_urls` が `/project/` ページのまま、根拠はJSON APIのURL `https://pypi.org/pypi/<name>/<version>/json` で記録するため)。比較対象のURLの根拠でもよい。この条件は企画側だけで検証し、共通の `validate_evidence_list` / `validate_proposal_quality` は変えない(HOT選抜の評価レコードでは、`deferred` / `rejected` の根拠0件を引き続き許容する)。
   - `evidence_links` の各要素が http(s) のURL(ホスト部があること)で、元のHOT候補の `evidence_urls` を1件以上含むこと。
   - 元のHOT候補の `evidence_urls` にない `evidence_links`(比較対象などのために追加したURL)は、`quality.evidence` に同じURLのエントリがあり、その `claim` が空白以外を含むこと(`claim` に役割を書く。例: 「比較対象 X の仕様」)。
   - 1つのHOTあたり3件まで。

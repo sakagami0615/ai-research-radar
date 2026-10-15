@@ -8,7 +8,7 @@ def _candidate():
 
 
 def _proposal():
-    return {"proposal_id": "p1", "source_hot_id": "h1", "title_idea": "x", "article_type": "comparison", "target_reader": "r", "why_now": "w", "technical_angle": "a", "experiment_plan": ["p"], "competition": "b", "traffic_opportunity": "t", "technical_opportunity": "o", "unique_angle": "u", "evidence_links": ["https://example.test"], "risks": [], "schema_version": 2, "quality": {"question": "q", "difference": "d", "baseline": "b", "baseline_version": "1", "measurement": "m", "inputs_and_environment": "env", "effort": "1d", "effort_assumptions": "a", "success_condition": "s", "stop_condition": "stop", "metrics": ["accuracy"], "evidence": [], "unknowns": []}}
+    return {"proposal_id": "p1", "source_hot_id": "h1", "title_idea": "x", "article_type": "comparison", "target_reader": "r", "why_now": "w", "technical_angle": "a", "experiment_plan": ["p"], "competition": "b", "traffic_opportunity": "t", "technical_opportunity": "o", "unique_angle": "u", "evidence_links": ["https://example.test"], "risks": [], "schema_version": 2, "quality": {"question": "q", "difference": "d", "baseline": "b", "baseline_version": "1", "measurement": "m", "inputs_and_environment": "env", "effort": "1d", "effort_assumptions": "a", "success_condition": "s", "stop_condition": "stop", "metrics": ["accuracy"], "evidence": [_evidence("https://example.test")], "unknowns": []}}
 
 
 def test_empty_proposals_valid(): assert validate_proposals([], [_candidate()]) == []
@@ -135,3 +135,36 @@ def test_evidence_link_without_host_or_malformed_rejected(url):
     proposal = _proposal(); proposal["evidence_links"] = ["https://example.test", url]
     with pytest.raises(ValueError, match="http\\(s\\) URLs"):
         validate_proposals([proposal], [_candidate()])
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        [],
+        [{**_evidence("https://example.test"), "status": "unverified"}],
+        [{**_evidence("https://example.test"), "status": status} for status in ("unavailable", "unknown")],
+        [{**_evidence("https://example.test"), "kind": kind} for kind in ("independent", "republication", "unknown")],
+        [{**_evidence("https://example.test"), "status": "unverified"}, {**_evidence("https://example.test"), "kind": "independent"}],
+        [{**_evidence("https://example.test"), "checked_at": ""}],
+        [{**_evidence("https://example.test"), "checked_at": "   "}],
+    ],
+    ids=["empty", "unverified-only", "not-verified-statuses", "non-primary-kinds", "verified-and-primary-in-separate-entries", "empty-checked-at", "blank-checked-at"],
+)
+def test_proposal_without_checked_verified_primary_evidence_rejected(evidence):
+    proposal = _proposal(); proposal["quality"]["evidence"] = evidence
+    with pytest.raises(ValueError, match=r"^proposal\[0\] quality\.evidence needs at least one verified primary"):
+        validate_proposals([proposal], [_candidate()])
+
+
+def test_checked_verified_primary_among_other_evidence_accepted():
+    proposal = _proposal()
+    proposal["quality"]["evidence"] = [{**_evidence("https://example.test"), "status": "unverified"}, _evidence("https://example.test")]
+    assert validate_proposals([proposal], [_candidate()]) == [proposal]
+
+
+def test_verified_primary_evidence_url_need_not_match_candidate_evidence_urls():
+    # PyPI candidates keep the /project/ page in evidence_urls but record the JSON API URL as evidence.
+    candidate = HotCandidate("h1", "T", "t", 1, [], ["https://pypi.org/project/pkg/"], ["technology"], ["s"], True, 2, {}, None)
+    proposal = _proposal(); proposal["evidence_links"] = ["https://pypi.org/project/pkg/"]
+    proposal["quality"]["evidence"] = [_evidence("https://pypi.org/pypi/pkg/1.0.0/json", "pkg 1.0.0 の公開を確認")]
+    assert validate_proposals([proposal], [candidate]) == [proposal]

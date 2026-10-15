@@ -62,7 +62,7 @@
     | `invalid_input` | トップレベルがオブジェクトでない(配列など)、未知のキーがある、`schema_version` が整数の `2` でない・ない、`proposals` がない・リストでない | 1 |
     | `corrupt_input` | `hot_candidates.jsonl` が読めない(UTF-8でない、JSONとして読めない行・オブジェクトでない行がある、`decode_hot` でデコードできない) | 1 |
     | `invalid_input` | `deferral_reason` の欠落(選抜ありで企画0件なのにない・空・文字列でない)・余分(企画がある日・選抜0件の日にある) | 1 |
-    | `invalid_proposal` | 企画の内容が不正(`proposals` の要素がオブジェクトでない、企画の `schema_version` が整数の `2` でない・ない、必須項目の欠落・型の不正、`quality` の欠落・不正、選抜していないHOTへの企画、元の根拠URLを含まない、役割(`claim`)のない追加URL、HOTあたり4件以上、`proposal_id` の重複) | 1 |
+    | `invalid_proposal` | 企画の内容が不正(`proposals` の要素がオブジェクトでない、企画の `schema_version` が整数の `2` でない・ない、必須項目の欠落・型の不正、`quality` の欠落・不正、`quality.evidence` に `verified` かつ `primary` で `checked_at` が空でない根拠がない、選抜していないHOTへの企画、元の根拠URLを含まない、役割(`claim`)のない追加URL、HOTあたり4件以上、`proposal_id` の重複) | 1 |
     | `write_error` | `article_proposals.jsonl` の書き込みに失敗した(メッセージは `failed to write article proposals: <例外>`) | 1 |
 
 

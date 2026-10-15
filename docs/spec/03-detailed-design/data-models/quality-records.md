@@ -25,4 +25,4 @@ EvidenceCheckとProposalQualityの正本。選抜は [HOT選抜入力](hot-selec
 - `evidence`: `EvidenceCheck` のリスト
 - `unknowns`: リスト
 
-`save-proposals` は、v2 の企画ごとに `validate_proposals`(`ideation/validation.py`)の中でこの契約を検証する(Issue #11。[記事企画入力](article-proposals.md)参照)。
+`save-proposals` は、v2 の企画ごとに `validate_proposals`(`ideation/validation.py`)の中でこの契約を検証する(Issue #11。[記事企画入力](article-proposals.md)参照)。さらに企画側の検証として、`evidence` に `status: verified` かつ `kind: primary` で `checked_at` が空白以外を含む根拠を1件以上求める(#25)。この件数・組み合わせの条件は `validate_proposal_quality` / `validate_evidence_list` には含めない(Assessment では `deferred` / `rejected` の根拠0件を許容するため)。
