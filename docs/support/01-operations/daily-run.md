@@ -4,6 +4,8 @@
 
 `skills/agent-daily-run/entry-prompt.txt` から [共通日次Skill](../../../skills/agent-daily-run/SKILL.md) を読ませる。対象日、一次情報の確認、JSON入力、CLI実行、レビュー・修正・完了条件の正本はこのSkillである。ここに手順を複製しない。
 
+本番の `data/` / `reports/` に影響させずに実データで動作確認する場合は、`skills/agent-daily-run/entry-prompt-test.txt`(テストモード。出力先は `test_output/`)を使う。起動方法は [cron運用](scheduled-run.md) の「テストモード」を参照する。
+
 入力を作る時点で、[選抜契約](../../spec/03-detailed-design/data-models/hot-selection.md)と [企画契約](../../spec/03-detailed-design/data-models/article-proposals.md)を確認する。定期起動のコマンドは [cron運用](scheduled-run.md) を参照する。
 
 ## 決定論的な実行

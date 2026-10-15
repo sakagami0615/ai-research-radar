@@ -5,6 +5,7 @@
 ## 共通の引数
 
 - `--data-dir`(全サブコマンド)/ `--reports-dir`(`daily` と `report`): 省略時は `--runtime-config`(既定 `config/runtime.yaml`)の `output.data_dir` / `output.reports_dir`、それも無ければ `data` / `reports`。引数を指定した場合は設定ファイルより優先する。
+  - Agent経路(`agent-daily-run`)はすべてのコマンドに `--data-dir`(`report` には `--reports-dir` も)を明示するため、`runtime.yaml` の `output` はAgent経路には効かない(#40 以降の本番の挙動。本番は `data` / `reports` を明示する)。`output` が効くのは、引数を省略した手動実行と決定論経路(`daily`)である。
 - `--runtime-config`: `runtime.yaml` のパス。ファイルが無い・読めない場合も止めず、既定値で続ける([設定ファイル](configuration.md))。
 - `--date`(`collect` / `daily` 以外): 対象日(`YYYY-MM-DD`)。
 - `run_state.json` が壊れている(JSONとして読めない、オブジェクトでない)場合は、どのサブコマンドも記録できないため、標準エラーに `error: <メッセージ>` を出して終了コード1で終わる。
@@ -48,7 +49,7 @@
     | `missing_summary_warning` / `unreviewed_candidates` | 選抜外の候補に概要がない / 未確認の候補がある(警告) | 0 |
 
 - `save-proposals --date <date> --input <path>`: 記事企画(v2)を検証して `article_proposals.jsonl` に保存する。入力の形式と検証内容はデータ契約「save-proposals の入力(v2)」を参照。`hot_candidates.jsonl` は `decode_hot` で読み、`selected` の候補と企画を照合する。
-  - `--input` は `{"schema_version": 2, "proposals": [...], "deferral_reason": "..."}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/draft_proposals.json` に書く。選抜0件の日も `{"schema_version": 2, "proposals": []}` で実行する。
+  - `--input` は `{"schema_version": 2, "proposals": [...], "deferral_reason": "..."}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `<data-dir>/runs/<date>/draft_proposals.json` に書く(`<data-dir>` はSkillの出力先。本番は `data`、テストモードは `test_output/data`)。選抜0件の日も `{"schema_version": 2, "proposals": []}` で実行する。
   - 保留理由 `deferral_reason` をCLI引数にしないのは、長い日本語をシェル引数で渡すことによるエスケープ事故を避けるため(選抜HOTの概要を `selection_input.json`、注目候補などの概要を `add-summary --input` のファイルで渡すのと同じ考え方)。
   - 成功時は `stage_results` に、企画1件以上なら `completed`、選抜ありで企画0件なら `deferred`(理由は `deferral_reason`)、選抜0件なら `not_run`(選抜HOTなし)を `proposal_count` とともに記録し、`output_counts.article_proposals` に企画件数を記録して、`save-proposals` を完了段階にする。
   - エラーは `errors` に記録して `failed` を記録し、終了コード1にする(`run_state.json` 自体が読めない場合は `stage_results` を更新しない)。`article_proposals.jsonl` は書き換えない。エラーの種別は次の通り(上から順に判定する)。
@@ -64,8 +65,8 @@
     | `write_error` | `article_proposals.jsonl` の書き込みに失敗した(メッセージは `failed to write article proposals: <例外>`) | 1 |
 
 
-- `add-summary --date <date> --input <path>`: 当日のレポートに表示する注目候補(過去日の候補など)・新モデルリリースの概要を `data/runs/<date>/digest_summaries.json` に保存する。パイプラインのステージ(`stages_completed`)としては扱わない。
-  - `--input` は `{"<hot_id または key>": "概要"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/summary_input.json` に書く。新モデルリリースの `key` はクエリ文字列(`=` を含む)を持つことがあるため、コマンドライン引数ではなくファイルで渡す。
+- `add-summary --date <date> --input <path>`: 当日のレポートに表示する注目候補(過去日の候補など)・新モデルリリースの概要を `<data-dir>/runs/<date>/digest_summaries.json`(既定は `data`)に保存する。パイプラインのステージ(`stages_completed`)としては扱わない。
+  - `--input` は `{"<hot_id または key>": "概要"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `<data-dir>/runs/<date>/summary_input.json` に書く(`<data-dir>` はSkillの出力先。本番は `data`、テストモードは `test_output/data`)。新モデルリリースの `key` はクエリ文字列(`=` を含む)を持つことがあるため、コマンドライン引数ではなくファイルで渡す。
   - キーは、当日のレポートに表示される注目候補のうち候補自身が `summary` を持たないものの `hot_id`(候補自身の `summary` が優先されるため、それ以外への保存は表示に反映されない)と、表示される新モデルリリースの `key` に限る。`report --list-missing-summaries` の対象と、すでに補完済みの項目がこれに当たる。
   - 値は前後の空白を除いて保存し、同じキーは上書きする。
   - エラー時は `run_state.json` の `errors` に記録して終了コード1にし、`digest_summaries.json` は書き換えない。エラーの種別は次の通り。
@@ -77,8 +78,8 @@
     | `invalid_summary` | 中身が空のオブジェクト、対象外のキーがある、値が文字列でない・空 | 1 |
     | `write_error` | `digest_summaries.json` の読み書きに失敗した(既存ファイルが壊れている場合を含む) | 1 |
 
-- `add-source-overview --date <date> --input <path>`: 収集Source一覧の各見出しに出す「本日の傾向」を `data/runs/<date>/source_overviews.json` に保存する(データ契約「Source Overviews記録」)。パイプラインのステージ(`stages_completed`)としては扱わない(`add-summary` と同じ)。
-  - `--input` は `{"<source名>": "本文"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `data/runs/<date>/source_overview_input.json` に書く。
+- `add-source-overview --date <date> --input <path>`: 収集Source一覧の各見出しに出す「本日の傾向」を `<data-dir>/runs/<date>/source_overviews.json`(既定は `data`)に保存する(データ契約「Source Overviews記録」)。パイプラインのステージ(`stages_completed`)としては扱わない(`add-summary` と同じ)。
+  - `--input` は `{"<source名>": "本文"}` 形式のJSONファイル。パスはカレントディレクトリを基準にする。Agent経路では `<data-dir>/runs/<date>/source_overview_input.json` に書く(`<data-dir>` はSkillの出力先。本番は `data`、テストモードは `test_output/data`)。
   - Source名は、当日の `run_state.json` の `sources` にあるもの、または `sources` にないSourceのSignalをまとめた見出し(`other`。同じ名前のSourceが実在する場合は `_other`)に限る。レポートの見出しと同じ名前・同じ件数で判定する(`other` / `_other` は該当するSignalがあるときだけ受け付ける)。
   - そのSourceの当日の件数(`data/normalized/<date>/signals.jsonl` の件数。レポートの見出しの件数と同じ)が0件なら受け付けない。
   - 値は前後の空白を除いて保存し、同じSourceは上書きする。文字数は検証しない(レビューで確認する)。
