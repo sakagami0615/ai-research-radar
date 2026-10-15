@@ -57,6 +57,10 @@
 - やりたいこと: `ai-radar daily` が作る定型の企画(v1、Role / Critique / Debateの決定論的な代替)を採用済みの企画として出さない。
 - 理由: 内容審査をしていない定型文が、審査済みの企画のように見える。
 
+### 一部の選抜HOTだけ企画を作らなかった理由の記録
+
+- [#51](https://github.com/sakagami0615/ai-research-radar/issues/51)
+
 ### Ideationの改善
 
 - LLM Judgeによる企画の審査

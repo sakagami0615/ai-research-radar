@@ -172,7 +172,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
        `<http_status>` には取得時に表示したステータスを書く(`000` は `-`)。`<true|false>` は下の `content_verified` の定義に従う。`note` に `'` を含めない(含む場合は空白に置き換える)。
 
-     - 手順4〜9で行ったURLの取得は、成功・失敗・bot対策ページを問わず、1回につき1行を追記する。根拠の確認、概要を書くための確認、手順5の警告対応、手順8bの概要補完、手順8cで傾向を書くためのリンク先の確認、手順9の修正ループでの再取得を含む。既存の行は上書きしない。
+     - 手順4〜9で行ったURLの取得は、成功・失敗・bot対策ページを問わず、1回につき1行を追記する。根拠の確認、概要を書くための確認、手順5の警告対応、手順6で企画のために新たに取得したURL、手順8bの概要補完、手順8cで傾向を書くためのリンク先の確認、手順9の修正ループでの再取得を含む。既存の行は上書きしない。
      - `url`: 要求したURL(リダイレクト後の最終URLではない。根拠に使う場合は `EvidenceCheck` の `url` と同じ値)。
      - `http_status`: HTTPステータスコード。接続失敗(`curl` の出力が `000`)や、使ったツールがステータスを返さない場合は `-`。
      - `fetched_at`: 取得直後に `date -u +%Y-%m-%dT%H:%M:%S+00:00` で得た値。根拠に使う場合は、`EvidenceCheck` の `checked_at` と同じ値を書く。
@@ -234,7 +234,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - `quality`: 企画の品質記録(形式は [ProposalQuality](../../docs/spec/03-detailed-design/data-models/quality-records.md)。書き方の観点は article-ideation Skill)
      - 空にしない文字列: `question`(検証の問い)/ `difference`(既存手段との差分)/ `baseline`(比較対象)/ `baseline_version`(比較対象の版。版がなければ固定日や条件)/ `measurement`(測定方法)/ `inputs_and_environment`(入力・環境・手順)/ `effort`(概算工数)/ `effort_assumptions`(工数の前提)/ `success_condition`(成功条件)/ `stop_condition`(中止・保留条件)
      - `metrics`: 測定指標(空にしない文字列のリスト、1件以上)
-     - `evidence`: 確認した根拠(`EvidenceCheck` のリスト。キーは `url` / `checked_at` / `target_version` / `status` / `kind` / `claim` / `note` の7つちょうど。書き方は手順4の評価レコードの根拠と同じで、URLを取得したら取得ログに1行追記する)
+     - `evidence`: 確認した根拠(`EvidenceCheck` のリスト。キーは `url` / `checked_at` / `target_version` / `status` / `kind` / `claim` / `note` の7つちょうど。書き方は手順4の評価レコードの根拠と同じ。`status: verified` かつ `kind: primary` で `checked_at` が空でない根拠を1件以上含める。手順4で確認した根拠の流用と取得ログの扱いは、下の規則を参照)
      - `unknowns`: 未確認事項(文字列のリスト。空リスト可)
 
    企画1件の例(比較対象のURLを1件追加した場合):
@@ -282,6 +282,9 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - `source_hot_id` は `hot_candidates.jsonl` で `selected: true` の `hot_id` と一致させる。
    - `evidence_links` には、元のHOT候補の `evidence_urls` を1件以上含める。各URLは `http://` または `https://` で始まる完全なURL。
    - 比較対象などのために、元のHOT候補の `evidence_urls` にないURLを `evidence_links` に追加した場合は、同じURLの根拠を `quality.evidence` に書き、その `claim` に役割を書く(例: 「比較対象 X の仕様」)。`claim` を空にしない。
+   - `quality.evidence` には、`status: verified` かつ `kind: primary` で、`checked_at` が空でない根拠を1件以上含める。この根拠のURLは、元のHOT候補の `evidence_urls` と一致しなくてよい(PyPI候補は、手順4で記録したJSON APIのURLのままでよい)。
+   - 手順4の評価レコードの根拠が企画の主張を支える場合は、その根拠をそのまま(同じURL・同じ `checked_at`。`target_version` / `status` / `kind` / `claim` / `note` も手順4のまま)`quality.evidence` に流用してよい。取得は手順4で済んでいるため、手順6で取得し直さずに流用した根拠について取得ログ `evidence_fetch_log.tsv` には追記しない。手順6で新たに取得したURL(流用元と同じURLを取得し直した場合を含む)の根拠は、手順4の「根拠の取得」に従って取得ログに1行追記し、その `fetched_at` を `checked_at` に書く。
+   - 上の条件を満たす根拠を確認できない企画は作らない。そのために選抜HOTの企画が1件もなくなる日は、上の「選抜HOTがあるのに企画を作らない日」に従い、`proposals` を `[]` にして `deferral_reason` に理由(例: 「企画の主張を一次情報で確認できないため保留」)を書く。選抜HOTには手順4で `checked_at` を記録した `verified` かつ `primary` の根拠を付けているため、企画の主張がその根拠で確認した範囲に収まるなら、それを流用すればこの条件を満たせる。
    - 競合や読者需要(`competition` / `traffic_opportunity`)を調べていない場合は「未調査」と書く。HOT点数から一律に「High」などと推定しない。
 
 7. 記事企画を保存する。

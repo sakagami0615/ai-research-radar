@@ -28,10 +28,10 @@ description: Use when 選抜HOTから技術記事の企画候補を作るとき�
 - 比較対象(`baseline`)と版(`baseline_version`)。比較対象に版がなければ固定日や条件を書く。
 - 測定方法(`measurement`)、測定指標(`metrics`、1件以上)、入力・環境・手順(`inputs_and_environment`)。解説記事でも、仕様比較などの確認方法を書く。
 - 概算工数(`effort`)とその前提(`effort_assumptions`)、成功条件(`success_condition`)、中止・保留条件(`stop_condition`)。
-- 確認した根拠(`evidence`)と未確認事項(`unknowns`)。主張に対応する一次情報を根拠にし、確認できなかったことは未確認事項に書く。
+- 確認した根拠(`evidence`)と未確認事項(`unknowns`)。主張に対応する一次情報を根拠にし、確認できなかったことは未確認事項に書く。`evidence` には、`status: verified` かつ `kind: primary` で `checked_at` が空でない根拠を1件以上含める。この根拠のURLは元のHOT候補の Evidence URL と一致しなくてよく(PyPI候補のJSON APIのURLなど)、比較対象のURLの根拠でもよい。HOT選抜の評価で確認した根拠が企画の主張を支える場合は、その根拠をそのまま(同じURL・同じ `checked_at`。`note` などほかのキーもすべて評価のときのまま)流用してよい(取得ログへの記録の扱いは [agent-daily-run Skill](../agent-daily-run/SKILL.md) の手順6)。
 - 比較対象などのために、元のHOT候補の Evidence URL にないURLを `evidence_links` に加えた場合は、同じURLの根拠を `evidence` に書き、`claim` にそのURLの役割(例: 「比較対象 X の仕様」)を書く。HOTの主張を支えるURLと区別するためで、役割がないと保存できない。
 - 競合や読者需要を調べていない場合は「未調査」と書く。技術機会・流入機会を一律にHighとしたり、HOT点数から推定したりしない。
-- 機能を確認できない場合は企画を作らず保留する(保留理由は `deferral_reason` に書く)。
+- 機能を確認できない場合や、`verified` かつ `primary` で `checked_at` が空でない根拠を確認できない場合は、企画を作らず保留する(企画が1件もなくなる日は、保留理由を `deferral_reason` に書く)。
 
 ## 企画観点
 
@@ -48,3 +48,4 @@ description: Use when 選抜HOTから技術記事の企画候補を作るとき�
 - 日本語記事としての独自性があるか
 - 企画は1候補あたり0〜3件。固有の問い、比較対象、測定指標、入力環境、概算工数、成功条件、中止条件を必須とし、定型文だけの企画を保存しない。
 - 追加したURLに役割(`claim`)が書かれ、HOTの主張を支える根拠と区別できるか。
+- 各企画に `verified` かつ `primary` で `checked_at` が空でない根拠が1件以上あり、その根拠が企画の主張を支えているか。根拠を確認できないまま企画を作っていないか(その場合は企画を作らず保留する)。
