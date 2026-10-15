@@ -23,6 +23,7 @@ from ai_research_radar.storage.agent_progress import (
     review_feedback_path,
     write_review_target,
 )
+from ai_research_radar.storage.resume import resume_point
 from ai_research_radar.storage.run_state import load_run_state, run_state_path, save_run_state
 
 COMMAND_NAME = "progress"
@@ -56,6 +57,11 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
         add_runtime_arguments(marker)
         marker.set_defaults(func=_run(_marker(key)))
 
+    show = actions.add_parser("show")
+    show.add_argument("--date", required=True)
+    add_runtime_arguments(show, reports_dir=True)
+    show.set_defaults(func=_show)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -86,6 +92,17 @@ def _run(record):
         return code
 
     return run
+
+
+def _show(args: argparse.Namespace) -> int:
+    """Print the records and the step to resume from. Writes nothing; a missing run_state.json
+    is not an error here (the run starts from step 1)."""
+    try:
+        result = resume_point(resolve_data_dir(args), resolve_reports_dir(args), args.date)
+    except OSError as exc:
+        return _error(f"failed to read a review artifact: {exc}")
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
 
 
 def _review(args: argparse.Namespace, state: dict[str, Any], progress: dict[str, Any]) -> int:

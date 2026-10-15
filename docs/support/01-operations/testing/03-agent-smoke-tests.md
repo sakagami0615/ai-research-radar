@@ -40,6 +40,33 @@ cd '<worktree>' && PATH='<scratchpad>/bin':"$PATH" PYTHONPATH='<worktree>/src' c
 
 日次処理を実データで通すときは、本番の `data/` / `reports/` に書かない [cron運用](../scheduled-run.md) の「テストモード」を使う。
 
+## 再開の確認
+
+途中で止まった日の再開(Issue #30)は、止まった時点ごとのテスト用データ(`tests/fixtures/resume_scenarios/<シナリオ名>/`)をテスト用の出力先に置いてから確認する。対象のチェックアウトのルートで実行する。
+
+```bash
+PYTHONPATH=src python scripts/setup_resume_scenario.py <シナリオ名>
+PYTHONPATH=src python -m ai_research_radar.cli.main progress show --date "$(date +%F)" --data-dir test_output/data --reports-dir test_output/reports
+```
+
+- `test_output/data` を消し、`test_output/reports/daily/<対象日>.md` を消してから配置する。対象日は `--date`(省略時は今日。Skillは `date +%F` を対象日にするため)。fixtureの対象日(`2026-09-25`)が対象日になるよう、ファイル名と中身の日付をすべて同じ日数だけずらし、`review_target.json` のハッシュは配置後の成果物から計算し直す。`--output-dir` にチェックアウトのルート、またはその `data/` / `reports/` の中を指定した場合は終了コード1で止まる(本番の `data/` / `reports/` を書き換えないため)。
+- データは `scripts/build_resume_scenarios.py` が実際のCLI(fixtureのSource、`collect` 〜 `report` と `progress`)で作ったもので、HOT候補は全件見送り(`select-hot` が `deferred`)、記事企画は0件である。スキーマの変更などで作り直すときは `PYTHONPATH=src python scripts/build_resume_scenarios.py` を実行し、`tests/test_progress_show.py` で判定を確かめる。
+- Agentでの再開の確認(`entry-prompt-test-resume.txt`)は、Skillへの組み込み(#44)の後に行う。それまでは `progress show` の判定だけを確かめる(自動テスト `tests/test_progress_show.py` と同じ判定)。
+
+| シナリオ名 | 止まった時点 | `progress show` の判定 |
+| --- | --- | --- |
+| `01_done` | 作成済みの日 | `done` |
+| `02_deterministic_only` | 決定論経路(`ai-radar daily`)の記録だけがある日 | 手順1から |
+| `03_after_score` | `score` の後 | 手順4から |
+| `04_after_selection` | 選抜の後、企画の前 | 手順6から |
+| `05_after_report` | レポート生成の後、レビューの前 | 手順8から(`review_target.json` がないため。次のレビューは1回目) |
+| `06_review2_changes_requested` | レビューの2回目で修正を求められた後 | 手順9から(指摘を直してから3回目) |
+| `07_corrupt_input` | `hot_candidates.jsonl` が壊れたまま(`select-hot` が `corrupt_input`) | 手順3(`score`)から |
+| `08_retry_limit_reached` | `select-hot` の再実行が上限(3回)に達し `failed` のまま | 手順6から(`select-hot` は `skipped`) |
+| `09_approved_not_completed` | レビューで承認された後、`progress complete` の前 | `progress complete` を記録して終了 |
+| `10_review3_changes_requested` | レビューの3回目で修正を求められた後 | 手順10から |
+| `11_finalize_interrupted` | 手順10の途中(`progress finalize` と `mark-needs-review` の後) | 手順10をやり直す |
+
 ## 権限制約と終了条件
 
 IDE拡張のAuto Modeなどの対話セッションで日次Skillを手動実行すると、レビュー用の別プロセス（`claude -p ... --permission-mode bypassPermissions` など）の起動が「Create Unsafe Agents」として拒否される場合がある。この場合は制約を回避せず、利用可能な同一セッション内のsubagentへレビューを委譲する。代替手段が使えない場合は、レビュー未実施として理由を記録する。

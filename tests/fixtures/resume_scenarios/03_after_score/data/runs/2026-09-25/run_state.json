@@ -1,0 +1,34 @@
+{
+  "errors": [],
+  "input_counts": {
+    "github": 2
+  },
+  "output_counts": {
+    "events": 2,
+    "hot_candidates": 2,
+    "raw_items": 2,
+    "signals": 2,
+    "topics": 2
+  },
+  "run_id": "2026-10-15T19:59:16.063142+00:00",
+  "since": "2026-09-24",
+  "sources": [
+    "github"
+  ],
+  "stage_results": {
+    "save-proposals": {
+      "reason": "未実行",
+      "status": "not_run"
+    },
+    "select-hot": {
+      "reason": "未実行",
+      "status": "not_run"
+    }
+  },
+  "stages_completed": [
+    "collect",
+    "normalize",
+    "score"
+  ],
+  "until": "2026-09-25"
+}

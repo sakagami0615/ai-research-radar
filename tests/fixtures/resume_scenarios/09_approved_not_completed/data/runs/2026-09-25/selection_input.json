@@ -1,0 +1,50 @@
+{
+  "assessments": [
+    {
+      "hot_id": "hot:event:agent-runtime",
+      "decision": "rejected",
+      "assessed_at": "2026-09-25T01:00:00+00:00",
+      "assessor": "agent",
+      "relevance": {
+        "status": "related",
+        "matched_terms": [
+          "agent"
+        ],
+        "reason": "AIエージェントのツール",
+        "method": "agent"
+      },
+      "novelty": "既知の内容",
+      "importance": "低い",
+      "reader_impact": "小さい",
+      "reason": "一次情報で新規性を確認できない",
+      "evidence": [],
+      "unknowns": []
+    },
+    {
+      "hot_id": "hot:event:agent-runtime-discussion",
+      "decision": "rejected",
+      "assessed_at": "2026-09-25T01:00:00+00:00",
+      "assessor": "agent",
+      "relevance": {
+        "status": "related",
+        "matched_terms": [
+          "agent"
+        ],
+        "reason": "AIエージェントのツール",
+        "method": "agent"
+      },
+      "novelty": "既知の内容",
+      "importance": "低い",
+      "reader_impact": "小さい",
+      "reason": "一次情報で新規性を確認できない",
+      "evidence": [],
+      "unknowns": []
+    }
+  ],
+  "screened_ids": [
+    "hot:event:agent-runtime",
+    "hot:event:agent-runtime-discussion"
+  ],
+  "selection_reason": "一次情報で新規性を確認できる候補がない",
+  "summaries": {}
+}

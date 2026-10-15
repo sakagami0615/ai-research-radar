@@ -1,0 +1,15 @@
+{
+  "artifacts": {
+    "data_dir": {
+      "runs/2026-09-25/article_proposals.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "runs/2026-09-25/digest_summaries.json": null,
+      "runs/2026-09-25/hot_candidates.jsonl": "83f3f33dc31f6bbac63aaebc42e3e59c31285aa123cb56a00f9797c4237a3815",
+      "runs/2026-09-25/selection_input.json": "c42e8c3491967d79bc699e9d724b8ce641281562f603c06f69982269e1805822",
+      "runs/2026-09-25/source_overviews.json": null
+    },
+    "reports_dir": {
+      "daily/2026-09-25.md": "84caf1f413542931ba5194c9ea75351920437a495287c916e379147a85bbdbbc"
+    }
+  },
+  "attempt": 2
+}

@@ -1,0 +1,49 @@
+{
+  "errors": [
+    {
+      "message": "2 unselected candidate(s) without summary: hot:event:agent-runtime, hot:event:agent-runtime-discussion",
+      "source": "select-hot",
+      "type": "missing_summary_warning"
+    }
+  ],
+  "input_counts": {
+    "github": 2
+  },
+  "output_counts": {
+    "article_proposals": 0,
+    "events": 2,
+    "hot_candidates": 2,
+    "raw_items": 2,
+    "selected_hot": 0,
+    "signals": 2,
+    "topics": 2
+  },
+  "run_id": "2026-10-15T19:59:16.760084+00:00",
+  "since": "2026-09-24",
+  "sources": [
+    "github"
+  ],
+  "stage_results": {
+    "save-proposals": {
+      "proposal_count": 0,
+      "reason": "選抜HOTなし",
+      "status": "not_run"
+    },
+    "select-hot": {
+      "candidate_count": 2,
+      "reason": "一次情報で新規性を確認できる候補がない",
+      "screened_count": 2,
+      "selected_count": 0,
+      "status": "deferred",
+      "unreviewed_count": 0
+    }
+  },
+  "stages_completed": [
+    "collect",
+    "normalize",
+    "score",
+    "select-hot",
+    "save-proposals"
+  ],
+  "until": "2026-09-25"
+}
