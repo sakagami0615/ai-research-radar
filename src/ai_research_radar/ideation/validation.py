@@ -55,6 +55,11 @@ def _is_http_url(url: str) -> bool:
     return parts.scheme in {"http", "https"} and bool(parts.netloc)
 
 
+def _is_checked_primary(item: dict[str, Any]) -> bool:
+    # validate_proposal_quality has already checked that these values are strings.
+    return item["status"] == "verified" and item["kind"] == "primary" and bool(item["checked_at"].strip())
+
+
 def _validate_one(record: object, known: dict[str, Any], ids: set[str], counts: dict[str, int]) -> None:
     if not isinstance(record, dict):
         raise ValueError("must be an object")
@@ -87,6 +92,10 @@ def _validate_one(record: object, known: dict[str, Any], ids: set[str], counts: 
         quality = validate_proposal_quality(record.get("quality"))
     except QualityValidationError as exc:
         raise ValueError(f"invalid quality: {exc}") from exc
+    # Unlike select-hot assessments, every proposal must rest on a checked primary source.
+    # The URL may differ from the candidate evidence_urls (e.g. the PyPI JSON API URL).
+    if not any(_is_checked_primary(item) for item in quality["evidence"]):
+        raise ValueError("quality.evidence needs at least one verified primary entry with a non-empty checked_at")
 
     evidence_links = record["evidence_links"]
     for url in evidence_links:

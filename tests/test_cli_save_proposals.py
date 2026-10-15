@@ -313,6 +313,49 @@ def test_invalid_proposal_is_rejected(tmp_path: Path, proposal):
     assert not _proposals_path(data_dir).exists()
 
 
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda evidence: evidence.clear(),
+        lambda evidence: evidence[0].update(status="unverified"),
+        lambda evidence: evidence[0].update(kind="independent"),
+        lambda evidence: evidence[0].update(kind="republication"),
+        lambda evidence: evidence[0].update(kind="unknown"),
+        lambda evidence: evidence[0].update(checked_at=""),
+    ],
+    ids=["empty-evidence", "unverified-only", "independent-only", "republication-only", "unknown-kind-only", "empty-checked-at"],
+)
+def test_proposal_without_checked_verified_primary_evidence_is_rejected(tmp_path: Path, mutate):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+    proposal = _valid_proposal()
+    mutate(proposal["quality"]["evidence"])
+
+    assert _run_with_records(tmp_path, data_dir, _v2_input([proposal])) == 1
+
+    assert _error_types(data_dir) == ["invalid_proposal"]
+    assert _result(data_dir)["reason"] == (
+        "invalid_proposal: proposal[0] quality.evidence needs at least one verified primary entry with a non-empty checked_at"
+    )
+    assert not _proposals_path(data_dir).exists()
+
+
+def test_pypi_json_api_evidence_is_accepted(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    _write_selected_candidate(data_dir)
+    path = data_dir / "runs" / DATE / "hot_candidates.jsonl"
+    records = read_jsonl(path)
+    records[0]["evidence_urls"] = ["https://pypi.org/project/tool-a/"]
+    path.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
+    proposal = _valid_proposal()
+    proposal["evidence_links"] = ["https://pypi.org/project/tool-a/"]
+    proposal["quality"]["evidence"][0]["url"] = "https://pypi.org/pypi/tool-a/1.0.0/json"
+
+    assert _run_with_records(tmp_path, data_dir, _v2_input([proposal])) == 0
+
+    assert read_jsonl(_proposals_path(data_dir))[0]["quality"]["evidence"][0]["url"] == "https://pypi.org/pypi/tool-a/1.0.0/json"
+
+
 def test_proposal_for_unselected_hot_is_rejected(tmp_path: Path):
     data_dir = tmp_path / "data"
     _write_unselected_candidate(data_dir)
