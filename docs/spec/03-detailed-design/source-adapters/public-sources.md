@@ -48,14 +48,20 @@ PyPIは全Package検索ではなく、更新RSSをAI関連keywordで絞る(下�
 
 `feeds` に提供元ごとのRSS/Atomを複数登録できる。各要素は `provider`(表示名)、`url`、`model_keywords`(モデル系列名)、任意の `model_categories`(新モデル判定に使うcategoryの許可リスト)を持つ。旧形式の単一 `feed_url` も引き続き受け付け、その場合の `provider` は `OpenAI` とする。
 
+- 各エントリの `event_type` はタイトルだけで次のように決める(大文字小文字は区別しない)。`major_api_release` / `major_model_release` は公式重大イベントとして、低スコアでもHOT候補になる(Official Override。[現行スコアとHOT候補化](../pipeline/scoring.md))。
+  1. release/launch系の語がなければ `observed_signal`。`release` / `launch` は語頭だけを境界で判定し(直前がASCII英数字でない。ハイフンは区切りとして扱う)、語末は判定しない(`released` / `releases` / `launches` / `launched` / `pre-release` / `re-launch` に一致し、`prerelease` / `relaunching` には一致しない)。語末を見ないため、`launchpad` のような別の名詞にも一致する。
+  2. `api` があれば `major_api_release`。
+  3. 2に当たらず `model` があれば `major_model_release`。
+  4. どちらもなければ `observed_signal`。
+  - `api` / `model` の一致は `normalization/relevance.py::_term_matches` で判定する(前後がASCII英数字でないことを条件とする境界付き一致で、末尾の複数形 `s` は許す)。`APIs` / `API-based` / `models` には一致し、`capital` / `rapid` 内の `api`、`modeling` には一致しない(例: 「Capital One launches ...」「rapid release of ...」は `observed_signal`)。
 - 1つのfeedの取得に失敗しても他のfeedは継続する。失敗したfeedは `partial_feed_error`、`url` のない設定エントリは `config_error` としてerrorsに記録する。全feedが失敗した場合のみSource全体の失敗とする。
 - Accept-Encodingを送っていなくてもgzip圧縮で返すfeedがある(DeepMindで確認)。このため、レスポンス本文がgzipのマジックバイト(`1f 8b`)で始まる場合は展開してから解析する(ヘッダーは見ない)。
 - 次のいずれかを満たすエントリに `metadata.model_release`(`channel=official`)を付与し、「新モデルリリース」の対象にする。
   - タイトルに、そのfeedの `model_keywords` のいずれかが単語として含まれる。大文字小文字は区別しない。語頭は常に単語境界で判定し、語末はkeywordが英数字で終わる場合のみ単語境界で判定する(`gpt-` は "GPT-6" に一致し、`veo` は "Coveo" に一致しない)。
     - ただし `model_categories` を設定したfeedでは、keyword一致はエントリのcategory(RSSの `category` 要素のテキスト、Atomの `category` 要素の `term` 属性)のいずれかが `model_categories` に一致する場合に限る。比較は前後空白を除き大文字小文字を区別しない。categoryのないエントリは対象外とする。空リストやリスト以外の値は未設定として扱う。OpenAIは顧客事例(`Startup` / `Company` / categoryなし)がモデル名をタイトルに含むため、`[Product, Research, Release]` を設定している。許可外categoryのモデル発表(例: `Company` の「Introducing GPT-5.4 mini and nano」)は検知されず、許可category内の発表以外の記事(例: 「Better prompt caching for GPT-6」)は検知される。
     - category は official_blogs 専用の経路で読み取る。汎用RSS・Ollamaの `payload.raw` は変えない。
-  - タイトルにrelease/launch系の語と "model" を含む(従来規則。この場合は `event_type=major_model_release` にもなる)。
-- `model_keywords` への一致は `event_type` を変えない。HOTのOfficial Override(Pipeline設計)は従来のタイトル規則だけで決まり、keyword追加によって候補化の母集団が広がらないようにする。
+  - `event_type` が `major_model_release` である(上記のタイトル規則)。
+- `model_keywords` への一致は `event_type` を変えない。HOTのOfficial Overrideは上記の `event_type` のタイトル規則だけで決まり、keyword追加によって候補化の母集団が広がらないようにする。
 - 提供元名そのもの(例: "Mistral")はkeywordにしない。提携や拠点開設の記事まで誤検知するためである。
 - Meta、Anthropic、xAIは公式RSSを提供していないため登録しない(2026-10時点で確認)。Metaのオープンウェイトは `huggingface_orgs`(`meta-llama` / `meta-models`。2026年のモデルは `meta-models`)で拾う。
 - Qwenのブログ(`qwenlm.github.io`)は `qwen.ai/research` へ移転し、RSSがないため登録しない(2026-10時点で確認。旧feedは2025-09で更新停止)。Qwenのモデルは `huggingface_orgs` の `Qwen` で拾う。

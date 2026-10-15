@@ -320,6 +320,42 @@ def test_official_feed_keywords_match_on_word_boundaries_and_legacy_rule_still_a
     assert "model_release" in legacy.payload["metadata"]
     api = _map_official_feed({"title": "Gemini API launch", "guid": "g"}, "P", ["gemini"])
     assert api.payload["metadata"]["event_type"] == "major_api_release"
+    # "modeling" is not "model", so the legacy rule no longer marks it (accepted by #32).
+    assert not marked("Release of modeling toolkit", [])
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # "api" inside capital / rapid, "model" inside modeling must not count.
+        "Capital One launches a new fraud platform",
+        "rapid release of security patches",
+        "Release notes for our modeling course",
+        # release / launch need a word-start boundary (a hyphen counts as one).
+        "Prerelease builds of the API",
+        "Relaunching the model gallery",
+    ],
+)
+def test_official_event_type_ignores_terms_inside_other_words(title):
+    assert public_module._official_event_type(title) == "observed_signal"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Released the new API", "major_api_release"),
+        ("New APIs launch today", "major_api_release"),
+        ("Pre-release of the API-based tools", "major_api_release"),
+        ("launches new models", "major_model_release"),
+        ("We launched a model", "major_model_release"),
+        ("Re-launch of our model", "major_model_release"),
+        ("Model releases this week", "major_model_release"),
+        # "api" inside "Capital" no longer wins, so "models" decides the type.
+        ("Capital One launches new models", "major_model_release"),
+    ],
+)
+def test_official_event_type_matches_terms_with_word_boundaries(title, expected):
+    assert public_module._official_event_type(title) == expected
 
 
 def test_official_feeds_report_entries_without_url_as_config_error(monkeypatch):
