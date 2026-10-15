@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ai_research_radar.cli.commands.common import add_runtime_arguments, data_dir as resolve_data_dir, fail
+from ai_research_radar.cli.commands.common import (
+    add_runtime_arguments,
+    corrupt_input_path,
+    data_dir as resolve_data_dir,
+    fail,
+)
 from ai_research_radar.storage.run_state import (
     load_run_state,
     mark_stage_completed,
@@ -57,8 +62,10 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=run)
 
 
-def _fail(state: dict[str, Any], data_dir: Path, date: str, error_type: str, message: str) -> int:
-    return fail(state, data_dir, date, COMMAND_NAME, error_type, message, record_stage_result=True)
+def _fail(
+    state: dict[str, Any], data_dir: Path, date: str, error_type: str, message: str, *, path: str | None = None
+) -> int:
+    return fail(state, data_dir, date, COMMAND_NAME, error_type, message, record_stage_result=True, path=path)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -88,7 +95,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         candidates = read_decoded_jsonl(hot_path, decode_hot)
     except JsonlReadError as exc:
-        return _fail(state, data_dir, date, "corrupt_input", str(exc))
+        return _fail(state, data_dir, date, "corrupt_input", str(exc), path=corrupt_input_path(data_dir, exc))
     has_selection = any(candidate.selected for candidate in candidates)
     deferral_error = _deferral_error(payload, has_selection)
     if deferral_error:

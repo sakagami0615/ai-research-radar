@@ -6,7 +6,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from ai_research_radar.cli.commands.common import add_runtime_arguments, data_dir as resolve_data_dir, fail
+from ai_research_radar.cli.commands.common import (
+    add_runtime_arguments,
+    corrupt_input_path,
+    data_dir as resolve_data_dir,
+    fail,
+)
 from ai_research_radar.storage.run_state import (
     add_error,
     invalidate_proposals_result,
@@ -33,8 +38,10 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=run)
 
 
-def _fail(state: dict[str, Any], data_dir: Path, date: str, error_type: str, message: str) -> int:
-    return fail(state, data_dir, date, COMMAND_NAME, error_type, message, record_stage_result=True)
+def _fail(
+    state: dict[str, Any], data_dir: Path, date: str, error_type: str, message: str, *, path: str | None = None
+) -> int:
+    return fail(state, data_dir, date, COMMAND_NAME, error_type, message, record_stage_result=True, path=path)
 
 
 def _summaries_error(summaries: object, known_ids: set[str]) -> str | None:
@@ -75,7 +82,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         candidates = read_decoded_jsonl(hot_path, decode_hot)
     except JsonlReadError as exc:
-        return _fail(state, data_dir, date, "corrupt_input", str(exc))
+        return _fail(state, data_dir, date, "corrupt_input", str(exc), path=corrupt_input_path(data_dir, exc))
     try:
         updated, summary = apply_assessments(candidates, selection, limit=limit)
     except SelectionError as exc:

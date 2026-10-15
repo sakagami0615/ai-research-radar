@@ -3,7 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ai_research_radar.cli.commands.common import add_runtime_arguments, data_dir as resolve_data_dir, fail
+from ai_research_radar.cli.commands.common import (
+    add_runtime_arguments,
+    corrupt_input_path,
+    data_dir as resolve_data_dir,
+    fail,
+)
 from ai_research_radar.config.settings import load_scoring_config
 from ai_research_radar.schemas.decoders import decode_event
 from ai_research_radar.scoring.hot import compute_hot_candidates
@@ -36,7 +41,9 @@ def run(args: argparse.Namespace) -> int:
     try:
         events = read_decoded_jsonl(events_path, decode_event)
     except JsonlReadError as exc:
-        return fail(state, data_dir, date, COMMAND_NAME, "corrupt_input", str(exc))
+        return fail(
+            state, data_dir, date, COMMAND_NAME, "corrupt_input", str(exc), path=corrupt_input_path(data_dir, exc)
+        )
     candidates = compute_hot_candidates(events, minimum_score=minimum_score, weights=weights)
     try:
         write_jsonl(data_dir / "runs" / date / "hot_candidates.jsonl", candidates)

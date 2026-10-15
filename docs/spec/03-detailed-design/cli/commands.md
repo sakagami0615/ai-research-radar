@@ -4,17 +4,17 @@
 
 ## 共通の引数
 
-- `--data-dir`(全サブコマンド)/ `--reports-dir`(`daily` と `report`): 省略時は `--runtime-config`(既定 `config/runtime.yaml`)の `output.data_dir` / `output.reports_dir`、それも無ければ `data` / `reports`。引数を指定した場合は設定ファイルより優先する。
+- `--data-dir`(全サブコマンド)/ `--reports-dir`(`daily` と `report` と `progress review`): 省略時は `--runtime-config`(既定 `config/runtime.yaml`)の `output.data_dir` / `output.reports_dir`、それも無ければ `data` / `reports`。引数を指定した場合は設定ファイルより優先する。
   - Agent経路(`agent-daily-run`)はすべてのコマンドに `--data-dir`(`report` には `--reports-dir` も)を明示するため、`runtime.yaml` の `output` はAgent経路には効かない(#40 以降の本番の挙動。本番は `data` / `reports` を明示する)。`output` が効くのは、引数を省略した手動実行と決定論経路(`daily`)である。
 - `--runtime-config`: `runtime.yaml` のパス。ファイルが無い・読めない場合も止めず、既定値で続ける([設定ファイル](configuration.md))。
-- `--date`(`collect` / `daily` 以外): 対象日(`YYYY-MM-DD`)。
+- `--date`(`collect` / `daily` 以外。`progress` は各サブコマンドに付ける): 対象日(`YYYY-MM-DD`)。
 - `run_state.json` が壊れている(JSONとして読めない、オブジェクトでない)場合は、どのサブコマンドも記録できないため、標準エラーに `error: <メッセージ>` を出して終了コード1で終わる。
 
 ## Agent経路のサブコマンド
 
 入力契約は [HOT選抜](../data-models/hot-selection.md)、[記事企画](../data-models/article-proposals.md)、[補助記録](../reporting/supplement-records.md) を参照。概要・傾向の作成条件は [ダイジェスト設計](../reporting/digest.md) にある。
 
-`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` / `mark-needs-review` を使う。各サブコマンドの引数とエラーは次の通り(選抜・記事企画・概要についてはPipeline設計「注目候補・新モデルリリースの概要補完」、Sourceごとの本日の傾向についてはPipeline設計「Sourceごとの本日の傾向」も参照)。
+`agent-daily-run` は `collect` / `normalize` / `score` / `select-hot` / `save-proposals` / `add-summary` / `add-source-overview` / `report` / `mark-needs-review` を使う(`progress` は実装済みだが、まだSkillから呼ばれない。下の「途中経過の記録(`progress`)」)。各サブコマンドの引数とエラーは次の通り(選抜・記事企画・概要についてはPipeline設計「注目候補・新モデルリリースの概要補完」、Sourceごとの本日の傾向についてはPipeline設計「Sourceごとの本日の傾向」も参照)。
 
 前のステージが出力したjsonlが壊れている場合の扱いは、`normalize` / `score` / `select-hot` / `save-proposals` / `add-source-overview` / `report` で共通である(Issue #18)。
 
@@ -22,6 +22,7 @@
 - 対象: UTF-8として読めないファイル、JSONとして読めない行、オブジェクトでない行、デコーダ(`decode_signal` / `decode_event` / `decode_hot` / `decode_proposal`)が出す `KeyError`(必須キーの欠落)・`TypeError` / `ValueError`(`QualityValidationError` を含む。デコーダが検出できる範囲の型の不正)、ファイルを開けない・読めない(`OSError`)。デコーダが検出できない値の不正(例: `raw_metrics` の値が文字列)は対象外。
 - 読み込みは `storage/jsonl.py` の `read_decoded_jsonl(path, decoder)`(デコーダを通さない場合は `read_jsonl(path)`)で行い、上の失敗はすべて `JsonlReadError` になる。メッセージは `<path>:<行番号>: <内容>`(例: `data/runs/2026-10-06/hot_candidates.jsonl:3: missing key 'hot_id'`)。行番号が分からない場合(`OSError`)は `<path>: <内容>`。必須キーの欠落は `missing key '<key>'`、デコーダのそれ以外の失敗は `invalid record: <例外>`、UTF-8の失敗は `invalid UTF-8: <理由>` とする。
 - 各コマンドの記録の仕方は下の各項目のとおり。`report` 以外は終了コード1にし、出力ファイルは書き換えない。
+- `corrupt_input` の `errors` の記録には、`source` / `type` / `message` に加えて、壊れたファイルの `data_dir` からの相対パス `path`(例: `runs/2026-10-06/hot_candidates.jsonl`)を持たせる(Issue #41)。`corrupt_input` は読んだ側のコマンド名(`source`)で記録されるため、再開時に戻るステージは `path` で判定する。`path` を追加する前に書かれた記録は `path` を持たない(読むときは `path` がない記録も受け付ける)。
 - CLIのコマンドを追加・変更して前のステージのjsonlを読むときも、`read_jsonl` の結果を個別にデコードせず `read_decoded_jsonl` を使い(`report` の `signals.jsonl` のようにデコーダを通さないファイルは `read_jsonl` のままでよい)、どちらの場合も `JsonlReadError` を捕まえて `corrupt_input` として記録する。捕まえないとトレースバックで終わり、`run_state.json` に何も残らない(Issue #18 の不具合)。
 
 - `normalize --date <date>`: `data/collected/<date>/signals.jsonl` を `decode_signal` で読む。ファイルがなければ `missing_input`、読めなければ `corrupt_input` を `errors`(`source: normalize`)に記録して終了コード1にする。出力の書き込みに失敗した場合は `write_error`。`stage_results` の対象外である。
@@ -102,3 +103,100 @@
   - `run_state.json` の `needs_review` が `true` なら、レポートの見出しの直後に要確認の警告を出す(データ契約「Daily Markdown Report」)。
 - `report --list-missing-summaries`: 概要がない注目候補・新モデルリリース(表示分のみ)を、`kind`(`notable` / `model_release`)付きのJSON Linesで出力する(Pipeline設計「注目候補・新モデルリリースの概要補完」参照)。レポート・`report_digest.json`・`run.jsonl`・`run_state.json` は書き換えない。
 - `mark-needs-review --date <date>`: 品質レビューループ(`agent-daily-run` 手順9〜10)が3回目の試行(初回を1回目とする)の後も解消しなかったことを `run_state.json` に `needs_review: true` として記録する。`report` を実行するとレポートの冒頭に要確認の警告が出る(再生成しても消えない)。記録だけを行い、レポートは書き換えないため、続けて `report` を実行する。`errors` には何も記録しない。その日の `run_state.json` がない場合は(`--date` の打ち間違いで新しく作らないよう)何も書かずに終了コード1にする。`collect` は実行のはじめに `needs_review` を消す(その日の実行をやり直すため)。
+
+## 途中経過の記録(`progress`)
+
+`agent-daily-run` が途中で止まった日を当日中に再開できるよう、途中経過を `run_state.json` の `agent_progress` に記録する(Issue #30・#41。記録の形式は [実行記録](../data-models/run-metadata.md) の「agent_progress」)。
+
+現行: 記録系のサブコマンド(`review` / `retry` / `finalize` / `complete`)は実装済みだが、まだSkillからは呼ばれない(Skillへの組み込みは #43、記録から再開する手順を判定する `progress show` は #42)。
+
+共通の動作:
+
+- すべて `--date` と `--data-dir` / `--runtime-config` を受け付ける(`review` は `--reports-dir` も)。
+- その日の `run_state.json` がない場合は(`--date` の打ち間違いで新しく作らないよう)何も書かずに、標準エラーに `error: <メッセージ>` を出して終了コード1にする。`run_state.json` が読めない場合、`agent_progress` の形が壊れている場合([実行記録](../data-models/run-metadata.md) の「agent_progress」)も同じく終了コード1にし、何も書き換えない。
+- 引数の検証で止める場合も、標準エラーに `error: <メッセージ>` を出して終了コード1にし、何も書かない。`errors` には記録しない(パイプラインのエラーではないため)。argparseが受け付けない引数(`--start` / `--result` の両方・どちらもなし、`--stage` / `--kind` の対象外の値)は終了コード2。
+- 回数はその日全体で数える(止まった後の再開をまたいで引き継ぐ)。`collect` は `agent_progress` を消さない。
+
+### `progress review --date <date> --attempt <n> --start|--result [--launch-failed]`
+
+品質レビュー(`agent-daily-run` 手順9)の試行を記録する。試行は最大3回(初回を1回目とする)。
+
+- `--start`: 試行の開始を `status: started` で記録し、`<data-dir>/runs/<date>/review_target.json` を書く(上書き)。成果物を読めなかった場合(`failed to read a review artifact: ...`)、`review_target.json` を書けなかった場合(`failed to write review_target.json: ...`)は、試行を記録せずに終了コード1にする。標準出力に `{"attempt": <n>, "status": "started"}` を出す。
+- `--result`: 試行の結果を記録し、標準出力に `{"attempt": <n>, "status": "<status>"}` を出す。status はAgentが渡さず、次の順で決める。
+  1. `--launch-failed` がある(レビュー担当の起動に失敗した): `failed`
+  2. `<data-dir>/runs/<date>/review_feedback.md` がある: `changes_requested`
+  3. ない: `approved`
+- 試行番号の検証(終了コード1):
+
+  | 条件 | 例 |
+  | --- | --- |
+  | `--attempt` が1〜3の整数でない | `0`、`4`、`x` |
+  | `--start`: その試行がすでに記録されている(同じ試行の2回目の `--start`) | 1回目を2回始める |
+  | `--start`: 最後に記録した試行の次の番号でない | 記録がないのに2回目を始める |
+  | `--result`: その試行の `--start` がない | 1回目を始めずに結果を記録する |
+  | `--result`: その試行が最後に記録した試行でない、またはすでに結果がある(`started` でない) | 2回目を始めた後に1回目の結果を記録する |
+  | `--start` に `--launch-failed` を付けた | |
+
+  `started` のまま(結果が出る前に止まった)試行の次の試行を始めることは許す(止まった後の再開で起こるため)。`started` のままの試行も1回と数える。
+
+`review_target.json` の形式:
+
+```json
+{
+  "attempt": 1,
+  "artifacts": {
+    "data_dir": {
+      "runs/<date>/hot_candidates.jsonl": "<SHA-256>",
+      "runs/<date>/article_proposals.jsonl": "<SHA-256>",
+      "runs/<date>/selection_input.json": "<SHA-256>",
+      "runs/<date>/digest_summaries.json": null,
+      "runs/<date>/source_overviews.json": "<SHA-256>"
+    },
+    "reports_dir": {
+      "daily/<date>.md": "<SHA-256>"
+    }
+  }
+}
+```
+
+- `artifacts` はレビュー対象の6つの成果物のSHA-256(16進の小文字)。パスは `data_dir` / `reports_dir` からの相対。存在しないファイルは `null`。`evidence_fetch_log.tsv` は追記され続けるため含めない。
+- 計算は `storage/agent_progress.py` の `review_artifact_hashes` で行う。再開時に今の成果物と比べる判定(#42)も同じ関数を使う。
+
+### `progress retry --date <date> --stage <stage> [--kind corrupt_input]`
+
+自己修正の再実行を1回記録する。上限を超えても記録して終了コード0で終え、標準出力に次のJSONを出す(止めるかどうかはSkillが判断する)。
+
+```json
+{"stage": "score", "kind": "fix", "count": 2, "limit": 1, "allowed": false, "limit_reached": true}
+```
+
+- 呼ぶ順番: Skillは再実行の **直前** に `progress retry` を呼び、`allowed` が `false` なら再実行しない(記録は残る)。
+
+- `kind`: `--kind` を付けなければ `fix`(エラー時の自己修正)、付けたら `corrupt_input`(壊れた入力の流し直し)。
+- `count`: この記録を含む回数。`fix` はステージごと、`corrupt_input` はステージによらずその日全体で数える。`fix` と `corrupt_input` は別に数える。
+- `limit`: 下の表の上限。
+- `allowed`: `count` が `limit` 以下(この再実行は上限内)。例: `normalize` の1回目は `allowed: true`、2回目は `allowed: false`。
+- `limit_reached`: `count` が `limit` 以上(この後は再実行しない。再開時の判定(#42)の「上限に達したステージには戻さない」と同じ意味)。上限内の最後の再実行では `allowed` と `limit_reached` がどちらも `true` になる。
+
+上限(`skills/agent-daily-run/recovery.md` の決まりに対応する数値の正本。実装は `storage/agent_progress.py` の `FIX_LIMITS` / `CORRUPT_INPUT_LIMIT`):
+
+| `--stage` | `fix` の上限(ステージごと) | `--kind corrupt_input` |
+| --- | --- | --- |
+| `collect` | 1 | 指定できる |
+| `normalize` | 1 | 指定できる |
+| `score` | 1 | 指定できる |
+| `select-hot` | 3 | 指定できない |
+| `save-proposals` | 3 | 指定できる |
+| `add-summary` | 3 | 指定できない |
+| `add-source-overview` | 3 | 指定できない |
+
+- `collect` / `normalize` / `score` の `fix` を1回にしているのは、失敗の原因が環境(設定ファイル・ディスク・`run_state.json` の破損)にあることが多く、流し直しても結果が変わらないため。Agentが直せるのは引数の書き間違いで、1回の修正で足りる。`collect` のSource単位の失敗は終了コード0のため再実行しない(通信の一時的な失敗はSourceの中で再試行している)。引数の誤りでargparseが終了コード2で終わった場合も、同じ `fix` の1回として数える。
+- `corrupt_input` の流し直しの上限は、その日全体で1回。`--stage` には流し直しを始めるステージ(`recovery.md` の「壊れた入力(`corrupt_input`)」の表の「再実行を始めるステージ」)を指定する。それ以外のステージに `--kind corrupt_input` を付けた場合は終了コード1。
+- `--stage` に指定できるのは上の7つ(`add-summary` / `add-source-overview` はステージではないが、再実行の回数を数える対象)。
+- 記録は `{"stage": ..., "kind": ..., "recorded_at": ...}` を `agent_progress.retries` に追加する。
+
+### `progress finalize --date <date>` / `progress complete --date <date>`
+
+- `finalize`: 手順10(`mark-needs-review` → `report` の作り直し → `progress complete`)に入ったことを `agent_progress.finalized_at` に記録する。
+- `complete`: その日の実行の完了(手順9で承認された時点、または手順10を終えた時点)を `agent_progress.completed_at` に記録する。`needs_review` は記録しない(従来どおり `mark-needs-review` で記録する)。
+- どちらも、再び実行すると時刻を上書きする(手順10は途中で止まったら最初からやり直すため)。標準出力には何も出さない。

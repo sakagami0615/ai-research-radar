@@ -10,6 +10,7 @@ from ai_research_radar.cli.commands import (
     daily,
     mark_needs_review,
     normalize,
+    progress,
     report,
     save_proposals,
     score,
@@ -28,6 +29,7 @@ _COMMANDS = (
     add_source_overview,
     report,
     mark_needs_review,
+    progress,
 )
 
 

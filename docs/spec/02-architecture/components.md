@@ -14,6 +14,6 @@
 | `scoring` | HOT候補の作成、Agentの評価レコードの検証と適用 | `scoring/hot.py`、`scoring/assessments.py` |
 | `ideation` | 記事企画の定型生成(決定論経路)と、Agentが書いた企画(v2)の検証 | `ideation/proposals.py`、`ideation/validation.py` |
 | `reporting` | Markdownレポートの生成、日次ダイジェスト、Sourceごとの本日の傾向、表示用のエスケープ | `reporting/markdown.py`、`reporting/digest.py`、`reporting/source_overview.py`、`reporting/escape.py` |
-| `storage` | ファイルの読み書き。すべての書き込みは一時ファイルからの置き換え(原子的書き込み) | `storage/files.py`、`storage/jsonl.py`、`storage/run_state.py` |
+| `storage` | ファイルの読み書き。すべての書き込みは一時ファイルからの置き換え(原子的書き込み)。Agentの途中経過(`agent_progress`)とレビュー対象のハッシュ | `storage/files.py`、`storage/jsonl.py`、`storage/run_state.py`、`storage/agent_progress.py` |
 | `schemas` | 共通のデータ構造(dataclass)、保存データの読み込み(decoder)、Agent入力の検証 | `schemas/models.py`、`schemas/decoders.py`、`schemas/quality.py` |
 | `periods` | 収集期間の解決(前回実行からの引き継ぎ)と日付の変換 | `periods.py` |

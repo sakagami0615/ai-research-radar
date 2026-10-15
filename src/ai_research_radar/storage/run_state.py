@@ -106,9 +106,14 @@ def invalidate_proposals_result(state: dict[str, Any]) -> None:
     results["save-proposals"] = {"status": "not_run", "reason": INVALIDATED_REASON}
 
 
-def add_error(state: dict[str, Any], source: str, error_type: str, message: str) -> None:
+def add_error(state: dict[str, Any], source: str, error_type: str, message: str, *, path: str | None = None) -> None:
+    """`path` (relative to data_dir) is given for corrupt_input: the broken file, which tells
+    the resume check which stage to rerun (the error is recorded under the reading command)."""
     errors = state.setdefault("errors", [])
-    errors.append({"source": source, "type": error_type, "message": message})
+    error = {"source": source, "type": error_type, "message": message}
+    if path is not None:
+        error["path"] = path
+    errors.append(error)
 
 
 def reset_errors_for(state: dict[str, Any], sources: Iterable[str]) -> None:
