@@ -1,6 +1,6 @@
 # 要件の適用状況
 
-確認日: 2026-10-10(2026-10-11、PR #33の取り込みに合わせて未結線モジュールの削除を反映。2026-10-14、#40のテストモードをN-06に反映。2026-10-14、Issue #41の `progress` 記録系CLIを反映。2026-10-16、#21の `selection_mismatch` の記録・表示をF-05に反映。2026-10-16、#25の企画の根拠の規則(Skillのみ)をF-04に反映。2026-10-16、#37の `feed_summary` をF-05に反映。2026-10-16、#34の公式ブログの新モデルリリースのOfficial overrideをF-03に反映。2026-10-16、#42の `progress show` をF-06・N-02に反映。2026-10-16、#25の `save-proposals` での企画の根拠の検証をF-04に反映)。既存設計と前回の主要CLI静的確認をもとに整理した状態。今回、全コード再監査・アプリ受入・Agent実機は実施していない。
+確認日: 2026-10-10(2026-10-11、PR #33の取り込みに合わせて未結線モジュールの削除を反映。2026-10-14、#40のテストモードをN-06に反映。2026-10-14、Issue #41の `progress` 記録系CLIを反映。2026-10-16、#21の `selection_mismatch` の記録・表示をF-05に反映。2026-10-16、#25の企画の根拠の規則(Skillのみ)をF-04に反映。2026-10-16、#37の `feed_summary` をF-05に反映。2026-10-16、#34の公式ブログの新モデルリリースのOfficial overrideをF-03に反映。2026-10-16、#42の `progress show` をF-06・N-02に反映。2026-10-16、#25の `save-proposals` での企画の根拠の検証をF-04に反映。2026-10-16、#37のSkill手順8b・レビュー観点をF-05に反映)。既存設計と前回の主要CLI静的確認をもとに整理した状態。今回、全コード再監査・アプリ受入・Agent実機は実施していない(#37の手順8bだけ、F-05に書いた範囲でAgent実機確認を行った)。
 
 「現行記載あり」は仕様記述、「接続確認」は主要CLIの静的参照、「未実装」は既知課題・将来対応の記録に基づく(CLIに未結線だった品質v2モジュールはPR #33で削除した)。いずれも受入済みを意味しない。受入結果は全件未確認として扱い、実行後に証拠とともに更新する。
 
@@ -10,7 +10,7 @@
 | F-02 | 現行の正規化・集約あり。品質v2指標・identityは未実装 | B-01、B-02、B-06 |
 | F-03 | Agent評価検証は選抜CLIに接続。旧スコアの保存前足切りは残る。公式ブログの新モデルリリース(`model_release.channel: official`)は `major_model_release` としてOfficial overrideで足切りの対象外にする(#34。自動テストと2026-10-09の実データの前後比較で確認。Agent実機は未確認) | B-02、B-06 |
 | F-04 | v2企画検証は保存CLIに接続。一括dailyは旧形式。企画の `quality.evidence` に `verified` かつ `primary` で `checked_at` が空でない根拠を1件以上求める規則は、`save-proposals` が検証し(満たさない企画は `invalid_proposal`)、Skill(`agent-daily-run` 手順6・`article-ideation`・`review-daily-report`)にも書かれている(#25) | B-03、B-06 |
-| F-05 | 日次表示・集約の現行記載あり。選抜の記録と `hot_candidates.jsonl` の食い違いは `report` が `selection_mismatch` として記録・表示する(#21。レビュー観点と `agent-daily-run` の自己修正は未適用)。`--list-missing-summaries` の新モデルリリースの `channel: official` の行に `feed_summary` を出す(#37。自動テストで確認。Skill手順8b・レビュー観点は未反映)。新しい品質状態表示は移行目標を含む | B-03、B-04、B-06 |
+| F-05 | 日次表示・集約の現行記載あり。選抜の記録と `hot_candidates.jsonl` の食い違いは `report` が `selection_mismatch` として記録・表示する(#21。レビュー観点と `agent-daily-run` の自己修正は未適用)。`--list-missing-summaries` の新モデルリリースの `channel: official` の行に `feed_summary` を出す(#37。自動テストで確認)。`channel: official` の新モデルリリースで記事ページの本文を取得できない場合に `feed_summary` から概要を書く規則は、Skill(`agent-daily-run` 手順8b・`review-daily-report`)にある。Agent実機確認はClaude Codeで、2026-10-09のデータの手順8〜10を通し、OpenAIの2件に説明文から書いた概要が付くことを確認した(Codexは未確認)。新しい品質状態表示は移行目標を含む | B-03、B-04、B-06 |
 | F-06 | Skillレビュー手順あり(`review_feedback.md` の有無で判定、未解消時は `mark-needs-review` で記録しレポートに警告)。試行ごとの結果とレビュー対象のhash(`review_target.json`)を記録する `progress review` はCLIのみ実装(Skill未接続: #43)。再開時にhashでレビュー後の成果物の変更を判定する `progress show` もCLIのみ実装(#42。自動テストで確認。Skill未接続: #44) | B-04、B-06 |
 | N-01 | Source失敗継続・記録の現行記載あり | B-06 |
 | N-02 | 選抜再実行で企画状態を失効。レビューの試行・自己修正の再実行の回数をその日全体で記録する `progress` 記録系CLIを実装(`selection_mismatch` の再実行(その日全体で1回、#21)を含む。上限の数値はCLI設計。Skill未接続: #43)。記録から再開する手順を判定する `progress show` を実装(#42。再開のシナリオ1〜11のデータ `tests/fixtures/resume_scenarios/` で自動テスト。Skill未接続: #44)。Pipeline全体の履歴・失効は未実装 | B-04、B-06 |
