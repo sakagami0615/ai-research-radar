@@ -46,6 +46,28 @@
 - `collect` から流し直した結果、`collect` の標準出力に出る日付が `<date>` と違う場合(日付をまたいだ場合)は、`<date>` のファイルは作り直されていないため、残りのステージは流さずに手順8へ進み、その旨を完了報告に書く(流し直しの1回は使い切ったものとする)。
 - 上限: 流し直しは、その日の実行全体で **1回まで** とする(`normalize` / `score` の1回の決まりに揃える)。項目3の3回には数えない。流し直した後も `corrupt_input` が残る場合は、破損が繰り返す環境の問題の可能性が高いため、それ以上流し直さない。ステージの失敗(`failed`)や `report` の記録を残したまま先へ進み、レポートを生成する。
 - 上限に達して残った `corrupt_input` は修正不能として扱う。手順9bでレビューの指摘を受けても流し直さない(下の「レビュー指摘の直し方」の修正不能の項目に従う)。完了報告に、壊れたファイルのパスとメッセージを書く。
+- 手順8dの後の確認では、`corrupt_input` を先に扱い、その後に下の「選抜の記録と選抜結果の食い違い(`selection_mismatch`)」を確認する(`hot_candidates.jsonl` が読めない日は `report` が `selection_mismatch` を記録しない)。
+
+### 選抜の記録と選抜結果の食い違い(`selection_mismatch`)
+
+`selection_mismatch` は、`run_state.json` の `stage_results` の `select-hot` と、`<data_dir>/runs/<date>/hot_candidates.jsonl` の選抜(`selected: true`)が食い違っていることを表す。`report` が `source: report` で記録し、終了コード0のままレポートを生成する(条件は [CLIコマンド契約](../../docs/spec/03-detailed-design/cli/commands.md) の `report`)。`report` は食い違いを直さないため、選抜を記録し直す。`hot_candidates.jsonl` や `run_state.json` を手で直さない。
+
+- 気づく場面: 手順8dの後の確認で `source: report` の `selection_mismatch` が見つかった場合、または手順9bでその指摘を受けた場合。
+- どの食い違いかは、`errors` のメッセージ(`select-hot is <状態> in stage_results but <path> ...`)で分かる。次の表の「再実行を始める手順」から流し直す。
+
+  | メッセージ | 食い違い | 再実行を始める手順 | 続けて流す手順 |
+  | --- | --- | --- | --- |
+  | `select-hot is deferred ... has <n> selected` | 保留なのに選抜あり | 手順5(`select-hot`。既存の `selection_input.json` のまま) | 手順6〜7 → 手順8 |
+  | `select-hot is completed ... has 0 selected` | 完了なのに選抜0件 | 手順4(候補の確認と `selection_input.json`) | 手順5〜7 → 手順8 |
+  | `select-hot is completed ... does not exist (0 selected)` | 完了なのに `hot_candidates.jsonl` がない | 手順3(`score`) | 手順4〜7 → 手順8 |
+
+- 保留なのに選抜あり: `select-hot` を再実行すると、`selection_input.json` の内容で全候補の `selected` が置き換わる。`select-hot` が成功すると記事企画の記録が無効になるため、続けて必ず手順7の `save-proposals` も再実行する。再実行後の `hot_candidates.jsonl` の選抜が、今の `draft_proposals.json` の前提(企画の `source_hot_id`)と変わった場合は、`save-proposals` の前に手順6に従って作り直す(選抜HOTがない日は `{"schema_version": 2, "proposals": []}` にし、`deferral_reason` を消す)。変わらない場合は既存の `draft_proposals.json` のまま再実行してよい。`select-hot` が再実行の上限に達して `failed` のまま残った場合は、`draft_proposals.json` を書き換えず、`save-proposals` も再実行しない(下の「レビュー指摘の直し方」のHOT選抜の項と同じ。`select-hot` の失敗では前回の選抜と記事企画の記録はそのまま残るため)。
+- 完了なのに選抜0件: `score` の再実行で候補が作り直され、選抜が消えた可能性がある。手順4に従って今の `hot_candidates.jsonl` の候補を確認し直す。既存の `selection_input.json` は再利用してよいが、候補とIDが合わずに `select-hot` が `invalid_assessment` になれば、手順4に従って書き直す(この書き直しは「エラー時の自己修正方針」の項目2・3として数える)。
+- 完了なのに `hot_candidates.jsonl` がない: 手順4を始められないため、上の「壊れた入力(`corrupt_input`)」の表の `hot_candidates.jsonl` の行と同じく `score` から流す(手順4〜7の扱いも同じ)。`score` が失敗した場合は、その失敗を残したまま、残りの手順は流さずに手順8へ進む。
+- 流し直しの途中の `select-hot` / `save-proposals` の失敗は、手順5〜7の既存の決まり(「エラー時の自己修正方針」)に従う。
+- 流し直した後は、手順8のa〜dをやり直す(手順8dの後の確認ももう一度行う)。
+- 上限: 再実行の回数は、その日の実行全体で、[CLIコマンド契約](../../docs/spec/03-detailed-design/cli/commands.md) の `progress retry` の上限の表の下にある `selection_mismatch` の項の回数までとする(どの食い違いかによらず通算する)。`corrupt_input` の流し直しや、「エラー時の自己修正方針」の項目3の再実行とは別に数える。表の「再実行を始める手順」から流し直すことを1回と数え、流し直しの途中で失敗して残りを流さなかった場合も1回を使い切ったものとする。
+- 上限に達して残った `selection_mismatch` は修正不能として扱う。手順9bでレビューの指摘を受けても再実行しない(下の「レビュー指摘の直し方」の修正不能の項目に従う)。完了報告に、そのメッセージを書く。
 
 ## レポート生成前の補完実行
 
@@ -68,4 +90,5 @@
 - 手順8bで補完した概要の修正: `summary_input.json` に直す項目のキーと新しい概要だけを書いて `add-summary --input` を再実行する(上書きされる)。キーは `<data_dir>/runs/<date>/digest_summaries.json` にあるもの(または `--list-missing-summaries` の `hot_id` / `key`)を使い、レポート上のURLをそのまま使わない(新モデルリリースのキーは正規化済みURLで、レポートのリンクとは一致しないことがあるため)。HOT選抜のやり直しなどで今はレポートに表示されていない項目のキーは書かない(1つでも含むと `invalid_summary` で全体が保存されない)。
 - 手順8cで書いた本日の傾向の修正: `source_overview_input.json` に直すSourceと新しい傾向だけを書いて `add-source-overview --input` を再実行する(上書きされる)。Source名はレポートの見出しから `(N件)` を除いた名前(`other` / `_other` を含む)を使う。`add-source-overview` が再実行の上限(「エラー時の自己修正方針」の項目3。`corrupt_input` は同方針の「壊れた入力(`corrupt_input`)」の1回)に達して保存できず「傾向未作成」が残っていることへの指摘は、再実行せず、下の修正不能の項目と同じく扱う。
 - `stage_results` の `failed` が再実行の上限(「エラー時の自己修正方針」の項目3、`corrupt_input` の `failed` は同方針の「壊れた入力(`corrupt_input`)」の1回)に達したため残っていることへの指摘、または上限に達して残った `corrupt_input`(`source: report` の記録やレポートの「…を読めなかったため表示できません」の注記)への指摘: 再実行せず、修正不能として扱う。
+  上限(上の「選抜の記録と選抜結果の食い違い(`selection_mismatch`)」)に達して残った `selection_mismatch`(`source: report` の記録や、選抜HOTセクションの「選抜の記録(保留)と選抜結果が一致しません」「選抜結果が見つかりません」の注記)への指摘も同じく扱う。上限に達していない `selection_mismatch` への指摘は、同じ項に従って再実行する。
   `review_feedback.md` に他の指摘がなければ、手順8・9aに戻らず手順10へ進む。他に直せる指摘があれば、それは従来どおり修正する。
