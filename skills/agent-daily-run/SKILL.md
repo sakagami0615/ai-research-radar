@@ -18,16 +18,29 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 このSkillはこれらの判断基準を再掲しない。実行前に上記2つのSkillを読むこと。
 
+## 出力先(最初に決める)
+
+手順1に入る前に、起動プロンプトから出力先を決める。以降の `<data_dir>` / `<reports_dir>` は、ここで決めた値に置き換えて使う(`<date>` と同じく、そのまま書かない)。
+
+| モード | 起動プロンプト | `<data_dir>` | `<reports_dir>` |
+| --- | --- | --- | --- |
+| 本番 | `skills/agent-daily-run/entry-prompt.txt`(テストモードの指定がない場合も本番) | `data` | `reports` |
+| テスト | `skills/agent-daily-run/entry-prompt-test.txt`(テストモードを指定するもの) | `test_output/data` | `test_output/reports` |
+
+- すべての `ai-radar` コマンドに `--data-dir <data_dir>` を付け、`report` には `--reports-dir <reports_dir>` も付ける。`list_source_signals.py` にも `--data-dir <data_dir>` を付ける。本番でも省略しない(省略すると `config/runtime.yaml` の既定の `data` / `reports` に書かれ、テストモードでは本番のデータを書き換えてしまうため)。本文や recovery.md でコマンド名だけを書いた箇所(「`select-hot` を再実行する」など)も、手順のコードブロックと同じく `--data-dir <data_dir>` を付けて実行する。
+- 自分で読み書きするファイル(`selection_input.json`、`draft_proposals.json`、`summary_input.json`、`source_overview_input.json`、`evidence_fetch_log.tsv` など)と、`--input` に渡すパスも `<data_dir>` 側にする。
+- テストモードでは、本番の `data/` と `reports/` に書き込まない。テストモードの準備(テスト用の出力先の削除と、本番のデータからのコピー)は起動プロンプトに書いてあり、このSkillの手順には含めない。
+
 ## 実行手順
 
-実行時は[SelectionInput](../../docs/spec/03-detailed-design/data-models/hot-selection.md)と[ProposalQuality](../../docs/spec/03-detailed-design/data-models/quality-records.md)を共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。品質レビューは別プロセスのレビュー担当に任せ、`data/runs/<date>/review_feedback.md` の有無だけで承認・要修正を判定する(手順9)。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回とし、レビュー担当の起動失敗や3回目の試行の後に残った指摘を承認扱いにしない。
+実行時は[SelectionInput](../../docs/spec/03-detailed-design/data-models/hot-selection.md)と[ProposalQuality](../../docs/spec/03-detailed-design/data-models/quality-records.md)を共通契約として使う。選抜0件(`selection_input.json` に `decision: selected` がない)・企画0件(`"proposals": []`。選抜HOTがある日は `deferral_reason` に理由を書く。手順6参照)は未実施または保留の結果として保存し、成功したことに置き換えない。品質レビューは別プロセスのレビュー担当に任せ、`<data_dir>/runs/<date>/review_feedback.md` の有無だけで承認・要修正を判定する(手順9)。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回とし、レビュー担当の起動失敗や3回目の試行の後に残った指摘を承認扱いにしない。
 
 コマンドが失敗したとき、ファイルが壊れていたとき、レビューで指摘を受けたときの対応は [recovery.md](recovery.md) にまとめている。**どのコマンドでも終了コード1で終わったとき、または `run_state.json` の `errors` を見てコマンドの再実行を考えたときは、再実行する前に必ず recovery.md を読む**(再実行の回数の上限と、再実行してはいけない場合が書いてある)。各手順で「recovery.md の〜」とある場合も同じ。
 
 1. 対象日を判定する。`date +%F` を実行し、今日の日付(`YYYY-MM-DD`)を取得する。以降の手順ではこの日付を `<date>` として使う。`collect` の `--since` / `--until` は省略し、前回実行の終了時刻から実行時刻までを収集する(最大7日、初回も7日分)。明示的な期間で再実行する必要がある場合だけ、タイムゾーン付きISO 8601日時または日付を指定する。
 
    ```bash
-   ai-radar collect --data-dir data --sources-config config/sources.yaml
+   ai-radar collect --data-dir <data_dir> --sources-config config/sources.yaml
    ```
 
    `--since` / `--until` は省略する(省略時は前回実行から引き継いだ期間。詳細は [期間解決契約](../../docs/spec/03-detailed-design/cli/period-resolution.md))。
@@ -37,7 +50,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 2. 正規化する。
 
    ```bash
-   ai-radar normalize --date <date>
+   ai-radar normalize --date <date> --data-dir <data_dir>
    ```
 
    失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
@@ -45,12 +58,12 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 3. HOTスコアを計算する(まだ選抜はしない)。
 
    ```bash
-   ai-radar score --date <date> --scoring-config config/scoring.yaml
+   ai-radar score --date <date> --data-dir <data_dir> --scoring-config config/scoring.yaml
    ```
 
    失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
 
-4. `data/runs/<date>/hot_candidates.jsonl` を読み、hot-detection Skillの判断方針に従って候補を確認し、判断を `data/runs/<date>/selection_input.json` に書く。
+4. `<data_dir>/runs/<date>/hot_candidates.jsonl` を読み、hot-detection Skillの判断方針に従って候補を確認し、判断を `<data_dir>/runs/<date>/selection_input.json` に書く。
 
    `hot_candidates.jsonl` 自体が壊れていて読めない場合は、自分で直さず、候補0件の内容(下記)で `selection_input.json` を書いて手順5を実行する。`select-hot` が `corrupt_input` を記録するので、recovery.md の「壊れた入力(`corrupt_input`)」に従う。このとき書いた候補0件の `selection_input.json` は仮のものなので、流し直しで作り直した候補に対しては再利用せず、手順4に従って書き直す。
 
@@ -123,7 +136,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    - 根拠の `checked_at`: そのURLを実際に取得した直後に `date -u +%Y-%m-%dT%H:%M:%S+00:00` を実行し、その出力を書く。複数URLをまとめて取得した場合は、それぞれの取得直後の値を使う。
    - 評価の `assessed_at`: その評価の根拠をすべて確認し終えた後、レコードを書く直前に同じコマンドで取得した値を書く(`checked_at` 以降、かつファイル保存前)。
    - 取得時刻を記録し忘れた根拠は、時刻を推定せずに取得し直してから記録する。
-   - 取得したURL・HTTPステータス・時刻を、下の「根拠の取得」に従って `data/runs/<date>/evidence_fetch_log.tsv` に残し、記録した時刻をレビュー担当が裏付けられるようにする。
+   - 取得したURL・HTTPステータス・時刻を、下の「根拠の取得」に従って `<data_dir>/runs/<date>/evidence_fetch_log.tsv` に残し、記録した時刻をレビュー担当が裏付けられるようにする。
 
    根拠の取得(手順4〜9でURLを取得するときは、すべてこの規則に従う):
 
@@ -149,12 +162,12 @@ description: Use when cron等からAgentとして日次調査パイプライン�
      - 版付きのAPIが404などで取得できない場合は、`unavailable` にし、`note` にHTTPステータスを書く。
      - 根拠の記録: `url` は実際に取得したJSON APIのURL、`kind` は `primary`(配布元である公式レジストリのメタデータのため)、`target_version` は対象の版、`note` は取得した `info.version`(例: `PyPI JSON API, info.version=4.2.8`)。
      - 候補の `evidence_urls`(レポートの見出しや注目候補のリンク)は、人が見る `/project/` ページのままでよい。選抜HOTの評価の根拠の行には、記録したとおりJSON APIのURLが出る。
-   - 取得ログ `data/runs/<date>/evidence_fetch_log.tsv`(タブ区切り):
+   - 取得ログ `<data_dir>/runs/<date>/evidence_fetch_log.tsv`(タブ区切り):
      - ファイルが無いときだけ、ヘッダー行 `url	http_status	fetched_at	content_verified	note` を書く。
      - ヘッダーと各行は、Edit / Writeツールでは書かず(区切りのタブが空白に化けるおそれがあるため)、次のように `printf` で追記する。
 
        ```bash
-       f=data/runs/<date>/evidence_fetch_log.tsv; [ -f "$f" ] || printf 'url\thttp_status\tfetched_at\tcontent_verified\tnote\n' > "$f"; printf '%s\t%s\t%s\t%s\t%s\n' '<URL>' '<http_status>' '<fetched_at>' '<true|false>' '<note>' >> "$f"
+       f=<data_dir>/runs/<date>/evidence_fetch_log.tsv; [ -f "$f" ] || printf 'url\thttp_status\tfetched_at\tcontent_verified\tnote\n' > "$f"; printf '%s\t%s\t%s\t%s\t%s\n' '<URL>' '<http_status>' '<fetched_at>' '<true|false>' '<note>' >> "$f"
        ```
 
        `<http_status>` には取得時に表示したステータスを書く(`000` は `-`)。`<true|false>` は下の `content_verified` の定義に従う。`note` に `'` を含めない(含む場合は空白に置き換える)。
@@ -169,24 +182,24 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    あわせて、`hot_candidates.jsonl` の **全候補**(選抜しない候補も含む)について、レポートに載せる日本語の概要を書き、`summaries` に `hot_id` をキーとして入れる。選抜外の候補も翌日以降まで「注目候補」としてレポートに載るためである。`summaries` に書かなかった候補は前回保存した概要を保持し、書いた候補は置き換わる。`summaries` のキーは `hot_candidates.jsonl` にある `hot_id` に限り、値は空でない文字列にする(違反すると `invalid_summary`)。
 
    - 内容: 2〜3文、おおむね150字以内で「それが何か」「何が新しい・変わったか」を書く。Reasons(選抜した/しなかった理由)の繰り返しや、タイトルの直訳だけにしない。
-   - 根拠: 評価のために読んだ一次情報(Evidence URLの中身)に基づいて書く。一次情報を取得できなかった場合(403など)は、取得できた範囲(報道記事など)で書き、「一次情報未確認」と明記する。PyPI候補では、JSON APIで取得したメタデータが一次情報である。何も取得できなかった場合は「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く。取得したページの本文は `data/runs/<date>/` に保存しない(上の例のとおり `mktemp` の一時ファイルを使う)。`data/runs/<date>/` に残すのは取得ログ `evidence_fetch_log.tsv` だけである。手順8bでも同じ。
+   - 根拠: 評価のために読んだ一次情報(Evidence URLの中身)に基づいて書く。一次情報を取得できなかった場合(403など)は、取得できた範囲(報道記事など)で書き、「一次情報未確認」と明記する。PyPI候補では、JSON APIで取得したメタデータが一次情報である。何も取得できなかった場合は「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く。取得したページの本文は `<data_dir>/runs/<date>/` に保存しない(上の例のとおり `mktemp` の一時ファイルを使う)。`<data_dir>/runs/<date>/` に残すのは取得ログ `evidence_fetch_log.tsv` だけである。手順8bでも同じ。
    - 確認できた事実と、発表元・報道の主張を区別する(例: 「〜と発表している」「〜と報じられている」)。
 
 5. 選抜結果を確定する。
 
    ```bash
-   ai-radar select-hot --date <date>
+   ai-radar select-hot --date <date> --data-dir <data_dir>
    ```
 
    失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
 
-   `data/runs/<date>/selection_input.json` を読み、評価レコードと概要を `hot_candidates.jsonl` に保存する。3件以上選抜する理由があるときだけ `--limit <n>`(最大5)を付ける(例: `ai-radar select-hot --date <date> --limit 3`)。
+   `<data_dir>/runs/<date>/selection_input.json` を読み、評価レコードと概要を `hot_candidates.jsonl` に保存する。3件以上選抜する理由があるときだけ `--limit <n>`(最大5)を付ける(例: `ai-radar select-hot --date <date> --data-dir <data_dir> --limit 3`)。
 
    選抜・理由・概要はすべて `selection_input.json` に書く(`select-hot` に選抜を指定する引数はない)。
 
    `selection_input.json` はその日の判断の全体を表す。`select-hot` は実行のたびに、このファイルの内容で全候補の `selected` と評価レコードを置き換える(評価レコードがない候補は未選抜・未評価に戻る)。再実行するときは、既存の評価レコードを残したまま追加・修正する。評価を書き直した場合は、`assessed_at` を取り直す。
 
-   終了コード0でも、`data/runs/<date>/run_state.json` の `errors` に次の警告が残る場合がある。それぞれ1回だけ `selection_input.json` を直して手順5を再実行し、それでも残る警告はそのままにして手順6へ進む(警告は失敗ではない)。
+   終了コード0でも、`<data_dir>/runs/<date>/run_state.json` の `errors` に次の警告が残る場合がある。それぞれ1回だけ `selection_input.json` を直して手順5を再実行し、それでも残る警告はそのままにして手順6へ進む(警告は失敗ではない)。
 
    - `missing_summary_warning`: メッセージに出た選抜外の候補の概要を `summaries` に追加する。内容を確認できなかった候補(下の `unreviewed_candidates` の対象)は、推測で書かず「概要未作成(未確認: 時間内に確認できず)」と書く。
    - `unreviewed_candidates`: メッセージに出た未確認の候補を確認し、評価レコードを `assessments` に、`hot_id` を `screened_ids` に追加する。時間内に確認しきれない場合は、確認した範囲(何件中何件を確認したか)を `selection_reason` に書いて警告を残したまま進む。確認していない候補を `rejected` として書いて警告を消してはならない。
@@ -195,7 +208,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
 6. 記事企画を作成する。
 
-   `data/runs/<date>/draft_proposals.json` に、次の形式(v2)のJSONオブジェクトを書く。配列や、トップレベルに `schema_version: 2` がない入力は手順7が `invalid_input` で、`schema_version: 2` のない企画は `invalid_proposal` で失敗する。
+   `<data_dir>/runs/<date>/draft_proposals.json` に、次の形式(v2)のJSONオブジェクトを書く。配列や、トップレベルに `schema_version: 2` がない入力は手順7が `invalid_input` で、`schema_version: 2` のない企画は `invalid_proposal` で失敗する。
 
    ```json
    {
@@ -205,7 +218,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    }
    ```
 
-   どの形にするかは、`data/runs/<date>/hot_candidates.jsonl` に `selected: true` の候補があるかで決める(`save-proposals` はこのファイルの選抜で照合する)。`hot_candidates.jsonl` が壊れていて読めない場合(`select-hot` が `corrupt_input` で `failed` のまま進む場合)は、選抜HOTがない日として扱う(手順7の `save-proposals` も `corrupt_input` で `failed` になるが、recovery.md の「壊れた入力(`corrupt_input`)」の決まりに従う)。
+   どの形にするかは、`<data_dir>/runs/<date>/hot_candidates.jsonl` に `selected: true` の候補があるかで決める(`save-proposals` はこのファイルの選抜で照合する)。`hot_candidates.jsonl` が壊れていて読めない場合(`select-hot` が `corrupt_input` で `failed` のまま進む場合)は、選抜HOTがない日として扱う(手順7の `save-proposals` も `corrupt_input` で `failed` になるが、recovery.md の「壊れた入力(`corrupt_input`)」の決まりに従う)。
 
    - 選抜HOTがない日(手順5の `select-hot` が成功して選抜0件の日、または手順5の `select-hot` が再実行の上限(`corrupt_input` の場合は recovery.md の「壊れた入力(`corrupt_input`)」の流し直しの1回)に達して `failed` のまま進み、`hot_candidates.jsonl` に選抜がない日): 企画を作らずに `{"schema_version": 2, "proposals": []}` を書いて手順7へ進む。`deferral_reason` は書かない(書くと `invalid_input` で失敗する)。手順7は省略しない(`save-proposals` が `run_state.json` の `stage_results` に「選抜HOTなし」を記録し、`report` が `missing_stage` を記録しないようにするため)。`select-hot` が `failed` のときは `selection_input.json` の `selected` に対して企画を作らない(`hot_candidates.jsonl` で選抜されていないため `invalid_proposal` になる)。
    - 選抜HOTがあるのに企画を作らない日: `proposals` を `[]` にし、`deferral_reason` に作らない理由(例: 「一次情報で機能を確認できず、検証の問いを立てられないため保留」)を書く。理由はレポートに「記事企画なし(保留: <理由>)」として出る。作れない理由がない限り各選抜HOTに企画を作る。
@@ -274,7 +287,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 7. 記事企画を保存する。
 
    ```bash
-   ai-radar save-proposals --date <date> --input data/runs/<date>/draft_proposals.json
+   ai-radar save-proposals --date <date> --data-dir <data_dir> --input <data_dir>/runs/<date>/draft_proposals.json
    ```
 
    失敗したら(終了コード1)、recovery.md の「エラー時の自己修正方針」に従う。
@@ -286,7 +299,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
    a. レポートに表示される注目候補・新モデルリリースのうち、概要がないもの(過去日の注目候補、当日の新モデルリリースなど)を一覧する。何も出力されなければ c へ進む。
 
       ```bash
-      ai-radar report --date <date> --list-missing-summaries
+      ai-radar report --date <date> --data-dir <data_dir> --reports-dir <reports_dir> --list-missing-summaries
       ```
 
       出力は1行1件のJSONで、`kind` で種類を見分ける。このコマンドは何もファイルを書き換えない。
@@ -300,17 +313,17 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       - 注目候補: `evidence_urls` のサイトにアクセスし、手順4と同じ基準で書く。
       - 新モデルリリース: `url` のサイトにアクセスし、1文・おおむね80字以内で書く。わかる範囲で「何のモデルか / 規模(パラメータ数など)/ ライセンス / 特徴」を書き、確認できなかった項目は書かない(推測で埋めない)。`url` が空の項目は `title` から推測せず、「概要未作成(情報取得失敗: URLなし)」と書く。
-      - どちらも、URLの取得は手順4の「根拠の取得」に従い、1回ごとに取得ログ `data/runs/<date>/evidence_fetch_log.tsv` に1行追記する。PyPIの注目候補は、`evidence_urls` の `/project/` ページではなくJSON APIで取得する。
+      - どちらも、URLの取得は手順4の「根拠の取得」に従い、1回ごとに取得ログ `<data_dir>/runs/<date>/evidence_fetch_log.tsv` に1行追記する。PyPIの注目候補は、`evidence_urls` の `/project/` ページではなくJSON APIで取得する。
       - どちらも、一次情報を取得できない場合の書き方は手順4と同じ(取得できた範囲で書いて「一次情報未確認」と明記する。何も取得できなければ「概要未作成(情報取得失敗: HTTP 403)」のように理由を書く)。
 
-      書いた概要は、`hot_id`(注目候補)または `key`(新モデルリリース)をキーとするJSONオブジェクトとして `data/runs/<date>/summary_input.json` に書き(既存の内容は今回の分で置き換えてよい)、保存する。キーは一覧の値をそのまま使う(新モデルリリースの `key` は正規化済みURLなので、`url` とは一致しないことがある)。
+      書いた概要は、`hot_id`(注目候補)または `key`(新モデルリリース)をキーとするJSONオブジェクトとして `<data_dir>/runs/<date>/summary_input.json` に書き(既存の内容は今回の分で置き換えてよい)、保存する。キーは一覧の値をそのまま使う(新モデルリリースの `key` は正規化済みURLなので、`url` とは一致しないことがある)。
 
       ```json
       {"hot:event:...": "注目候補の概要", "https://huggingface.co/org/model": "新モデルリリースの概要"}
       ```
 
       ```bash
-      ai-radar add-summary --date <date> --input data/runs/<date>/summary_input.json
+      ai-radar add-summary --date <date> --data-dir <data_dir> --input <data_dir>/runs/<date>/summary_input.json
       ```
 
       保存後に a を1回だけ再実行して、何も出力されないことを確認する。それでも残る項目は、推測で書かずに「概要未作成(未確認: 時間内に確認できず)」と書いて同じ方法で保存し、a を再実行せずに c へ進む。この回数は、手順9bから手順8に戻るたびと、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しで手順8に戻ったときに数え直す。
@@ -322,32 +335,32 @@ description: Use when cron等からAgentとして日次調査パイプライン�
       まず、見出しと同じ名前・件数でSourceの一覧を出す(`run_state.json` の `sources` にないSourceのSignalは `other`、同じ名前のSourceが実在する場合は `_other` にまとめる)。
 
       ```bash
-      python3 skills/agent-daily-run/list_source_signals.py <date>
+      python3 skills/agent-daily-run/list_source_signals.py <date> --data-dir <data_dir>
       ```
 
-      このスクリプトが「signals.jsonl を読めません」と出して終了コード1で終わった場合は、`data/normalized/<date>/signals.jsonl` が壊れている。ファイルを手で直したり、傾向を推測で書いたりせず、この手順cを飛ばして d へ進む(d の後の確認で `source: report` の `corrupt_input` として見つかり、recovery.md の「壊れた入力(`corrupt_input`)」に従って流し直す。流し直しの上限に達していれば、そのまま手順9へ進む。レポートの収集Source一覧は注記だけになり、傾向は表示されない)。
+      このスクリプトが「signals.jsonl を読めません」と出して終了コード1で終わった場合は、`<data_dir>/normalized/<date>/signals.jsonl` が壊れている。ファイルを手で直したり、傾向を推測で書いたりせず、この手順cを飛ばして d へ進む(d の後の確認で `source: report` の `corrupt_input` として見つかり、recovery.md の「壊れた入力(`corrupt_input`)」に従って流し直す。流し直しの上限に達していれば、そのまま手順9へ進む。レポートの収集Source一覧は注記だけになり、傾向は表示されない)。
 
       続けて、件数が1件以上のSourceごとに、そのSourceの各Signalを `- タイトル | 概要(先頭200字) | URL` の形で出して読む(Source名は上の出力の見出しから `(N件)` を除いた名前)。
 
       ```bash
-      python3 skills/agent-daily-run/list_source_signals.py <date> '<Source名>'
+      python3 skills/agent-daily-run/list_source_signals.py <date> '<Source名>' --data-dir <data_dir>
       ```
 
       - 対象: 件数が1件以上のSource。収集0件のSourceは書かない(レポートには「収集0件」と出る。0件のSourceを入力に含めると `invalid_overview` で全体が保存されない)。
       - 内容: 2〜3行(2〜3文)、おおむね200字以内で、「どんなテーマが多いか」「目立った項目」を書く。原文が英語以外(タイ語など)であっても日本語で書く。文の間に改行は入れなくてよい(入れた改行はレポートで `<br>` として表示される)。
       - 根拠: そのSourceの一覧(タイトル・概要)をすべて読んだうえで書く。タイトルと概要だけでは内容がわからない目立った項目は、必要ならリンク先を確認する(取得は手順4の「根拠の取得」に従い、取得ログに1行追記する)。一覧から読み取れない内容を推測で断定しない。
 
-      書いた傾向は、Source名(見出しの `(N件)` を除いた名前)をキーとするJSONオブジェクトとして `data/runs/<date>/source_overview_input.json` に書き(既存の内容は今回の分で置き換えてよい)、保存する。保存したSourceの傾向は上書きされ、入力に含めなかったSourceの保存済みの傾向は残る。
+      書いた傾向は、Source名(見出しの `(N件)` を除いた名前)をキーとするJSONオブジェクトとして `<data_dir>/runs/<date>/source_overview_input.json` に書き(既存の内容は今回の分で置き換えてよい)、保存する。保存したSourceの傾向は上書きされ、入力に含めなかったSourceの保存済みの傾向は残る。
 
       ```json
       {"github": "エージェント実行基盤とMCP関連のリポジトリが多い。...", "arxiv": "..."}
       ```
 
       ```bash
-      ai-radar add-source-overview --date <date> --input data/runs/<date>/source_overview_input.json
+      ai-radar add-source-overview --date <date> --data-dir <data_dir> --input <data_dir>/runs/<date>/source_overview_input.json
       ```
 
-      手順9bから戻ってきた場合は、保存済みの傾向を書き直さなくてよい(指摘されたSourceは手順9bで直す)。`data/runs/<date>/source_overviews.json` にない、収集1件以上のSourceがあれば、それだけを書いて保存する。ただし、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しで `collect` または `normalize` から流し直した後(手順9bの中で起きた場合を含む)は、Signalと件数が変わっているため、保存済みの傾向も含めて収集1件以上のすべてのSourceについて書き直して保存する。
+      手順9bから戻ってきた場合は、保存済みの傾向を書き直さなくてよい(指摘されたSourceは手順9bで直す)。`<data_dir>/runs/<date>/source_overviews.json` にない、収集1件以上のSourceがあれば、それだけを書いて保存する。ただし、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しで `collect` または `normalize` から流し直した後(手順9bの中で起きた場合を含む)は、Signalと件数が変わっているため、保存済みの傾向も含めて収集1件以上のすべてのSourceについて書き直して保存する。
 
       書くSourceが1つもない場合(収集1件以上のSourceがない日、または手順9bから戻って未保存のSourceがない場合)は、`add-source-overview` を実行せずに d へ進む(空のオブジェクト `{}` を渡すと `invalid_overview` で失敗する)。
 
@@ -355,13 +368,13 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
    d. レポートを生成する。
 
-      生成する前に `data/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば(記録がない旧形式の `run_state.json` も)、そのまま生成する。それ以外の場合は、[recovery.md](recovery.md) の「レポート生成前の補完実行」に従ってから生成する。
+      生成する前に `<data_dir>/runs/<date>/run_state.json` の `stage_results` を確認する。`select-hot` が `completed` / `deferred`、`save-proposals` が `completed` / `deferred` / `not_run`(理由: 選抜HOTなし)であれば(記録がない旧形式の `run_state.json` も)、そのまま生成する。それ以外の場合は、[recovery.md](recovery.md) の「レポート生成前の補完実行」に従ってから生成する。
 
       ```bash
-      ai-radar report --date <date> --reports-dir reports
+      ai-radar report --date <date> --data-dir <data_dir> --reports-dir <reports_dir>
       ```
 
-      生成した後、`data/runs/<date>/run_state.json` の `errors` に `source: report` かつ `type: corrupt_input` の記録があるか確認する。`report` は当日の `hot_candidates.jsonl` / `article_proposals.jsonl` / `data/normalized/<date>/signals.jsonl` が壊れていても、終了コード0でレポートを生成する(該当セクションに「<ファイル名> を読めなかったため表示できません(Errors を参照)。」と出る)ため、終了コードだけでは気づけない。`report` は実行のたびに自分の記録(`source: report`)を消して記録し直すため、ここで見える記録は直前の `report` の実行で見つかったものである。
+      生成した後、`<data_dir>/runs/<date>/run_state.json` の `errors` に `source: report` かつ `type: corrupt_input` の記録があるか確認する。`report` は当日の `hot_candidates.jsonl` / `article_proposals.jsonl` / `<data_dir>/normalized/<date>/signals.jsonl` が壊れていても、終了コード0でレポートを生成する(該当セクションに「<ファイル名> を読めなかったため表示できません(Errors を参照)。」と出る)ため、終了コードだけでは気づけない。`report` は実行のたびに自分の記録(`source: report`)を消して記録し直すため、ここで見える記録は直前の `report` の実行で見つかったものである。
       - 記録があり、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しをまだ行っていない場合: それに従って流し直し(手順8のa〜dのやり直しを含む)、この確認をもう一度行う。
       - 記録があり、流し直しを行った後の場合(上限到達): 何もせず、記録を残したまま手順9へ進む。
 
@@ -369,14 +382,15 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
    a. 自分自身が起動されているのと同じCLIで、新しいプロセスとして
       `skills/review-daily-report/entry-prompt.txt` の内容(`{date}` は
-      手順1で判定した `<date>` に置換したもの)を渡して起動する。
+      手順1で判定した `<date>` に、`{data_dir}` / `{reports_dir}` は冒頭の「出力先」で決めた
+      `<data_dir>` / `<reports_dir>` に置換したもの)を渡して起動する。
       cronの各行はclaude/codexいずれか一方を直接起動するため、実行中のAgentは
       自分がどちらであるか自明である。
 
       - 自分がClaude Codeの場合: `claude -p "<prompt>" --permission-mode bypassPermissions`
       - 自分がCodexの場合: `codex exec "<prompt>" --sandbox workspace-write`
 
-   b. `data/runs/<date>/review_feedback.md` の有無を確認する。
+   b. `<data_dir>/runs/<date>/review_feedback.md` の有無を確認する。
 
       - 存在しない場合: 承認。品質レビューループを終了し、完了確認へ進む。
       - 存在する場合、かつこれが3回目の試行でない場合: 内容を読み、HOT選抜のやり直しや
@@ -385,14 +399,14 @@ description: Use when cron等からAgentとして日次調査パイプライン�
         recovery.md で手順10へ進むとされた場合を除き、手順8のa〜d(概要の補完、本日の傾向の作成、レポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
-10. 3回目の試行の後も `data/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input`)だけが残った場合は、未解消であることを記録し、レポートを生成し直す。
+10. 3回目の試行の後も `<data_dir>/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input`)だけが残った場合は、未解消であることを記録し、レポートを生成し直す。
 
     ```bash
-    ai-radar mark-needs-review --date <date>
+    ai-radar mark-needs-review --date <date> --data-dir <data_dir>
     ```
 
     ```bash
-    ai-radar report --date <date> --reports-dir reports
+    ai-radar report --date <date> --data-dir <data_dir> --reports-dir <reports_dir>
     ```
 
     `mark-needs-review` は `run_state.json` に `needs_review: true` を記録する。`report` はこれを読み、レポートの冒頭に「⚠️ 要確認」の警告と `review_feedback.md` の場所を出す。レポートや `run_state.json` を手で編集しない。
@@ -400,8 +414,8 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 ## 完了確認
 
 - `report` の標準出力(生成されたレポートのパス)を確認する。
-- `data/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
-- `data/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8dで上限まで再実行しても直らなかったもの)。
+- `<data_dir>/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
+- `<data_dir>/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8dで上限まで再実行しても直らなかったもの)。
 - `errors` に `corrupt_input` が残っている場合は、完了報告に壊れたファイルのパスとメッセージを書く(recovery.md の「壊れた入力(`corrupt_input`)」の流し直しでも直らなかったもの)。
 - `errors` に `add-source-overview` のエラーが残っている場合、または手順8cを飛ばした場合は、「傾向未作成」のまま残ったSourceとその理由を完了報告に書く。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。

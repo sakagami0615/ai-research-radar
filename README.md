@@ -115,8 +115,8 @@ PATH=/path/to/.pyenv/shims:/path/to/.local/bin:/path/to/.nvm/versions/node/<vers
 ```
 
 - 実行ログは `logs/agent-daily-run-<date>.log` に出力される。
-- ローカルで動作確認したい場合は、`flock ...` と `>> ... 2>&1`、`&& test -f ...` を外し、`cd /path/to/ai-research-radar && claude -p "$(cat skills/agent-daily-run/entry-prompt.txt)" --permission-mode bypassPermissions` をそのまま端末で実行すればよい。cron行と同じコマンドなので、動作確認用に別の手順を覚える必要がない。
-- レポート生成後、Agent自身が別プロセスとして `skills/review-daily-report/SKILL.md` に従うAgentを起動し、HOT選抜・記事企画の質をレビューさせる。問題が見つかれば自分自身で修正して再レビューする。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回目の試行の後も指摘が残れば、`ai-radar mark-needs-review` で `data/runs/<date>/run_state.json` に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
+- 手で起動する場合も `flock -n` は外さない(本番の実行と同時に動かさないため)。ロックファイルはメインチェックアウトの絶対パスの `logs/.daily.lock` を指定する(ワークツリーから起動しても本番とロックを共有するため)。動作確認は、本番の `data/` / `reports/` に影響しないテストモード(`skills/agent-daily-run/entry-prompt-test.txt`。出力先は `test_output/`)で行う。本番の手での起動では、作成済みの日の判定は #44 で入るまでないため、当日のレポートがある日に本番で実行すると上書きされる。手での起動コマンドとテストモードの詳細は [cronによる日次実行](docs/support/01-operations/scheduled-run.md) を参照。
+- レポート生成後、Agent自身が別プロセスとして `skills/review-daily-report/SKILL.md` に従うAgentを起動し、HOT選抜・記事企画の質をレビューさせる。問題が見つかれば自分自身で修正して再レビューする。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回(`skills/agent-daily-run/SKILL.md` 手順9〜10)。3回目の試行の後も指摘が残れば、`ai-radar mark-needs-review` で `<data_dir>/runs/<date>/run_state.json`(本番は `data`、テストモードは `test_output/data`)に `needs_review: true` を記録し、`report` を再実行してレポート冒頭に警告を出す。
 
 ### 決定論的な `ai-radar daily` による日次実行(手動・CI向け)
 

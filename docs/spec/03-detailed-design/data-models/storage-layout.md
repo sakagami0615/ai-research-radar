@@ -40,6 +40,15 @@ reports/
   daily/<date>.md
 ```
 
+`data/` / `reports/` は既定の出力先である(`--data-dir` / `--reports-dir` を省略したときは `config/runtime.yaml` の `output` の値)。Agent経路のSkillは出力先を `<data_dir>` / `<reports_dir>` と書き、本番では `data` / `reports` を、テストモードでは次の `test_output/` を、すべてのコマンドに明示して使う。`test_output/` はGit管理対象外。
+
+```text
+test_output/
+  data/       # <data_dir>。上と同じ構成
+  reports/    # <reports_dir>。daily/<date>.md
+  logs/       # テストモードを手で起動したときのログ(agent-daily-run-<date>.log)
+```
+
 `runs/<date>/evidence_fetch_log.tsv` は、実行Agentが手順4〜9で取得したURLの記録(根拠の確認のほか、注目候補・新モデルリリースの概要補完での取得も含む。ヘッダー付きTSV。形式は `agent-daily-run` Skillの手順4)。CLIは読み書きしない。
 
 その他のファイルの役割は次のとおり。

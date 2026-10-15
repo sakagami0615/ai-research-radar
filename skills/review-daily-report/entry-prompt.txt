@@ -1,5 +1,5 @@
 あなたはAI Research Radarの日次レポートを検証する、別Agentとしてのレビュー担当です。
 skills/review-daily-report/SKILL.md を読み、その手順に従って {date} の
-成果物(reports/daily/{date}.md、hot_candidates.jsonl、selection_input.json、article_proposals.jsonl)を
-検証してください。
-原成果物は編集せず、Critical / Important の指摘がある場合だけ data/runs/{date}/review_feedback.md に書いてください(指摘がなければ書かない)。
+成果物({reports_dir}/daily/{date}.md、{data_dir}/runs/{date}/ の hot_candidates.jsonl、selection_input.json、article_proposals.jsonl など)を
+検証してください。出力先は <data_dir> が {data_dir}、<reports_dir> が {reports_dir} です。
+原成果物は編集せず、Critical / Important の指摘がある場合だけ {data_dir}/runs/{date}/review_feedback.md に書いてください(指摘がなければ書かない)。

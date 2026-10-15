@@ -38,6 +38,8 @@ cd '<worktree>' && PATH='<scratchpad>/bin':"$PATH" PYTHONPATH='<worktree>/src' c
 
 日次処理の正本は [agent-daily-run](../../../../skills/agent-daily-run/SKILL.md)、Agent起動とレビューの運用は [cron運用](../scheduled-run.md) を参照する。これは検証用のCLIラッパーであり、本番cron起動用ラッパーを追加するものではない。
 
+日次処理を実データで通すときは、本番の `data/` / `reports/` に書かない [cron運用](../scheduled-run.md) の「テストモード」を使う。
+
 ## 権限制約と終了条件
 
 IDE拡張のAuto Modeなどの対話セッションで日次Skillを手動実行すると、レビュー用の別プロセス（`claude -p ... --permission-mode bypassPermissions` など）の起動が「Create Unsafe Agents」として拒否される場合がある。この場合は制約を回避せず、利用可能な同一セッション内のsubagentへレビューを委譲する。代替手段が使えない場合は、レビュー未実施として理由を記録する。

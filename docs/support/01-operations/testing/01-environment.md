@@ -19,6 +19,6 @@ PYTHONPATH=src python -c 'from pathlib import Path; import ai_research_radar.cli
 
 Agent経路で直近3日分の集約などを確認する場合は、`data/` がGit管理対象外でworktreeに存在しないことがある。必要な過去日のデータだけをメインチェックアウトから対象worktreeへコピーする。コピー前に両方の絶対パス、対象日、必要なファイル、既存ファイルの有無を確認し、元データは変更しない。上書きが必要な場合は利用者に確認する。
 
-CLI実行を伴う確認では、対象日・入力・外部アクセスの有無・data／reports／logsの出力先を先に定める。日次Skillは相対パスの `data/`・`reports/` などを使うため、対象worktreeの既存成果物を上書きしない状態を準備する。安全な入力・出力先を用意できない場合は、その実行を保留して理由を記録する。
+CLI実行を伴う確認では、対象日・入力・外部アクセスの有無・data／reports／logsの出力先を先に定める。日次Skillを実データで通して確認する場合は、本番の `data/`・`reports/` に書かないテストモード(`skills/agent-daily-run/entry-prompt-test.txt`。出力先は `test_output/`)を使う。起動方法・準備・ログ・ロックは [cron運用](../scheduled-run.md) の「テストモード」に従う。それ以外の確認でも、対象worktreeの既存成果物を上書きしない状態を準備する。安全な入力・出力先を用意できない場合は、その実行を保留して理由を記録する。
 
 Agentのシェル呼び出しは作業ディレクトリや変数を次の呼び出しへ引き継がない前提とする。各呼び出しで対象ルートと必要な環境変数を指定する。

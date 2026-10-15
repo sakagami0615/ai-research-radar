@@ -1,0 +1,15 @@
+あなたはAI Research Radarの日次調査パイプラインを、テストモードで実行するAgentです。
+テストモードでは、出力先は <data_dir> が test_output/data、<reports_dir> が test_output/reports です。本番の data/ と reports/ には書き込まないでください。
+テスト用の出力先を消してから、最初から実行します(作成済みの判定はしません)。
+
+まず、リポジトリのルートで次のコマンドを1回の呼び出しで実行し、テスト用の出力先を準備してください。
+test_output/data と対象日(今日)の test_output/reports/daily/<date>.md を消し、メインチェックアウト(git rev-parse --path-format=absolute --git-common-dir の親ディレクトリ)の data/ から、
+対象日の前日・前々日(暦日。ない日は飛ばす)の runs/<d>/(review_result.json / review_target.json を除く)と normalized/<d>/、
+run.jsonl がある最新の過去日の runs/<d>/run.jsonl を test_output/data にコピーします。メインチェックアウトのファイルは変更しません。
+
+R="$(git rev-parse --show-toplevel)" && [ -n "$R" ] && cd "$R" && C="$(git rev-parse --path-format=absolute --git-common-dir)" && [ -n "$C" ] && M="$(dirname "$C")" && [ -n "$M" ] && [ "$M" != "/" ] && D="$(date +%F)" && { rm -rf test_output/data && rm -f "test_output/reports/daily/$D.md" && mkdir -p test_output/data/runs test_output/data/normalized && for n in 1 2; do d="$(date -d "$D -$n day" +%F)"; if [ -d "$M/data/runs/$d" ]; then cp -a "$M/data/runs/$d" "test_output/data/runs/$d"; fi; if [ -d "$M/data/normalized/$d" ]; then cp -a "$M/data/normalized/$d" "test_output/data/normalized/$d"; fi; done; find test_output/data/runs \( -name review_result.json -o -name review_target.json \) -delete; latest=""; for f in "$M"/data/runs/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/run.jsonl; do [ -f "$f" ] || continue; d="$(basename "$(dirname "$f")")"; if [ "$d" \< "$D" ]; then latest="$d"; fi; done; if [ -n "$latest" ]; then mkdir -p "test_output/data/runs/$latest" && cp -a "$M/data/runs/$latest/run.jsonl" "test_output/data/runs/$latest/run.jsonl"; fi; echo "main=$M date=$D latest_run=$latest"; find test_output/data -type f | sort; } || echo "準備の前提(リポジトリのルート、メインチェックアウトのパス)を確認できませんでした"
+
+「準備の前提(…)を確認できませんでした」と出た場合は、以降を実行せずにその旨を報告して終了してください。出力された date を確認してから、skills/agent-daily-run/SKILL.md を読み、その手順に従って対象日(今日の日付、YYYY-MM-DD)を判定した上で、ai-radar CLIのサブコマンドを順に実行し、
+日次レポートの生成とレビュー対応まで完了させてください。手順1で判定した日付が準備で出力された date と違う場合(日付をまたいだ場合)は、準備のコマンドからやり直してください。
+すべての ai-radar コマンドと list_source_signals.py に --data-dir test_output/data を、report には --reports-dir test_output/reports も付けてください。レビュー担当の起動プロンプトの {data_dir} / {reports_dir} も test_output/data / test_output/reports に置き換えてください。
+候補0件・企画0件・レビュー担当の起動失敗を成功扱いにせず、品質レビューは test_output/data/runs/<date>/review_feedback.md の有無で判定し、指摘があれば修正してください。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回です。

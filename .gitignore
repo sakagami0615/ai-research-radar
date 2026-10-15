@@ -13,3 +13,4 @@ __pycache__/
 data/
 reports/
 logs/
+test_output/
