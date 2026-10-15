@@ -594,14 +594,17 @@ def _mentions_any(text: str, keywords: list[str]) -> bool:
     return False
 
 
+# Word-start boundary only, so inflections ("released", "launches") still match
+# while "prerelease" does not; a hyphen counts as a boundary ("pre-release").
+_OFFICIAL_RELEASE_WORD = re.compile(r"(?<![a-z0-9])(?:release|launch)", re.IGNORECASE)
+
+
 def _official_event_type(title: str) -> str:
-    normalized_title = title.lower()
-    is_release = any(word in normalized_title for word in ("release", "launch"))
-    if not is_release:
+    if not _OFFICIAL_RELEASE_WORD.search(title):
         return "observed_signal"
-    if "api" in normalized_title:
+    if _term_matches("api", title):
         return "major_api_release"
-    if "model" in normalized_title:
+    if _term_matches("model", title):
         return "major_model_release"
     return "observed_signal"
 
