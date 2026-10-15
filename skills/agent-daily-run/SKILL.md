@@ -384,7 +384,13 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 
       生成した後、`<data_dir>/runs/<date>/run_state.json` の `errors` に `source: report` かつ `type: corrupt_input` の記録があるか確認する。`report` は当日の `hot_candidates.jsonl` / `article_proposals.jsonl` / `<data_dir>/normalized/<date>/signals.jsonl` が壊れていても、終了コード0でレポートを生成する(該当セクションに「<ファイル名> を読めなかったため表示できません(Errors を参照)。」と出る)ため、終了コードだけでは気づけない。`report` は実行のたびに自分の記録(`source: report`)を消して記録し直すため、ここで見える記録は直前の `report` の実行で見つかったものである。
       - 記録があり、recovery.md の「壊れた入力(`corrupt_input`)」の流し直しをまだ行っていない場合: それに従って流し直し(手順8のa〜dのやり直しを含む)、この確認をもう一度行う。
-      - 記録があり、流し直しを行った後の場合(上限到達): 何もせず、記録を残したまま手順9へ進む。
+      - 記録があり、流し直しを行った後の場合(上限到達): 何もせず、記録を残したまま下の `selection_mismatch` の確認へ進む。
+      - 記録がない場合: 下の `selection_mismatch` の確認へ進む。
+
+      続けて、同じ `errors` に `source: report` かつ `type: selection_mismatch` の記録があるか確認する。`report` は `stage_results` の `select-hot` と `hot_candidates.jsonl` の選抜が食い違っていても、終了コード0でレポートを生成する(選抜HOTセクションに「選抜の記録(保留)と選抜結果が一致しません。…」または「選抜結果が見つかりません(…)」と出る)。
+      - 記録があり、recovery.md の「選抜の記録と選抜結果の食い違い(`selection_mismatch`)」の再実行の上限に達していない場合: それに従って再実行し(手順8のa〜dのやり直しを含む)、この確認(`corrupt_input` から)をもう一度行う。
+      - 記録があり、上限に達している場合: 何もせず、記録を残したまま手順9へ進む。
+      - 記録がない場合: 手順9へ進む。
 
 9. `report` 完了後、成果物の質を別セッションのAgentにレビューさせる。レビューの試行は最大3回(初回を1回目とする)。修正は試行の間に行うため最大2回(1回目・2回目の試行の後)。
 
@@ -407,7 +413,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
         recovery.md で手順10へ進むとされた場合を除き、手順8のa〜d(概要の補完、本日の傾向の作成、レポート生成)をやり直して手順9のa(レビュー担当の起動)に戻る。
       - 存在する場合、かつこれが3回目の試行だった場合: 手順10へ進む。
 
-10. 3回目の試行の後も `<data_dir>/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input`)だけが残った場合は、未解消であることを記録し、レポートを生成し直す。
+10. 3回目の試行の後も `<data_dir>/runs/<date>/review_feedback.md` が残っている場合、または手順9bで修正不能な指摘(上限到達の `failed` / `corrupt_input` / `selection_mismatch`)だけが残った場合は、未解消であることを記録し、レポートを生成し直す。
 
     ```bash
     ai-radar mark-needs-review --date <date> --data-dir <data_dir>
@@ -425,6 +431,7 @@ description: Use when cron等からAgentとして日次調査パイプライン�
 - `<data_dir>/runs/<date>/run_state.json` の `errors` を確認し、`missing_stage` 以外の重大なエラーが残っていないか確認する。`missing_summary_warning` / `unreviewed_candidates` は警告であり、手順5の対応を済ませ、未確認が残る場合は確認範囲を `selection_reason` に書いていれば、残っていても完了としてよい。
 - `<data_dir>/runs/<date>/run_state.json` の `stage_results` に `failed` が残っている場合は、完了報告にそのステージと理由を書く(手順8dで上限まで再実行しても直らなかったもの)。
 - `errors` に `corrupt_input` が残っている場合は、完了報告に壊れたファイルのパスとメッセージを書く(recovery.md の「壊れた入力(`corrupt_input`)」の流し直しでも直らなかったもの)。
+- `errors` に `selection_mismatch` が残っている場合は、完了報告にそのメッセージを書く(recovery.md の「選抜の記録と選抜結果の食い違い(`selection_mismatch`)」の再実行でも直らなかったもの)。
 - `errors` に `add-source-overview` のエラーが残っている場合、または手順8cを飛ばした場合は、「傾向未作成」のまま残ったSourceとその理由を完了報告に書く。
 - 手順9〜10の品質レビューループが承認済みで終わったか、`needs_review: true` 付きで終わったかを確認する(いずれの場合もパイプライン自体は完了とみなしてよい)。
 - 手順8aで控えた新モデルリリースの対象件数が30件を超えていた場合は、その件数を完了報告に含める。
