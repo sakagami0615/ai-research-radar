@@ -10,6 +10,7 @@
 
 1. `<data_dir>/runs/<date>/run_state.json` の `errors` を読み、エラー種別とメッセージを確認する。種別ごとの条件は [CLIコマンド契約](../../docs/spec/03-detailed-design/cli/commands.md) の「Agent経路のサブコマンド」の各コマンドの表を見る。
    - `invalid_proposal` のメッセージの `proposal[<番号>]` は、`proposals` の何番目(0始まり)の企画かを示す。
+   - メッセージに `quality.evidence needs at least one verified primary entry` が含まれる場合は、根拠の `status` / `kind` / `checked_at` を書き換えるだけで通さない。手順6の規則に従い、根拠を確認して記録し直すか(手順4の根拠の流用を含む)、その企画を取り除く(企画が1件もなくなるなら `deferral_reason` で保留する)。
    - `select-hot` / `save-proposals` / `add-source-overview` の `corrupt_input` は自分が書いた入力ではなく、前のステージが出力したjsonl(`select-hot` / `save-proposals` は `hot_candidates.jsonl`、`add-source-overview` は `<data_dir>/normalized/<date>/signals.jsonl`)の破損である。項目2・3ではなく、下の「壊れた入力(`corrupt_input`)」に従う。
 2. 原因に応じて `selection_input.json`・`draft_proposals.json`・`summary_input.json`・`source_overview_input.json` を修正し、再実行する。
    - すでに手順7(`save-proposals`)を実行した後に `select-hot` を再実行して成功した場合は、続けて手順7も再実行する(選抜が変わった場合は先に手順6で `draft_proposals.json` を作り直す)。手順5の時点(まだ手順7を実行していない)では、通常どおり手順6へ進む。

@@ -84,7 +84,11 @@ def _quality() -> dict:
     return {
         "question": "q", "difference": "d", "baseline": "b", "baseline_version": "1", "measurement": "m",
         "inputs_and_environment": "e", "effort": "1日", "effort_assumptions": "a", "success_condition": "s",
-        "stop_condition": "x", "metrics": ["m"], "evidence": [], "unknowns": [],
+        "stop_condition": "x", "metrics": ["m"],
+        "evidence": [
+            {"url": "https://example.com/a", "checked_at": "2026-09-25T00:00:00+00:00", "target_version": None, "status": "verified", "kind": "primary", "claim": "c", "note": ""}
+        ],
+        "unknowns": [],
     }
 
 

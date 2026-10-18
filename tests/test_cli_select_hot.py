@@ -322,6 +322,20 @@ def test_records_deferred_when_nothing_is_selected(tmp_path: Path):
     assert "select-hot" in _state(data_dir)["stages_completed"]
 
 
+def test_deferred_and_rejected_assessments_without_evidence_are_accepted(tmp_path: Path):
+    # save-proposals requires checked verified primary evidence (#25); select-hot keeps accepting none here.
+    data_dir = _write_candidates(tmp_path)
+    _write_selection(
+        data_dir,
+        _selection(assessments=[_assessment(A, "deferred", evidence=[]), _assessment(B, "rejected", evidence=[])], selection_reason="一次情報を取得できなかった"),
+    )
+
+    assert _select(data_dir) == 0
+
+    assert _results(data_dir)["select-hot"]["status"] == "deferred"
+    assert all(item["assessment"]["evidence"] == [] for item in _by_id(data_dir).values())
+
+
 def test_records_deferred_on_a_day_without_candidates(tmp_path: Path):
     data_dir = tmp_path / "data"
     write_jsonl(_run_dir(data_dir) / "hot_candidates.jsonl", [])
