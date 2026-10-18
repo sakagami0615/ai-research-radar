@@ -1,0 +1,41 @@
+{
+  "errors": [
+    {
+      "message": "data/runs/2026-09-25/hot_candidates.jsonl:2: Expecting value",
+      "path": "runs/2026-09-25/hot_candidates.jsonl",
+      "source": "select-hot",
+      "type": "corrupt_input"
+    }
+  ],
+  "input_counts": {
+    "github": 2
+  },
+  "output_counts": {
+    "events": 2,
+    "hot_candidates": 2,
+    "raw_items": 2,
+    "signals": 2,
+    "topics": 2
+  },
+  "run_id": "2026-10-15T19:59:18.413900+00:00",
+  "since": "2026-09-24",
+  "sources": [
+    "github"
+  ],
+  "stage_results": {
+    "save-proposals": {
+      "reason": "未実行",
+      "status": "not_run"
+    },
+    "select-hot": {
+      "reason": "corrupt_input: data/runs/2026-09-25/hot_candidates.jsonl:2: Expecting value",
+      "status": "failed"
+    }
+  },
+  "stages_completed": [
+    "collect",
+    "normalize",
+    "score"
+  ],
+  "until": "2026-09-25"
+}

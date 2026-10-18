@@ -80,10 +80,9 @@
 - やりたいこと: 段階の実行とレビューの試行ごとに、入力・出力のスナップショット、コード版(git commit・dirty)、適用した設定のhashを `data/runs/<date>/history/<attempt_id>/` に残す。上流の再実行で下流の成果物・レビューを一律に無効化する。
 - 理由: 今は上書き保存のため、再実行前の結果や、どの設定で作った結果かを後から確認できない。
 
-### 次に実行すべき手順を返すCLI(`ai-radar status`)
+### `score` の再実行による選抜の記録の失効
 
-- やりたいこと: `run_state.json` から次に実行すべきステージと理由、再実行の残り回数を返すコマンドを作り、`agent-daily-run` Skillの状態判断(レポート生成前の補完実行、`corrupt_input` の流し直しの範囲など)を置き換える。
-- 理由: 今はAgentがSkillの文章を読んで状態遷移を推論しており、解釈違いが起きやすい。
+- [#60](https://github.com/sakagami0615/ai-research-radar/issues/60)
 
 ## レポート・分析
 
