@@ -87,8 +87,9 @@ def test_official_feeds_mark_titles_with_model_keywords_as_model_release(monkeyp
 
     by_title = {signal.title: signal for signal in signals}
     release = by_title["Gemini 4 Argon: our next era"]
-    # Keywords only mark the section; they must not widen the HOT Official override.
-    assert release.metadata["event_type"] == "observed_signal"
+    # A keyword match on an official feed is a model announcement, so it becomes
+    # major_model_release and gets the HOT Official override (#34).
+    assert release.metadata["event_type"] == "major_model_release"
     assert release.metadata["model_release"] == {"provider": "Google", "channel": "official"}
     other = by_title["Hallo, Deutschland!"]
     assert other.metadata["event_type"] == "observed_signal"
@@ -427,6 +428,46 @@ def test_official_feed_without_valid_model_categories_uses_keywords_only(monkeyp
     monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(body))
 
     assert _model_release_titles(adapter) == {"Basis completes a tax workbook 2x faster with GPT-6 Astra"}
+
+
+def test_official_model_release_becomes_hot_candidate_even_with_low_score(monkeypatch):
+    from ai_research_radar.pipeline.events import build_events
+    from ai_research_radar.scoring.hot import compute_hot_candidates, score_event
+
+    official = OfficialFeedsAdapter("official_blogs", "official", [_openai_feed(["Product"])])
+    body = _rss_with_categories(
+        ("GPT-6 and Intelligent UI for everyone", ["Product"]),
+        # Excluded by model_categories (customer story), so no override.
+        ("Basis completes a tax workbook 2x faster with GPT-6 Astra", ["Startup"]),
+        ("Launching the GPT-6 API", ["Product"]),
+    )
+    monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(body))
+    official_signals = [official.normalize(item) for item in official.collect("2026-09-24", "2026-09-25")]
+
+    by_title = {signal.title: signal for signal in official_signals}
+    assert by_title["GPT-6 and Intelligent UI for everyone"].metadata["event_type"] == "major_model_release"
+    assert by_title["Basis completes a tax workbook 2x faster with GPT-6 Astra"].metadata["event_type"] == "observed_signal"
+    assert "model_release" not in by_title["Basis completes a tax workbook 2x faster with GPT-6 Astra"].metadata
+    # Already major_api_release by the title rule: stays as is.
+    assert by_title["Launching the GPT-6 API"].metadata["event_type"] == "major_api_release"
+
+    hf = HuggingFaceOrgAdapter("huggingface_orgs", "technology", {"Qwen": "Qwen"})
+    hf_payload = [{"id": "Qwen/Qwen4-72B", "modelId": "Qwen/Qwen4-72B", "createdAt": "2026-09-25T01:00:00.000Z", "downloads": 0, "likes": 0}]
+    monkeypatch.setattr(public_module, "urlopen", lambda request, timeout: _Response(json.dumps(hf_payload).encode("utf-8")))
+    hf_signals = [hf.normalize(item) for item in hf.collect("2026-09-24", "2026-09-25")]
+    assert hf_signals[0].metadata["model_release"]["channel"] == "huggingface"
+    assert hf_signals[0].metadata["event_type"] == "observed_signal"
+
+    events = build_events(official_signals + hf_signals)
+    assert all(score_event(event) < 75 for event in events)
+
+    candidates = compute_hot_candidates(events, minimum_score=75)
+
+    assert {candidate.title for candidate in candidates} == {
+        "GPT-6 and Intelligent UI for everyone",
+        "Launching the GPT-6 API",
+    }
+    assert all("Official override" in candidate.reasons for candidate in candidates)
 
 
 def test_official_feed_title_release_rule_ignores_model_categories(monkeypatch):

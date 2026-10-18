@@ -24,7 +24,12 @@ HOT scoreは以下を使う。
 - Cross-source Confidence
 - Credibility
 
-標準では、スコアが `minimum_score` 以上のEventを候補にする。公式重大イベントは低スコアでも候補化できる。
+標準では、スコアが `minimum_score`(`config/scoring.yaml`、既定75)以上のEventを候補にする。それ未満のEventは候補にせず、`hot_candidates.jsonl` にも保存しない。
+
+例外として、次の両方を満たすEventはスコアに関係なく候補にする(Official override。`scoring/hot.py::_official_event_override`)。候補の理由に `Official override` を付け、並びは他の候補と同じくスコア順である。
+
+- `source_families` に `official` を含む。
+- `event_type` が `major_model_release` / `major_api_release` / `major_standard_update` のいずれか。公式ブログ(`official_blogs`)の新モデルリリース(`metadata.model_release.channel == "official"`)は `major_model_release` になる(判定規則は [公開Source](../source-adapters/public-sources.md) の「Official Blogs」)。Hugging Face org・Ollamaで検知したモデルは、family が `technology`(`config/sources.yaml`)で `event_type` も `observed_signal` のため、対象にならない。
 
 `hot_limit` は選抜数を制限する。候補自体は保持し、`selected` でレポート対象かどうかを表す。`hot_limit` は決定論経路(`ai-radar daily`)の選抜数である。Agent経路では `select-hot` が `data/runs/<date>/selection_input.json` の評価レコードで選抜し(データ契約「SelectionInput」参照)、上限は `select-hot --limit`(既定2件、最大5件)である。
 

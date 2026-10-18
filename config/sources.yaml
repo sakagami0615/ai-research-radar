@@ -59,6 +59,7 @@ sources:
     # 前日以前のnormalizedにある記事は除外する(--since/--until省略時のみ)。
     overlap_hours: 48
     # 提供元ごとの公式RSS/Atom。model_keywordsのいずれかをタイトルに含む記事を新モデルリリースとみなす。
+    # 新モデルリリースはmajor_model_releaseとして、スコアに関係なくHOT候補にもなる(Official override)。
     # model_categoriesを設定したfeedは、そのcategoryの記事に限る(OpenAIの顧客事例を除くため)。
     # 提供元名そのもの(例: mistral)は提携記事などを誤検知するためkeywordにしない。
     # Meta / Anthropic / xAI は公式RSSなし(2026-10確認)。
